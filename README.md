@@ -110,10 +110,10 @@ A repository gets at most three pull requests, each one finding, each meeting ev
 
 ## Install
 
-You need `bash`, `gh` (signed in) and `jq`. Then:
+You need `bash`, `gh` (signed in) and `jq`. Then, from PyPI; `pipx install housebroken-cli` and `uv tool install housebroken-cli` work the same way:
 
 ```
-uv tool install housebroken-cli      # or: pipx install housebroken-cli, or: pip install housebroken-cli
+pip install housebroken-cli
 housebroken install-skill
 ```
 
