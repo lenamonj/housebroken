@@ -6,6 +6,26 @@
 
 <p align="center"><em>Agent-written pull requests that do not make a mess in someone else's house.</em></p>
 
+<p align="center">
+  <img src="https://img.shields.io/github/stars/lenamonj/housebroken?style=flat-square&color=111111&label=stars" alt="Stars">
+  <img src="https://img.shields.io/github/v/release/lenamonj/housebroken?style=flat-square&color=111111&label=release" alt="Release">
+  <img src="https://img.shields.io/pypi/v/housebroken-cli?style=flat-square&color=111111&label=pypi" alt="PyPI">
+  <img src="https://img.shields.io/badge/works%20with-Claude%20Code-111111?style=flat-square" alt="Works with Claude Code">
+  <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/gates-12-E8A23B?style=flat-square" alt="12 gates">
+  <img src="https://img.shields.io/badge/merged%20upstream-23%20PRs%20in%2020%20projects-E8A23B?style=flat-square" alt="23 merged pull requests across 20 projects">
+  <img src="https://img.shields.io/badge/closures%20turned%20into%20gates-5-E8A23B?style=flat-square" alt="5 closures turned into gates">
+  <img src="https://img.shields.io/badge/shellcheck-clean-111111?style=flat-square" alt="shellcheck clean">
+</p>
+
+<p align="center">
+  <strong>23 merged upstream &middot; 20 projects &middot; 5 closures, each one now a gate</strong><br>
+  <sub>Derived from GitHub on 7 September 2026: one account, every patch written by an agent, every filing governed by these rules as they were learned. Apple, Microsoft, Google, Apache and JetBrains are among the mergers. <a href="#numbers">The numbers</a> &middot; <a href="#how-it-works">the twelve gates</a>.</sub>
+</p>
+
 You know the maintainer. She runs the project on evenings and weekends, has for nine years, and opened GitHub this morning to four pull requests from accounts created last month. Each one rewrites a function she wrote in 2019. Each carries a paragraph of comments in code that had none, a six-hundred-word body, and a footer naming the tool that wrote it. One of them re-argues a decision she closed in April. She closes all four without reading them.
 
 She is right to.
