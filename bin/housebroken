@@ -1,0 +1,110 @@
+#!/bin/bash
+# housebroken - one command name for the eight gate scripts.
+#
+# The skill file, and any future adapter for another agent host, must be able
+# to say `housebroken prior-art owner/repo term` without knowing where the
+# scripts live. This dispatcher is that stable name: it finds the scripts
+# directory, maps a short subcommand to a script, and hands over every
+# remaining argument unchanged. Nothing else. No gate logic lives here.
+#
+# Usage:
+#   housebroken <subcommand> [args...]
+#   housebroken help
+#   housebroken version
+#
+# Environment:
+#   HOUSEBROKEN_SCRIPTS  directory holding the eight *.sh gate scripts. When
+#                        unset, the scripts directory next to this file
+#                        (../scripts), then this file's own directory, then
+#                        $HOUSEBROKEN_HOME/scripts are tried in that order.
+#   HOUSEBROKEN_HOME     workshop root, default $HOME/.housebroken. The gate
+#                        scripts read it too; it is passed through untouched.
+#
+# Assumes bash. The scripts themselves assume gh and jq.
+set -u
+
+self_dir=$(cd "$(dirname "$0")" && pwd)
+HOUSEBROKEN_HOME="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
+
+candidates=()
+if [ -n "${HOUSEBROKEN_SCRIPTS:-}" ]; then
+  candidates+=("$HOUSEBROKEN_SCRIPTS")
+fi
+candidates+=("$self_dir/../scripts" "$self_dir" "$HOUSEBROKEN_HOME/scripts")
+
+scripts_dir=""
+for d in "${candidates[@]}"; do
+  if [ -f "$d/prior-art.sh" ]; then
+    scripts_dir=$(cd "$d" && pwd)
+    break
+  fi
+done
+
+door() {
+  cat <<'EOF'
+usage: housebroken <subcommand> [args...]
+
+  1  policy      read the repository's AI-contribution policy where it lives
+  1  outside     count outside contributors merged in the last 120 days
+  2  prior-art   issues and pull requests on the touched files, rulings quoted
+  6  census      added code lines against added comment lines, per branch
+  9  file        the only way a pull request gets filed
+ 10  verify      the filed pull request is what was meant, and CI settled
+ 10  sweep       every open pull request where the ball is in your court
+ 11  hygiene     delete fork branches after merge or close, list orphan forks
+
+  help           this list
+  version        the installed housebroken version
+
+Step numbers are the steps of "How it works" in the README. Every argument
+after the subcommand is passed to the script unchanged.
+EOF
+}
+
+version() {
+  vpaths=("$self_dir/../VERSION" "$self_dir/VERSION")
+  if [ -n "$scripts_dir" ]; then
+    vpaths=("$scripts_dir/../VERSION" "$scripts_dir/VERSION" "${vpaths[@]}")
+  fi
+  for v in "${vpaths[@]}"; do
+    if [ -f "$v" ]; then
+      head -1 "$v"
+      return 0
+    fi
+  done
+  echo "housebroken (unversioned)"
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+  help|--help|-h) door; exit 0 ;;
+  version|--version) version; exit 0 ;;
+esac
+shift
+
+case "$cmd" in
+  policy)    script=check-ai-policy.sh ;;
+  outside)   script=distinct-outside.sh ;;
+  prior-art) script=prior-art.sh ;;
+  census)    script=comment-census.sh ;;
+  file)      script=file-pr.sh ;;
+  verify)    script=verify-filed-pr.sh ;;
+  sweep)     script=pr-sweep.sh ;;
+  hygiene)   script=fork-hygiene.sh ;;
+  *)
+    echo "housebroken: unknown subcommand: $cmd (try: housebroken help)" >&2
+    exit 2
+    ;;
+esac
+
+if [ -z "$scripts_dir" ] || [ ! -f "$scripts_dir/$script" ]; then
+  {
+    echo "housebroken: cannot find $script. Looked in:"
+    for d in "${candidates[@]}"; do echo "  $d"; done
+    echo "Set HOUSEBROKEN_SCRIPTS to the directory holding the gate scripts."
+  } >&2
+  exit 2
+fi
+
+export HOUSEBROKEN_HOME
+exec bash "$scripts_dir/$script" "$@"
