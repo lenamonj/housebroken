@@ -69,7 +69,7 @@ The five closures matter more than the merges. Each became a gate. Two of the fi
 
 <img align="right" width="230" src="assets/treatise.jpg" alt="An obsidian book with chrome corners titled The Housebroken Agent, a treatise on manners for machines calling at the homes of maintainers">
 
-A pull request passes through the door in order. Each step is a script or a rule, and each names the closure that put it there.
+A pull request passes through the door in order. Each step is a script or a rule, and each names the closure that put it there. The verdicts themselves, in the maintainers' words, are in [docs/lessons.md](docs/lessons.md).
 
 **1. Read the house rules before knocking.**
 `check-ai-policy.sh` reads the repository's contribution policy on its development branch and in the organization's `.github` repository, and prints the sentence, not a verdict. Some projects ask contributors not to use AI for pull request text; those are never filed. Some accept pull requests only for issues they have labelled; those get an issue with the fix offered.
