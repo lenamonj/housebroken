@@ -1,6 +1,10 @@
-# housebroken
+<p align="center">
+  <img src="assets/door.jpg" width="560" alt="A white ceramic robot dog sits at an open, lit door, a scroll in its mouth, its paws stopped at a glowing amber line on the threshold">
+</p>
 
-*Agent-written pull requests that do not make a mess in someone else's house.*
+<h1 align="center">housebroken</h1>
+
+<p align="center"><em>Agent-written pull requests that do not make a mess in someone else's house.</em></p>
 
 You know the maintainer. She runs the project on evenings and weekends, has for nine years, and opened GitHub this morning to four pull requests from accounts created last month. Each one rewrites a function she wrote in 2019. Each carries a paragraph of comments in code that had none, a six-hundred-word body, and a footer naming the tool that wrote it. One of them re-argues a decision she closed in April. She closes all four without reading them.
 
@@ -42,6 +46,8 @@ The merged patches include ones accepted by Apple, Microsoft, Google, Apache, Je
 The five closures matter more than the merges. Each became a gate. Two of the five were the same class, three days apart, because the first lesson was written as prose and prose is followed when remembered. That is why the rules here are scripts that refuse, not a checklist that suggests.
 
 ## How it works
+
+<img align="right" width="230" src="assets/treatise.jpg" alt="An obsidian book with chrome corners titled The Housebroken Agent, a treatise on manners for machines calling at the homes of maintainers">
 
 A pull request passes through the door in order. Each step is a script or a rule, and each names the closure that put it there.
 
