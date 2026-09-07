@@ -113,7 +113,7 @@ A repository gets at most three pull requests, each one finding, each meeting ev
 You need `bash`, `gh` (signed in) and `jq`. Then:
 
 ```
-uv tool install housebroken-cli
+uv tool install housebroken-cli      # or: pipx install housebroken-cli, or: pip install housebroken-cli
 housebroken install-skill
 ```
 
