@@ -16,13 +16,13 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/gates-12-E8A23B?style=flat-square" alt="12 gates">
-  <img src="https://img.shields.io/badge/merged%20upstream-23%20PRs%20in%2020%20projects-E8A23B?style=flat-square" alt="23 merged pull requests across 20 projects">
+  <img src="https://img.shields.io/badge/merged%20upstream-24%20PRs%20in%2021%20projects-E8A23B?style=flat-square" alt="24 merged pull requests across 21 projects">
   <img src="https://img.shields.io/badge/closures%20turned%20into%20gates-5-E8A23B?style=flat-square" alt="5 closures turned into gates">
   <img src="https://img.shields.io/badge/shellcheck-clean-111111?style=flat-square" alt="shellcheck clean">
 </p>
 
 <p align="center">
-  <strong>23 merged upstream &middot; 20 projects &middot; 5 closures, each one now a gate</strong><br>
+  <strong>24 merged upstream &middot; 21 projects &middot; 5 closures, each one now a gate</strong><br>
   <sub>Derived from GitHub on 7 September 2026: one account, every patch written by an agent, every filing governed by these rules as they were learned. Apple, Microsoft, Google, Apache and JetBrains are among the mergers. <a href="#numbers">The numbers</a> &middot; <a href="#how-it-works">the twelve gates</a>.</sub>
 </p>
 
@@ -57,8 +57,8 @@ Every rule here was learned on real repositories with real maintainers. Between 
 | | count |
 |---|--:|
 | pull requests filed | 102 |
-| merged | 23, across 20 projects |
-| open, waiting on a maintainer | 74 |
+| merged | 24, across 21 projects |
+| open, waiting on a maintainer | 73 |
 | closed without merging | 5 |
 
 The merged patches include ones accepted by Apple, Microsoft, Google, Apache, JetBrains, and the URL parser that Node.js ships. The fastest merge came twelve minutes after filing. Several came the same day.
