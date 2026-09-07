@@ -24,8 +24,9 @@ verdict became. Newest first.
 
 - Reworks done as a second commit with a one-sentence reply were merged
   within the hour four times (commons-text, swift-log #504, kotlinx-datetime
-  #649, circl #700). The maintainers were ready; the pull request had to be in
-  the shape they asked for.
+  #649, circl #700) and within three hours a fifth (circl #699). The
+  maintainers were ready; the pull request had to be in the shape they asked
+  for.
 - Every closure that was a mistake on this side was a mistake of reading:
   a closed issue not read, a search result type not checked, a stable-major
   contract not respected. Every one became a gate that reads for you.
