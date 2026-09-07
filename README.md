@@ -133,9 +133,11 @@ uv tool install git+https://github.com/lenamonj/housebroken
 | `scripts/distinct-outside.sh` | outside contributors merged in 120 days |
 | `scripts/prior-art.sh` | issues and pull requests on the touched files, type stated, rulings quoted |
 | `scripts/comment-census.sh` | added code versus added comments, per branch |
+| `scripts/diff-defaults.sh` | default arguments and one-line wrappers added to keep call sites untouched |
 | `scripts/file-pr.sh` | the only way a pull request gets filed |
 | `scripts/verify-filed-pr.sh` | the filed pull request is what was meant, and CI settled |
 | `scripts/pr-sweep.sh` | every open pull request where the ball is in your court |
+| `scripts/notes.sh` | what this repository's maintainers have asked for before |
 | `scripts/fork-hygiene.sh` | branches deleted after merge or close, orphan forks listed |
 
 The scripts are bash and need `gh` and `jq`. They came out of one operator's workshop and some still carry that operator's assumptions; each script's header says what it assumes. Generalizing them is the current work.

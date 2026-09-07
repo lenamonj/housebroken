@@ -1,5 +1,5 @@
 #!/bin/bash
-# housebroken - one command name for the eight gate scripts.
+# housebroken - one command name for the nine gate scripts.
 #
 # The skill file, and any future adapter for another agent host, must be able
 # to say `housebroken prior-art owner/repo term` without knowing where the
@@ -13,7 +13,7 @@
 #   housebroken version
 #
 # Environment:
-#   HOUSEBROKEN_SCRIPTS  directory holding the eight *.sh gate scripts. When
+#   HOUSEBROKEN_SCRIPTS  directory holding the nine *.sh gate scripts. When
 #                        unset, the scripts directory next to this file
 #                        (../scripts), then this file's own directory, then
 #                        $HOUSEBROKEN_HOME/scripts are tried in that order.
@@ -51,6 +51,7 @@ usage: housebroken <subcommand> [args...]
   9  file        the only way a pull request gets filed
  10  verify      the filed pull request is what was meant, and CI settled
  10  sweep       every open pull request where the ball is in your court
+ 10  notes       what this repository's maintainers have asked for before
  11  hygiene     delete fork branches after merge or close, list orphan forks
 
   help           this list
@@ -90,6 +91,7 @@ case "$cmd" in
   file)      script=file-pr.sh ;;
   verify)    script=verify-filed-pr.sh ;;
   sweep)     script=pr-sweep.sh ;;
+  notes)     script=notes.sh ;;
   hygiene)   script=fork-hygiene.sh ;;
   *)
     echo "housebroken: unknown subcommand: $cmd (try: housebroken help)" >&2

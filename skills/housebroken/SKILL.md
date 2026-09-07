@@ -76,6 +76,8 @@ report it in one line and do not proceed to the next step.
    criteria in machine-readable form; run them.
 
 6. **Match the house style.**
+   Run `housebroken notes owner/repo` before writing the pull request and
+   again before any rework, and follow what is there.
    One finding, one pull request, the smallest diff that fixes it. No
    comment in code that has none: run `housebroken census <clone root>` and
    compare the added-comment ratio with the file. The body is under 120 words,
@@ -113,7 +115,9 @@ report it in one line and do not proceed to the next step.
     user's voice, after reading the whole thread. Rework what is asked for as
     a second commit so the reviewer sees the change. When the maintainer is
     right, concede in one sentence and let them close it. Never nudge a
-    silent maintainer without the user's explicit word.
+    silent maintainer without the user's explicit word. After answering a
+    review, record what the maintainer asked for with
+    `housebroken notes owner/repo add "..."`.
 
 11. **Clean up.**
     `housebroken hygiene` deletes the fork branch of every merged or closed
