@@ -108,6 +108,23 @@ A memory-safety or remote-abort finding in a library goes by the project's SECUR
 **12. Three per repository, one finding each.**
 A repository gets at most three pull requests, each one finding, each meeting every rule above on its own.
 
+## Install
+
+You need `bash`, `gh` (signed in) and `jq`. Then:
+
+```
+uv tool install housebroken-cli
+housebroken install-skill
+```
+
+The first line puts the `housebroken` command on your path. The second puts the skill where Claude Code loads it, so the agent runs the door itself before it opens anything upstream. Until the package is on PyPI, install from the repository instead:
+
+```
+uv tool install git+https://github.com/lenamonj/housebroken
+```
+
+`housebroken help` prints the door in order. Every gate is also a plain bash script under `scripts/`, runnable on its own.
+
 ## What is in the repository
 
 | script | gate |

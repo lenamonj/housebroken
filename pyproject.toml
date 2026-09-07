@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "housebroken-cli"
+version = "0.1.0"
+description = "Agent-written pull requests that do not make a mess in someone else's house."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = []
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
+
+[project.scripts]
+housebroken = "housebroken.cli:main"
+
+[project.urls]
+Repository = "https://github.com/lenamonj/housebroken"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/housebroken"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"scripts" = "housebroken/scripts"
+"bin/housebroken" = "housebroken/scripts/housebroken"
+"skills/housebroken/SKILL.md" = "housebroken/skill/SKILL.md"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/housebroken",
+  "scripts",
+  "bin/housebroken",
+  "skills/housebroken/SKILL.md",
+  "README.md",
+  "LICENSE",
+]

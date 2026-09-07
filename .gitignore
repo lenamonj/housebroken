@@ -6,3 +6,8 @@ Thumbs.db
 /pr-bodies/
 /.jeffy/
 /.claude/
+dist/
+build/
+*.egg-info
+.venv/
+__pycache__/
