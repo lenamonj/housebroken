@@ -1,0 +1,8 @@
+# housebroken
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+/pr-bodies/
+/.jeffy/
+/.claude/
