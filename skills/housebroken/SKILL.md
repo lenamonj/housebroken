@@ -131,12 +131,24 @@ report it in one line and do not proceed to the next step.
     maintainers cap open pull requests from non-collaborators and counts
     agent-opened ones against that cap.
 
+13. **Write it down before you leave.**
+    A run through the door ends with its ledger, not with the pull
+    request. A house rule learned about the repository goes into
+    `housebroken notes owner/repo add "..."` the same session. A
+    maintainer's verdict on a filed pull request is a lesson for everyone:
+    it goes into docs/lessons.md in the housebroken repository the same
+    day, quoted verbatim with the rule it became, by pull request when the
+    repository is not yours. A gate that was wrong, missing, or done by
+    hand goes on the housebroken repository as an issue before the run
+    ends. A lesson that lives only in a chat is lost.
+
 ## What you say to the user
 
 Before filing: the repository, the finding in one sentence, the prior-art
 result in one sentence, the red-then-green result, the agreement the
 organization wants, and the exact command you are about to run. After
-filing: the pull request URL and the verify result. On a refusal at any
+filing: the pull request URL and the verify result. At the end of the run:
+what went into the ledger, or that nothing did. On a refusal at any
 step: which step, and the one sentence that explains it.
 
 ## Never
