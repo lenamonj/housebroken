@@ -59,7 +59,10 @@ report it in one line and do not proceed to the next step.
    default, is a breaking change on a stable major, however wrong the old
    behavior looks. It becomes an issue that describes the behavior and offers
    the patch, never a pull request. Classify every patch before writing a
-   test for it.
+   test for it. A finding whose only red evidence is a measurement, such
+   as peak memory or elapsed time, is a hold: a pull request needs a test
+   that fails on the default branch for a wrong value, a crash or an
+   out-of-bounds access, and "less memory" is not that test.
 
 4. **Prove it red first.**
    On a fresh clone of the upstream default branch, not the tree you found
@@ -82,7 +85,9 @@ report it in one line and do not proceed to the next step.
    comment in code that has none: run `housebroken census <clone root>` and
    compare the added-comment ratio with the file. The body is under 120 words,
    in the project's template if it has one, and says what was wrong, what the
-   change does, and how it was verified. No tool footer, no session link, no
+   change does, and how it was verified; every sentence in it is something
+   you reproduced on the fresh clone in this session, never a line carried
+   from a journal. No tool footer, no session link, no
    co-author trailer, no typographic dashes. When a template asks whether AI
    was used, answer in one truthful sentence.
 
