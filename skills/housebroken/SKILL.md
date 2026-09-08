@@ -123,6 +123,18 @@ report it in one line and do not proceed to the next step.
     silent maintainer without the user's explicit word. After answering a
     review, record what the maintainer asked for with
     `housebroken notes owner/repo add "..."`.
+    Write the reply the way one maintainer writes to another. Lead with the
+    fact or the action, never with a verdict on the reviewer: no "you are
+    right", "good catch", "great point", "thanks for the feedback", no
+    apology, no restating their question, no closing summary or offer of
+    further help. A concession is the corrected fact followed by what
+    changed: "Every loader checks its read, so a truncated file fails on
+    main; the description is corrected." A disagreement is the command and
+    its result, without adjectives. An answer to a question is the answer
+    first and the evidence second. One to three sentences, no bullet list
+    under a paragraph's worth of content, no bold, no exclamation mark, no
+    handle unless the thread has several people. Offer closure as a plain
+    statement ("Fine to close."), and stop when the content stops.
 
 11. **Clean up.**
     `housebroken hygiene` deletes the fork branch of every merged or closed
