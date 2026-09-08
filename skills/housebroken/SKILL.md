@@ -135,6 +135,9 @@ report it in one line and do not proceed to the next step.
     under a paragraph's worth of content, no bold, no exclamation mark, no
     handle unless the thread has several people. Offer closure as a plain
     statement ("Fine to close."), and stop when the content stops.
+    Never post two replies to one repository in the same minute: space them
+    at least ten minutes apart, the one that matters most first, so a
+    maintainer's inbox does not show three answers stamped the same second.
 
 11. **Clean up.**
     `housebroken hygiene` deletes the fork branch of every merged or closed
@@ -147,6 +150,8 @@ report it in one line and do not proceed to the next step.
     finding, each passing every step above on its own. GitHub lets
     maintainers cap open pull requests from non-collaborators and counts
     agent-opened ones against that cap.
+    The same spacing applies to filing: pull requests and issues on one
+    repository go out at least ten minutes apart, the strongest first.
 
 13. **Write it down before you leave.**
     A run through the door ends with its ledger, not with the pull
