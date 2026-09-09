@@ -120,6 +120,14 @@ if [ "$do_ci" -eq 1 ]; then
   echo "== census of open pull requests: failing, blocked, conflicting, changes requested, draft =="
   prs="$(gh search prs --author "$user" --state open --limit 100 --json repository,number,isDraft --jq '.[] | "\(.repository.nameWithOwner) \(.number) \(.isDraft)"' 2>/dev/null)"
   total=$(printf '%s\n' "$prs" | grep -c . || true)
+  # GitHub search returns a short page when it is throttled, and a census of half
+  # the pull requests reads exactly like a clean one. Compare against the count the
+  # API itself reports and say so loudly rather than silently flagging fewer.
+  claimed="$(gh api "search/issues?q=is:pr+author:$user+is:open&per_page=1" --jq '.total_count' 2>/dev/null)"
+  case "$claimed" in
+    ''|*[!0-9]*) echo "CENSUS UNVERIFIED: could not read the open pull request count from the API" ;;
+    *) [ "$claimed" -eq "$total" ] || echo "CENSUS INCOMPLETE: search returned $total of $claimed open pull requests, so this census covers only part of them; re-run when the search rate limit recovers" ;;
+  esac
   flagged=0
   while read -r repo num draft; do
     [ -n "$repo" ] || continue
