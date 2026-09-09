@@ -42,3 +42,4 @@ verdict became. Newest first.
   before the census existed, and a fourth did after it existed, because the
   census measured the file and the maintainer measured the function. The
   gate moved to match the judge.
+| 2026-09-09 | cisco/libsrtp #822 | We diagnosed that `configure.ac` forced `PKG_CONFIG --static` and broke every OpenSSL build on stock Ubuntu, then filed an issue rather than a pull request because dropping the line narrows the generated `libsrtp3.pc`. Another contributor opened #823 seven hours later citing our issue, deleted the line we named, and the maintainer merged theirs. | Step 3 rewritten: a narrowing or default-changing fix now goes as a pull request whose body names exactly what breaks and offers to narrow or close it. The issue route survives only for a policy that demands discussion first or a real compatibility break on a stable major, and even then the patch is pushed to a branch and linked. |

@@ -55,11 +55,18 @@ report it in one line and do not proceed to the next step.
    exists.
 
 3. **Is it a fix or an opinion?**
-   A change that rejects an input the project tolerated, or changes a
-   default, is a breaking change on a stable major, however wrong the old
-   behavior looks. It becomes an issue that describes the behavior and offers
-   the patch, never a pull request. Classify every patch before writing a
-   test for it. A finding whose only red evidence is a measurement, such
+   A change that rejects an input the project tolerated, changes a default,
+   or narrows what the project publishes is the maintainer's call, not
+   yours, however wrong the old behavior looks. Send the pull request
+   anyway, and put the call in the body: one paragraph naming exactly what
+   breaks for existing users, and a sentence offering to narrow it or close
+   it if they would rather not. Never send that change silently, and never
+   sit on it. Two exceptions take the issue route instead: a policy that
+   says behavior changes need discussion first, and a runtime behavior
+   change on a stable major that the project's own compatibility promise
+   forbids. Even then the patch is pushed to a branch and linked from the
+   issue, so the work is attributable to whoever did it. Classify every
+   patch before writing a test for it. A finding whose only red evidence is a measurement, such
    as peak memory or elapsed time, is a hold: a pull request needs a test
    that fails on the default branch for a wrong value, a crash or an
    out-of-bounds access, and "less memory" is not that test.
