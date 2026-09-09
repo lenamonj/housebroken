@@ -68,7 +68,11 @@ report it in one line and do not proceed to the next step.
    On a fresh clone of the upstream default branch, not the tree you found
    the bug in, write the test that fails. Run it and keep the failing output.
    Apply the patch. Run it again. Both results go into the pull request as
-   the test itself; the body states the fact in one sentence.
+   the test itself; the body states the fact in one sentence. When the
+   patched function serves several public entry points or has several
+   branches, the test is a grid: every entry point through every branch,
+   plus the zero, identity and signed-boundary rows. A reviewer lists the
+   empty cells otherwise.
 
 5. **Run their CI, not yours.**
    Run the project's own test target on the fresh clone, and every gate its
@@ -116,9 +120,12 @@ report it in one line and do not proceed to the next step.
     `housebroken verify owner/repo PR` re-derives from GitHub that the head is
     the intended commit, the diff is exactly the intended files, and CI
     settled. `housebroken sweep` lists every open pull request where the ball
-    is in your court. Answer every maintainer comment the same day, in the
-    user's voice, after reading the whole thread. Rework what is asked for as
-    a second commit so the reviewer sees the change. When the maintainer is
+    is in your court. Before saying anything about a thread, read every
+    comment body, review and timeline event newer than your last own action;
+    a list of who commented is not a read, and a conversion to draft is a
+    review. Answer every maintainer comment the same day, in the user's
+    voice. Rework what is asked for as a second commit so the reviewer sees
+    the change. When the maintainer is
     right, concede in one sentence and let them close it. Never nudge a
     silent maintainer without the user's explicit word. After answering a
     review, record what the maintainer asked for with
