@@ -120,11 +120,14 @@ report it in one line and do not proceed to the next step.
     `housebroken verify owner/repo PR` re-derives from GitHub that the head is
     the intended commit, the diff is exactly the intended files, and CI
     settled. `housebroken sweep` lists every open pull request where the ball
-    is in your court. Before saying anything about a thread, read every
-    comment body, review and timeline event newer than your last own action;
-    a list of who commented is not a read, and a conversion to draft is a
-    review. Answer every maintainer comment the same day, in the user's
-    voice. Rework what is asked for as a second commit so the reviewer sees
+    is in your court. `housebroken inbox` is the first thing a session does
+    and the only way you learn a thread's state: it prints every event on
+    your threads since the last acknowledged cursor with the full body, the
+    thread's state, and a census of failing, blocked and conflicting checks
+    on every open pull request. A list of who commented is not a read, and a
+    conversion to draft is a review. Act on every human item, then run
+    `housebroken inbox --ack`. Answer every maintainer comment the same day,
+    in the user's voice. Rework what is asked for as a second commit so the reviewer sees
     the change. When the maintainer is
     right, concede in one sentence and let them close it. Never nudge a
     silent maintainer without the user's explicit word. After answering a
