@@ -71,11 +71,18 @@ report it in one line and do not proceed to the next step.
    that fails on the default branch for a wrong value, a crash or an
    out-of-bounds access, and "less memory" is not that test.
 
-4. **Prove it red first.**
+4. **Prove it red first, and prove the proof.**
    On a fresh clone of the upstream default branch, not the tree you found
    the bug in, write the test that fails. Run it and keep the failing output.
    Apply the patch. Run it again. Both results go into the pull request as
-   the test itself; the body states the fact in one sentence. When the
+   the test itself; the body states the fact in one sentence.
+   Ask what each step would print if it did nothing, and make that answer
+   different from success: revert by content and compare hashes rather than
+   trusting a command's exit code, check the clone's line endings before the
+   first edit, export PATH explicitly in any detached script and report every
+   step's exit code. Two arms of an experiment that agree exactly have not
+   tested the variable. Before filing, hash the changed file on disk against
+   the blob in the commit: a branch can carry the test and not the fix. When the
    patched function serves several public entry points or has several
    branches, the test is a grid: every entry point through every branch,
    plus the zero, identity and signed-boundary rows. A reviewer lists the
