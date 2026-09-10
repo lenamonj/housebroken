@@ -81,8 +81,15 @@ report it in one line and do not proceed to the next step.
    trusting a command's exit code, check the clone's line endings before the
    first edit, export PATH explicitly in any detached script and report every
    step's exit code. Two arms of an experiment that agree exactly have not
-   tested the variable. Before filing, hash the changed file on disk against
-   the blob in the commit: a branch can carry the test and not the fix. When the
+   tested the variable. Swap the file's content from `git show <base>:<path>`
+   rather than switching branches: a checkout refused because the tree is
+   dirty leaves the patched file in place, and the arm then reports success
+   under the label RED. Assert the two arms' hashes differ before believing
+   either result. Before filing, hash the changed file on disk against
+   the blob in the commit: a branch can carry the test and not the fix.
+   After rebuilding commits, grep the committed blob for the change, never
+   the file on disk: `git reset --soft` leaves the index at the previous
+   commit, so a correction made after that commit is not in the new one. When the
    patched function serves several public entry points or has several
    branches, the test is a grid: every entry point through every branch,
    plus the zero, identity and signed-boundary rows. A reviewer lists the
@@ -94,7 +101,11 @@ report it in one line and do not proceed to the next step.
    workflow file to find them. A gate you did not run is a red check the
    maintainer sees before you do. When the repository ships a Dangerfile, a
    pre-commit config or a commitlint config, those are its acceptance
-   criteria in machine-readable form; run them.
+   criteria in machine-readable form; run them. When the project's own lint
+   aborts on its own configuration, that is a fact to state, not permission
+   to skip yours: run the linter over the changed files directly, and
+   reproduce the global failure on a pristine base so the body says whose
+   it is.
 
 6. **Match the house style.**
    Run `housebroken notes owner/repo` before writing the pull request and
@@ -124,7 +135,12 @@ report it in one line and do not proceed to the next step.
    pull request until the project answers.
 
 9. **File through the gate.**
-   `housebroken file owner/repo --title ... --body-file ...` is the only way a
+   `housebroken branch <clone>` first. It refuses a dirty working tree, a file
+   whose mode disagrees with its own siblings, a committed file the repository
+   ignores, and a branch that is not on top of its base, and it prints every
+   absolute claim your added prose makes so you can falsify each one against
+   the code. Then
+   `housebroken file owner/repo --title ... --body-file ...`, the only way a
    pull request is opened. Never run the pull request creation command
    directly. The gate refuses when the prior-art printout for that repository
    is missing or older than a day, or when the body carries a footer, a

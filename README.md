@@ -97,7 +97,7 @@ Every organization gets a card before the first filing: CLA, DCO, signed-commit 
 A memory-safety or remote-abort finding in a library goes by the project's SECURITY.md route, privately, and never becomes a public pull request until the project answers.
 
 **9. File through the gate.**
-`file-pr.sh` wraps the pull request creation and refuses when the prior-art printout for that repository is missing or older than a day, or when the body carries a footer, a trailer, or a typographic dash.
+`branch-check.sh` reads the branch before anything leaves the machine: it refuses a dirty working tree, a file whose mode disagrees with its own siblings, a committed file the repository's own `.gitignore` excludes, a working artifact, and a branch that is not on top of its base, and it prints every absolute claim the added prose makes so each can be falsified against the code. Three of those came from one review round on a single pull request. `file-pr.sh` wraps the pull request creation and refuses when the prior-art printout for that repository is missing or older than a day, or when the body carries a footer, a trailer, or a typographic dash.
 
 **10. Watch it land.**
 `verify-filed-pr.sh` re-derives from GitHub that the head is the intended commit, the diff is exactly the intended files, and CI settled green. `pr-sweep.sh` lists every open pull request where the ball is in your court: a maintainer's comment unanswered, a review requesting changes, a red check, a conflict. Every maintainer comment gets a same-day answer. A ruling in a closed issue is never argued with. When the maintainer is right, concede and let them close it.
@@ -134,6 +134,7 @@ uv tool install git+https://github.com/lenamonj/housebroken
 | `scripts/prior-art.sh` | issues and pull requests on the touched files, type stated, rulings quoted |
 | `scripts/comment-census.sh` | added code versus added comments, per branch |
 | `scripts/diff-defaults.sh` | default arguments and one-line wrappers added to keep call sites untouched |
+| `scripts/branch-check.sh` | the branch's mechanical facts: clean tree, file modes, artifacts, absolute claims |
 | `scripts/file-pr.sh` | the only way a pull request gets filed |
 | `scripts/verify-filed-pr.sh` | the filed pull request is what was meant, and CI settled |
 | `scripts/pr-sweep.sh` | every open pull request where the ball is in your court |

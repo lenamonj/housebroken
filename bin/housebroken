@@ -1,5 +1,5 @@
 #!/bin/bash
-# housebroken - one command name for the nine gate scripts.
+# housebroken - one command name for the gate scripts.
 #
 # The skill file, and any future adapter for another agent host, must be able
 # to say `housebroken prior-art owner/repo term` without knowing where the
@@ -13,7 +13,7 @@
 #   housebroken version
 #
 # Environment:
-#   HOUSEBROKEN_SCRIPTS  directory holding the nine *.sh gate scripts. When
+#   HOUSEBROKEN_SCRIPTS  directory holding the *.sh gate scripts. When
 #                        unset, the scripts directory next to this file
 #                        (../scripts), then this file's own directory, then
 #                        $HOUSEBROKEN_HOME/scripts are tried in that order.
@@ -48,6 +48,7 @@ usage: housebroken <subcommand> [args...]
   1  outside     count outside contributors merged in the last 120 days
   2  prior-art   issues and pull requests on the touched files, rulings quoted
   6  census      added code lines against added comment lines, per branch
+  9  branch      the mechanical facts about the branch: tree, modes, artifacts, claims
   9  file        the only way a pull request gets filed
  10  verify      the filed pull request is what was meant, and CI settled
  10  sweep       every open pull request where the ball is in your court
@@ -89,6 +90,7 @@ case "$cmd" in
   outside)   script=distinct-outside.sh ;;
   prior-art) script=prior-art.sh ;;
   census)    script=comment-census.sh ;;
+  branch)    script=branch-check.sh ;;
   file)      script=file-pr.sh ;;
   verify)    script=verify-filed-pr.sh ;;
   sweep)     script=pr-sweep.sh ;;
