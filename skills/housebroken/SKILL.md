@@ -118,7 +118,11 @@ report it in one line and do not proceed to the next step.
    you reproduced on the fresh clone in this session, never a line carried
    from a journal. No tool footer, no session link, no
    co-author trailer, no typographic dashes. When a template asks whether AI
-   was used, answer in one truthful sentence.
+   was used, answer in one truthful sentence. Run `housebroken claims` over
+   the body and re-measure every line it lists, now, against the exact
+   revision that sentence names. A claim that names its revision can still
+   be wrong about it, which is why the listing is the whole gate: the
+   re-derivation is yours to do.
 
 7. **Know the paperwork.**
    Before the first pull request to an organization, find its agreement: CLA,
@@ -157,7 +161,9 @@ report it in one line and do not proceed to the next step.
     on every open pull request. A list of who commented is not a read, and a
     conversion to draft is a review. Act on every human item, then run
     `housebroken inbox --ack`. Answer every maintainer comment the same day,
-    in the user's voice. Rework what is asked for as a second commit so the reviewer sees
+    in the user's voice, and run `housebroken claims` over the reply before
+    it is posted: the only claim that has gone out wrong here was in a
+    reply, not a body. Rework what is asked for as a second commit so the reviewer sees
     the change. When the maintainer is
     right, concede in one sentence and let them close it. Never nudge a
     silent maintainer without the user's explicit word. After answering a

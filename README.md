@@ -134,6 +134,7 @@ uv tool install git+https://github.com/lenamonj/housebroken
 | `scripts/prior-art.sh` | issues and pull requests on the touched files, type stated, rulings quoted |
 | `scripts/comment-census.sh` | added code versus added comments, per branch |
 | `scripts/diff-defaults.sh` | default arguments and one-line wrappers added to keep call sites untouched |
+| `scripts/claim-check.sh` | every falsifiable claim in a body or a reply, listed to re-derive |
 | `scripts/branch-check.sh` | the branch's mechanical facts: clean tree, file modes, artifacts, absolute claims |
 | `scripts/file-pr.sh` | the only way a pull request gets filed |
 | `scripts/verify-filed-pr.sh` | the filed pull request is what was meant, and CI settled |

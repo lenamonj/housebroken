@@ -48,6 +48,7 @@ usage: housebroken <subcommand> [args...]
   1  outside     count outside contributors merged in the last 120 days
   2  prior-art   issues and pull requests on the touched files, rulings quoted
   6  census      added code lines against added comment lines, per branch
+  6  claims      every falsifiable claim in outbound text, listed to re-derive
   9  branch      the mechanical facts about the branch: tree, modes, artifacts, claims
   9  file        the only way a pull request gets filed
  10  verify      the filed pull request is what was meant, and CI settled
@@ -90,6 +91,7 @@ case "$cmd" in
   outside)   script=distinct-outside.sh ;;
   prior-art) script=prior-art.sh ;;
   census)    script=comment-census.sh ;;
+  claims)    script=claim-check.sh ;;
   branch)    script=branch-check.sh ;;
   file)      script=file-pr.sh ;;
   verify)    script=verify-filed-pr.sh ;;
