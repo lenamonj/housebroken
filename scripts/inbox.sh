@@ -129,9 +129,15 @@ if [ "$do_ci" -eq 1 ]; then
     *) [ "$total" -ge "$claimed" ] || echo "CENSUS INCOMPLETE: search returned $total of $claimed open pull requests, so this census covers only part of them; re-run when the search rate limit recovers" ;;
   esac
   flagged=0
+  unreadable=0
+  unreadable_list=""
   while read -r repo num draft; do
     [ -n "$repo" ] || continue
-    j="$(gh pr view "$num" --repo "$repo" --json mergeable,reviewDecision,statusCheckRollup 2>/dev/null)" || continue
+    j="$(gh pr view "$num" --repo "$repo" --json mergeable,reviewDecision,statusCheckRollup 2>/dev/null)"
+    if [ -z "$j" ]; then
+      # A pull request we could not read is not a clean one: say so rather than skipping in silence.
+      unreadable=$((unreadable + 1)); unreadable_list="$unreadable_list $repo#$num"; continue
+    fi
     why="$(jq -r --arg draft "$draft" '
       [ ( [.statusCheckRollup[]? | (.conclusion // .state // "")] | if any(. == "FAILURE" or . == "ERROR") then "FAILING" elif any(. == "ACTION_REQUIRED") then "needs-run-approval" else empty end ),
         ( if .mergeable == "CONFLICTING" then "CONFLICTING" else empty end ),
@@ -143,6 +149,7 @@ if [ "$do_ci" -eq 1 ]; then
       echo "$repo#$num: $why${fails:+  [$fails]}"
     fi
   done <<<"$prs"
+  [ "$unreadable" -eq 0 ] || echo "CENSUS UNREADABLE: could not read $unreadable of $total pull requests, so their state is unknown, not clean:$unreadable_list"
   echo "$flagged of $total open pull requests flagged"
 fi
 
