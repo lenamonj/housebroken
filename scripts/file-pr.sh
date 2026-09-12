@@ -1,5 +1,5 @@
 #!/bin/bash
-# file-pr.sh - the only way a PR gets filed: gh pr create behind two gates.
+# file-pr.sh - the only way a PR gets filed: gh pr create behind three gates.
 #
 # Gate one is prior art. typer #1946 (closed 2026-08-31) duplicated an open PR
 # and swift-http-types #153 (closed 2026-09-04) reargued a closed issue, both
@@ -9,6 +9,10 @@
 # Gate two is the prose. Tool footers, session trailers and em or en dashes have
 # no place in somebody else's repository, so a body carrying one is refused.
 # Written 2026-09-07.
+# Gate three is the adversarial review (review.sh). A different model attacked
+# this exact head and this exact body file and said POST AS IS. An inline
+# --body is refused, because a review cannot be bound to text that was never a
+# file. Added 2026-09-12.
 #
 # Usage:
 #   bash file-pr.sh owner/repo <gh pr create args...>
@@ -39,6 +43,10 @@ gates:
               exist and be under 24 hours old
   prose       no tool footer, session trailer, co-author trailer, em dash or
               en dash in --body or --body-file
+  review      run from the clone being filed; the report at
+              $HOUSEBROKEN_HOME/reviews/review-<owner>-<repo>-<head12>.md must
+              pass review.sh check for this head and the --body-file, and an
+              inline --body is refused
 
 environment:
   HOUSEBROKEN_HOME  work directory, default $HOME/.housebroken
@@ -88,14 +96,18 @@ check_text() {
 }
 
 prev=""
+bodyfile=""
+inline_body=0
 for arg in "$@"; do
   case "$prev" in
     --body-file|-F)
       [ -f "$arg" ] || { echo "REFUSED: body file $arg does not exist" >&2; exit 2; }
       check_text "body file $arg" "$(cat "$arg")"
+      bodyfile="$arg"
       ;;
     --body|-b)
       check_text "--body" "$arg"
+      inline_body=1
       ;;
   esac
   case "$arg" in
@@ -103,11 +115,26 @@ for arg in "$@"; do
       f="${arg#--body-file=}"
       [ -f "$f" ] || { echo "REFUSED: body file $f does not exist" >&2; exit 2; }
       check_text "body file $f" "$(cat "$f")"
+      bodyfile="$f"
       ;;
-    --body=*) check_text "--body" "${arg#--body=}" ;;
+    --body=*) check_text "--body" "${arg#--body=}"; inline_body=1 ;;
   esac
   prev="$arg"
 done
+
+head=$(git rev-parse HEAD 2>/dev/null) || { echo "REFUSED: run file-pr.sh from inside the clone being filed" >&2; exit 2; }
+if [ "$inline_body" -eq 1 ]; then
+  echo "REFUSED: pass the body as --body-file so the review can be bound to it" >&2
+  exit 2
+fi
+review="$home/reviews/review-${repo%%/*}-${repo##*/}-${head:0:12}.md"
+if [ ! -f "$review" ]; then
+  echo "REFUSED: no adversarial review at $review - run review.sh brief and have a different model attack this head" >&2
+  exit 2
+fi
+review_args=(check "$review" --clone .)
+[ -n "$bodyfile" ] && review_args+=(--text "$bodyfile")
+bash "$(dirname "$0")/review.sh" "${review_args[@]}" >/dev/null || exit 2
 
 if [ "${FILE_PR_DRY:-0}" = "1" ]; then
   printf 'DRY RUN, not filed:\ngh pr create -R %s' "$repo"

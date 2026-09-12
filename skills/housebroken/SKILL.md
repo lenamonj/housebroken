@@ -140,15 +140,26 @@ report it in one line and do not proceed to the next step.
 
 9. **File through the gate.**
    `housebroken branch <clone>` first. It refuses a dirty working tree, a file
-   whose mode disagrees with its own siblings, a committed file the repository
-   ignores, and a branch that is not on top of its base, and it prints every
-   absolute claim your added prose makes so you can falsify each one against
-   the code. Then
+   whose mode disagrees with its own siblings, a file the branch adds that the
+   repository ignores, a commit carrying a tool trailer or a session link, a
+   sign-off that names a username, and a branch that is not on top of its
+   base, and it prints every absolute claim your added prose makes so you can
+   falsify each one against the code. Then the adversarial review:
+   `housebroken review brief --author <your model> --repo owner/repo --clone <clone> --text <body file>`
+   names the reviewer and prints its brief. The reviewer is never the model
+   that wrote the change: one tier down, Fable to Opus and Opus to Sonnet,
+   and never below Sonnet, so Sonnet's work goes to Opus. Hand the brief to a
+   fresh agent running that model; anything of yours it reads is for it to
+   attack, not to trust. It writes its report where the brief says, with its
+   own evidence behind every finding. Every fix it asks for is a new head,
+   and a new head is reviewed again. When it passes, re-read every claim it
+   did not re-derive itself: a passed review is not a proof. Then
    `housebroken file owner/repo --title ... --body-file ...`, the only way a
    pull request is opened. Never run the pull request creation command
    directly. The gate refuses when the prior-art printout for that repository
-   is missing or older than a day, or when the body carries a footer, a
-   trailer or a dash character. A refusal is a result; fix the cause.
+   is missing or older than a day, when the body carries a footer, a trailer
+   or a dash character, or when there is no POST AS IS review of the exact
+   head and body being filed. A refusal is a result; fix the cause.
 
 10. **Watch it land.**
     `housebroken verify owner/repo PR` re-derives from GitHub that the head is
@@ -163,7 +174,10 @@ report it in one line and do not proceed to the next step.
     `housebroken inbox --ack`. Answer every maintainer comment the same day,
     in the user's voice, and run `housebroken claims` over the reply before
     it is posted: the only claim that has gone out wrong here was in a
-    reply, not a body. Rework what is asked for as a second commit so the reviewer sees
+    reply, not a body. A reply that concedes a point, disagrees, or rides on
+    a code change goes through the adversarial review of step 9 first, with
+    the reply as its `--text`, and `housebroken review check <report> --text
+    <reply file>` must pass before it is posted. Rework what is asked for as a second commit so the reviewer sees
     the change. When the maintainer is
     right, concede in one sentence and let them close it. Never nudge a
     silent maintainer without the user's explicit word. After answering a
@@ -213,8 +227,9 @@ report it in one line and do not proceed to the next step.
 ## What you say to the user
 
 Before filing: the repository, the finding in one sentence, the prior-art
-result in one sentence, the red-then-green result, the agreement the
-organization wants, and the exact command you are about to run. After
+result in one sentence, the red-then-green result, the review's verdict and
+the model that gave it, the agreement the organization wants, and the exact
+command you are about to run. After
 filing: the pull request URL and the verify result. At the end of the run:
 what went into the ledger, or that nothing did. On a refusal at any
 step: which step, and the one sentence that explains it.
@@ -225,4 +240,5 @@ Never open a pull request without the prior-art printout. Never argue with a
 ruling in a closed issue. Never file where the policy asks you not to. Never
 put a footer, a session link or a co-author trailer on anything that leaves
 the user's repositories. Never post a comment upstream that the user has not
-seen. Never claim a test ran that you did not run.
+seen. Never file a change a different model has not attacked. Never claim a
+test ran that you did not run.

@@ -1,8 +1,8 @@
 #!/bin/bash
 # install.sh - put housebroken where the current user's agent can reach it.
 #
-# Two destinations and nothing else: the eight gate scripts and the
-# `housebroken` dispatcher go into $HOUSEBROKEN_HOME/bin, and the skill
+# Two destinations and nothing else: the gate scripts, the `housebroken`
+# dispatcher and a VERSION file go into $HOUSEBROKEN_HOME/bin, and the skill
 # directory goes into $HOME/.claude/skills/housebroken, which is where Claude
 # Code looks for a user skill. No profile is edited, no PATH is changed, no
 # state is written anywhere else; when the bin directory is not on PATH the
@@ -45,22 +45,25 @@ HOUSEBROKEN_HOME="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 bindir="$HOUSEBROKEN_HOME/bin"
 skilldir="$HOME/.claude/skills/housebroken"
 
-for need in "$repo/scripts" "$repo/bin/housebroken" "$repo/skills/housebroken"; do
+for need in "$repo/scripts" "$repo/bin/housebroken" "$repo/skills/housebroken" "$repo/pyproject.toml"; do
   if [ ! -e "$need" ]; then
     echo "install.sh: missing from the repository: $need" >&2
     exit 1
   fi
 done
+version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$repo/pyproject.toml" | head -1)
 
 if [ "$mode" = uninstall ]; then
   for f in "$repo"/scripts/*.sh; do
     target="$bindir/$(basename "$f")"
     [ -e "$target" ] && rm -f "$target" && echo "removed $target"
   done
-  if [ -e "$bindir/housebroken" ]; then
-    rm -f "$bindir/housebroken"
-    echo "removed $bindir/housebroken"
-  fi
+  for target in "$bindir/housebroken" "$bindir/VERSION"; do
+    if [ -e "$target" ]; then
+      rm -f "$target"
+      echo "removed $target"
+    fi
+  done
   if [ -d "$skilldir" ]; then
     rm -rf "$skilldir"
     echo "removed $skilldir"
@@ -77,6 +80,7 @@ if [ "$mode" = dry ]; then
     echo "would copy $(basename "$f") to $bindir"
   done
   echo "would copy housebroken to $bindir"
+  echo "would write VERSION (housebroken $version) to $bindir"
   echo "would create $skilldir"
   echo "would copy the skill from $repo/skills/housebroken to $skilldir"
   exit 0
@@ -91,6 +95,8 @@ done
 cp "$repo/bin/housebroken" "$bindir/housebroken"
 chmod +x "$bindir/housebroken" 2>/dev/null || true
 echo "installed $bindir/housebroken"
+echo "housebroken $version" > "$bindir/VERSION"
+echo "installed $bindir/VERSION"
 
 rm -rf "$skilldir"
 mkdir -p "$skilldir"

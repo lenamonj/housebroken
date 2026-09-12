@@ -50,6 +50,7 @@ usage: housebroken <subcommand> [args...]
   6  census      added code lines against added comment lines, per branch
   6  claims      every falsifiable claim in outbound text, listed to re-derive
   9  branch      the mechanical facts about the branch: tree, modes, artifacts, claims
+  9  review      a different model attacks the change before it is filed
   9  file        the only way a pull request gets filed
  10  verify      the filed pull request is what was meant, and CI settled
  10  sweep       every open pull request where the ball is in your court
@@ -93,6 +94,7 @@ case "$cmd" in
   census)    script=comment-census.sh ;;
   claims)    script=claim-check.sh ;;
   branch)    script=branch-check.sh ;;
+  review)    script=review.sh ;;
   file)      script=file-pr.sh ;;
   verify)    script=verify-filed-pr.sh ;;
   sweep)     script=pr-sweep.sh ;;

@@ -45,6 +45,7 @@ one finding, one pull request
 body under 120 words, in their template, no footer
 prior art read and quoted before the branch existed
 their CI target green on a fresh clone of their main
+attacked by a second model before it left, evidence behind every finding
 the CLA known before filing, the SECURITY.md route taken when it applies
 ```
 
@@ -97,7 +98,11 @@ Every organization gets a card before the first filing: CLA, DCO, signed-commit 
 A memory-safety or remote-abort finding in a library goes by the project's SECURITY.md route, privately, and never becomes a public pull request until the project answers.
 
 **9. File through the gate.**
-`branch-check.sh` reads the branch before anything leaves the machine: it refuses a dirty working tree, a file whose mode disagrees with its own siblings, a committed file the repository's own `.gitignore` excludes, a working artifact, and a branch that is not on top of its base, and it prints every absolute claim the added prose makes so each can be falsified against the code. Three of those came from one review round on a single pull request. `file-pr.sh` wraps the pull request creation and refuses when the prior-art printout for that repository is missing or older than a day, or when the body carries a footer, a trailer, or a typographic dash.
+`branch-check.sh` reads the branch before anything leaves the machine: it refuses a dirty working tree, a file whose mode disagrees with its own siblings, a file the branch adds that the repository's own `.gitignore` excludes, a working artifact, a commit carrying a tool trailer or a session link, a sign-off that names a username, and a branch that is not on top of its base, and it prints every absolute claim the added prose makes so each can be falsified against the code. Three of those came from one review round on a single pull request.
+
+Then a different model attacks the change. `review.sh brief` names the reviewer, never the model that wrote the change: one tier down, Fable to Opus and Opus to Sonnet, and never below Sonnet. The reviewer gets a fresh context, hard read-only limits and an attack list that starts with every claim the prose makes, and every finding it reports carries evidence it produced itself. Its report records the head and the text it read, so a fix it asks for is a new head and gets a new review. The defects reviews like this caught before anything was sent are in [the ledger](docs/lessons.md).
+
+`file-pr.sh` wraps the pull request creation and refuses when the prior-art printout for that repository is missing or older than a day, when the body carries a footer, a trailer, or a typographic dash, or when there is no POST AS IS review of the exact head and body being filed.
 
 **10. Watch it land.**
 `verify-filed-pr.sh` re-derives from GitHub that the head is the intended commit, the diff is exactly the intended files, and CI settled green. `pr-sweep.sh` lists every open pull request where the ball is in your court: a maintainer's comment unanswered, a review requesting changes, a red check, a conflict. Every maintainer comment gets a same-day answer. A ruling in a closed issue is never argued with. When the maintainer is right, concede and let them close it.
@@ -135,7 +140,8 @@ uv tool install git+https://github.com/lenamonj/housebroken
 | `scripts/comment-census.sh` | added code versus added comments, per branch |
 | `scripts/diff-defaults.sh` | default arguments and one-line wrappers added to keep call sites untouched |
 | `scripts/claim-check.sh` | every falsifiable claim in a body or a reply, listed to re-derive |
-| `scripts/branch-check.sh` | the branch's mechanical facts: clean tree, file modes, artifacts, absolute claims |
+| `scripts/branch-check.sh` | the branch's mechanical facts: clean tree, file modes, artifacts, trailers, sign-offs, absolute claims |
+| `scripts/review.sh` | the adversarial review: a different model attacks the change, and the filing is held to exactly what it read |
 | `scripts/file-pr.sh` | the only way a pull request gets filed |
 | `scripts/verify-filed-pr.sh` | the filed pull request is what was meant, and CI settled |
 | `scripts/pr-sweep.sh` | every open pull request where the ball is in your court |
