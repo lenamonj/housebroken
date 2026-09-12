@@ -103,9 +103,16 @@ while IFS= read -r f; do
     fi
   fi
 
-  # The repository's own .gitignore is the authority on what is build output.
-  if git check-ignore -q --no-index -- "$f" 2>/dev/null; then
-    block "$f is committed but the repository's .gitignore excludes it"
+  # The repository's own .gitignore is the authority on what is build output,
+  # but only for a file this branch adds. Ignore rules never apply to a file the
+  # project already tracks, which is why check-ignore skips tracked files unless
+  # forced. NVIDIA/go-nvml ignores "dl" for a built binary, and that pattern also
+  # matches the directory pkg/dl, so forcing the check called two upstream source
+  # files build output.
+  if ! git cat-file -e "$base:$f" 2>/dev/null; then
+    if git check-ignore -q --no-index -- "$f" 2>/dev/null; then
+      block "$f is added by this branch and the repository's .gitignore excludes it"
+    fi
   fi
 
   case "$f" in
@@ -115,6 +122,28 @@ while IFS= read -r f; do
 done <<EOF
 $files
 EOF
+
+# A tool trailer is the one thing in a commit that cannot be argued as style.
+# Thirteen open pull requests across ten organisations were found carrying
+# "Co-Authored-By: Claude ..." and four of them a live claude.ai session URL,
+# on NVIDIA, Microsoft, Apple, Uber, Tesla, Apache and IBM repositories. No
+# project asked for it; a harness adds it by default and nobody read the commit
+# before pushing. The body is checked for this at step 9; the commits were not.
+trailers=$(git log --format='%H %s%n%b' "$base..HEAD" 2>/dev/null \
+  | grep -inE 'Co-Authored-By: *Claude|Claude-Session:|https://claude\.ai/code|Generated with .*Claude')
+if [ -n "$trailers" ]; then
+  block "a commit carries a tool trailer or a session link, which no project asked for"
+  printf '%s\n' "$trailers" | sed 's/^/    /'
+fi
+
+# DCO wants a human being, and several projects say so in as many words.
+if git log --format='%b' "$base..HEAD" 2>/dev/null | grep -qE '^Signed-off-by:'; then
+  usernames=$(git log --format='%b' "$base..HEAD" 2>/dev/null | grep -E '^Signed-off-by: [a-z0-9_-]+ <')
+  if [ -n "$usernames" ]; then
+    block "a Signed-off-by names a username; the DCO asks for a real name"
+    printf '%s\n' "$usernames" | sed 's/^/    /'
+  fi
+fi
 
 # Absolutes in added prose are the claims a maintainer can falsify in one grep.
 claims=$(git diff -U0 "$base..HEAD" -- '*.md' '*.mdx' '*.rst' '*.txt' 2>/dev/null \
@@ -128,8 +157,8 @@ fi
 echo
 echo "commits:"
 git log --oneline "$base..HEAD" | sed 's/^/    /'
-echo "diff:"
-git diff --stat "$base..HEAD" | sed 's/^/    /'
+echo "diff (against the merge base, which is what the maintainer sees):"
+git diff --stat "$(git merge-base "$base" HEAD)..HEAD" | sed 's/^/    /'
 
 if [ "$blocked" -ne 0 ]; then
   echo

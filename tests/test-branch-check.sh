@@ -76,4 +76,23 @@ run >/dev/null 2>&1 || { echo "FAIL $name: an absolute claim must warn, not bloc
 (cd "$repo" && $G checkout -q main && printf 'moved\n' >> README.md && $G add -A && $G commit -q -m "base moves" && $G branch -f origin/main main && $G checkout -q feature)
 fires "not on top of" || { echo "FAIL $name: stale base not refused"; exit 1; }
 
+# 7. a tool trailer nobody asked for, and its sabotage
+(cd "$repo" && printf 'export const d = 4;\n' > src/d.test.ts && $G add -A && $G commit -q -m "add d
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_abc123")
+fires "tool trailer or a session link" || { echo "FAIL $name: tool trailer not refused"; exit 1; }
+(cd "$repo" && $G commit -q --amend -m "add d")
+fires "tool trailer or a session link" && { echo "FAIL $name: trailer refusal survived rewriting the message"; exit 1; }
+
+# 8. a DCO sign-off naming a username, and its sabotage
+(cd "$repo" && $G commit -q --amend -m "add d
+
+Signed-off-by: lenamonj <someone@example.com>")
+fires "asks for a real name" || { echo "FAIL $name: username sign-off not refused"; exit 1; }
+(cd "$repo" && $G commit -q --amend -m "add d
+
+Signed-off-by: Jeff Lenamon <someone@example.com>")
+fires "asks for a real name" && { echo "FAIL $name: sign-off refusal survived using a real name"; exit 1; }
+
 echo "PASS $name"
