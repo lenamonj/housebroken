@@ -37,9 +37,9 @@ out=$(bash "$script" "$tmp/abs.md"); rc=$?
 printf '%s\n' "$out" | grep -q "ABSOLUTE" || { echo "FAIL $name: not reported as an absolute"; exit 1; }
 
 # Pasted evidence is not a claim: inside a fence it is quiet, outside it is not.
+# shellcheck disable=SC2016
 printf 'Result below.\n\n```\n15 of 15 tests passed\n```\n' > "$tmp/fenced.md"
-bash "$script" "$tmp/fenced.md" >/dev/null 2>&1
-[ "$?" = "0" ] || { echo "FAIL $name: counted a number inside a code fence"; exit 1; }
+bash "$script" "$tmp/fenced.md" >/dev/null 2>&1 || { echo "FAIL $name: counted a number inside a code fence"; exit 1; }
 printf 'Result below.\n\n15 of 15 tests passed\n' > "$tmp/unfenced.md"
 bash "$script" "$tmp/unfenced.md" >/dev/null 2>&1
 [ "$?" = "1" ] || { echo "FAIL $name: fence exemption is not resting on the fence"; exit 1; }

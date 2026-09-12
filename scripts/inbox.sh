@@ -76,7 +76,7 @@ human=0
 echo "$count thread(s) with activity"
 while IFS= read -r t; do
   [ -n "$t" ] || continue
-  repo=$(jq -r .repo <<<"$t"); num=$(jq -r .num <<<"$t"); type=$(jq -r .type <<<"$t"); reason=$(jq -r .reason <<<"$t"); at=$(jq -r .at <<<"$t"); latest=$(jq -r .latest <<<"$t"); title=$(jq -r .title <<<"$t")
+  repo=$(jq -r .repo <<<"$t"); num=$(jq -r .num <<<"$t"); type=$(jq -r .type <<<"$t"); reason=$(jq -r .reason <<<"$t"); at=$(jq -r .at <<<"$t"); title=$(jq -r .title <<<"$t")
   if [ "$type" = "PullRequest" ]; then
     state=$(gh pr view "$num" --repo "$repo" --json state,isDraft,mergedBy --jq 'if .state == "MERGED" then "MERGED by " + (.mergedBy.login // "?") elif .isDraft then "OPEN, DRAFT" else .state end' 2>/dev/null || echo "?")
   else

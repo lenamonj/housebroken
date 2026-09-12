@@ -105,7 +105,7 @@ Then a different model attacks the change. `review.sh brief` names the reviewer,
 `file-pr.sh` wraps the pull request creation and refuses when the prior-art printout for that repository is missing or older than a day, when the body carries a footer, a trailer, or a typographic dash, or when there is no POST AS IS review of the exact head and body being filed.
 
 **10. Watch it land.**
-`verify-filed-pr.sh` re-derives from GitHub that the head is the intended commit, the diff is exactly the intended files, and CI settled green. `pr-sweep.sh` lists every open pull request where the ball is in your court: a maintainer's comment unanswered, a review requesting changes, a red check, a conflict. Every maintainer comment gets a same-day answer. A ruling in a closed issue is never argued with. When the maintainer is right, concede and let them close it.
+`verify-filed-pr.sh` re-derives from GitHub that the head is the intended commit, the diff is exactly the intended files, and CI settled green. `pr-sweep.sh` lists every open pull request where the ball is in your court: a maintainer's comment unanswered, a review requesting changes, a red check, a conflict. `inbox.sh` prints every event on your threads since the last acknowledged cursor, with the full body of each comment and review, and a census of failing, blocked and conflicting checks on every open pull request. Every maintainer comment gets a same-day answer. A ruling in a closed issue is never argued with. When the maintainer is right, concede and let them close it.
 
 **11. Clean up.**
 `fork-hygiene.sh` deletes the fork branch of every merged or closed pull request and lists forks with no pull request left, which are deleted when the work is over. No planning file, agent directory or build output ever enters a diff.
@@ -122,7 +122,7 @@ pip install housebroken-cli
 housebroken install-skill
 ```
 
-The first line puts the `housebroken` command on your path. The second puts the skill where Claude Code loads it, so the agent runs the door itself before it opens anything upstream. Until the package is on PyPI, install from the repository instead:
+The first line puts the `housebroken` command on your path. The second puts the skill where Claude Code loads it, so the agent runs the door itself before it opens anything upstream. To run the main branch between releases, install from the repository instead:
 
 ```
 uv tool install git+https://github.com/lenamonj/housebroken
@@ -145,6 +145,7 @@ uv tool install git+https://github.com/lenamonj/housebroken
 | `scripts/file-pr.sh` | the only way a pull request gets filed |
 | `scripts/verify-filed-pr.sh` | the filed pull request is what was meant, and CI settled |
 | `scripts/pr-sweep.sh` | every open pull request where the ball is in your court |
+| `scripts/inbox.sh` | what GitHub has to tell you since you last looked, bodies included, with a census of every open pull request |
 | `scripts/notes.sh` | what this repository's maintainers have asked for before |
 | `scripts/fork-hygiene.sh` | branches deleted after merge or close, orphan forks listed |
 
