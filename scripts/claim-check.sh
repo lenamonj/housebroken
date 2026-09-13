@@ -2,19 +2,12 @@
 # claim-check.sh - lists every claim in outbound text that a maintainer can
 # falsify, so each one gets re-derived before it is sent.
 #
-# On microsoft/GSL #1272 a reply draft said "The five new static_asserts fail on
-# main." A reviewer falsified it in one pass. The number had come from a red arm
-# that grepped only for `static assertion failed`, so it counted five matches
-# and never saw the twenty-one other errors beside them; and against the commit
-# a maintainer would actually revert to, only four of the five fail. The
-# sentence named a basis and was still wrong about it.
-#
-# So this does not try to judge a claim. Text checks cannot: the bad sentence
-# named its revision and read perfectly. It lists them, and the rule in step 6
-# is that every listed line is re-measured, at the moment of writing, against
-# the exact revision the sentence names. The gap this closes is that until now
-# every gate here read code and nothing read the prose, while the prose is what
-# the maintainer reads first.
+# A count or an absolute in outbound prose is a claim the maintainer can check
+# in one command, and a sentence that names its revision can still be wrong
+# about it. This does not judge a claim, because a text check cannot; it lists
+# every one, and the rule is that each listed line is re-measured, at the
+# moment of writing, against the exact revision the sentence names. The prose
+# is what the maintainer reads first.
 #
 # Usage:
 #   bash claim-check.sh FILE

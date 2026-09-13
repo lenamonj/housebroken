@@ -13,6 +13,8 @@ bash "$script" /definitely/not/a/directory >/dev/null 2>&1
 root=$(mktemp -d) || exit 1
 trap 'rm -rf "$root"' EXIT
 repo="$root/repo"
+HOUSEBROKEN_HOME="$root/hbhome"
+export HOUSEBROKEN_HOME
 G="git -c user.email=t@example.com -c user.name=t -c core.filemode=true -c core.autocrlf=false"
 
 mkdir -p "$repo/src" || exit 1
@@ -37,6 +39,9 @@ fires() { run | grep -q "$1"; }
 out=$(run); rc=$?
 [ "$rc" = "0" ] || { echo "FAIL $name: clean branch exited $rc"; echo "$out"; exit 1; }
 echo "$out" | grep -q "nothing mechanical blocks" || { echo "FAIL $name: clean branch not reported clean"; echo "$out"; exit 1; }
+stamp="$HOUSEBROKEN_HOME/branch-checks/$(cd "$repo" && git rev-parse HEAD)"
+[ -f "$stamp" ] || { echo "FAIL $name: a passing branch left no stamp at $stamp"; exit 1; }
+grep -q "^head: " "$stamp" || { echo "FAIL $name: the stamp does not name the head"; exit 1; }
 
 # 1. dirty tree
 printf 'export const a = 99;\n' > "$repo/src/a.test.ts"
@@ -94,5 +99,46 @@ fires "asks for a real name" || { echo "FAIL $name: username sign-off not refuse
 
 Signed-off-by: Jeff Lenamon <someone@example.com>")
 fires "asks for a real name" && { echo "FAIL $name: sign-off refusal survived using a real name"; exit 1; }
+
+# 9. GitHub's spelling of another tool's trailer, a session link alone, a tool as author, and prose that only names the trailer
+(cd "$repo" && $G commit -q --amend -m "add d
+
+Co-authored-by: Codex <codex@openai.com>")
+fires "tool trailer or a session link" || { echo "FAIL $name: a Co-authored-by trailer from another tool not refused"; exit 1; }
+(cd "$repo" && $G commit -q --amend -m "add d
+
+Claude-Session: https://claude.ai/code/session_abc123")
+fires "tool trailer or a session link" || { echo "FAIL $name: a session link alone not refused"; exit 1; }
+(cd "$repo" && $G commit -q --amend --author="Claude <noreply@anthropic.com>" -m "add d")
+fires "tool trailer or a session link" || { echo "FAIL $name: a commit authored by a tool not refused"; exit 1; }
+(cd "$repo" && $G commit -q --amend --reset-author -m "docs: explain the Co-Authored-By: Claude trailer
+
+The parser now reads Co-Authored-By: Claude lines.")
+fires "tool trailer or a session link" && { echo "FAIL $name: prose that names the trailer was refused"; exit 1; }
+
+# 10. a username sign-off with a capital or a dot
+for who in Lenamonj jeff.lenamon; do
+  (cd "$repo" && $G commit -q --amend -m "add d
+
+Signed-off-by: $who <someone@example.com>")
+  fires "asks for a real name" || { echo "FAIL $name: sign-off $who not refused"; exit 1; }
+done
+(cd "$repo" && $G commit -q --amend -m "add d")
+
+# 11. a comment added to code is refused, leaves no stamp, and --asked turns it into a check
+(cd "$repo" && printf '// e is four\nexport const e = 4;\n' > src/e.test.ts && $G add -A && $G commit -q -m "add e with a comment")
+fires "adds comments to code that nobody asked for" || { echo "FAIL $name: added comment not refused"; exit 1; }
+[ -f "$HOUSEBROKEN_HOME/branch-checks/$(cd "$repo" && git rev-parse HEAD)" ] && { echo "FAIL $name: a refused branch left a stamp"; exit 1; }
+out=$(bash "$script" "$repo" --base origin/main --asked https://example.com/pr/9 2>&1)
+echo "$out" | grep -q "adds comments to code that nobody asked for" && { echo "FAIL $name: --asked did not lift the comment refusal: $out"; exit 1; }
+echo "$out" | grep -q "CHECK: src/e.test.ts:1 .*asked for in https://example.com/pr/9" || { echo "FAIL $name: --asked printed no check: $out"; exit 1; }
+(cd "$repo" && printf 'export const e = 4;\n' > src/e.test.ts && $G add -A && $G commit -q --amend -m "add e")
+fires "adds comments" && { echo "FAIL $name: comment refusal survived removing the comment"; exit 1; }
+
+# 12. the go-nvml shape: a file the project already tracks under an ignored name is not build output
+(cd "$repo" && printf 'dl\n' >> .gitignore && mkdir -p pkg/dl && printf 'package dl\n' > pkg/dl/dl.go &&
+  $G add .gitignore && $G add -f pkg/dl/dl.go && $G commit -q -m "tracked under an ignored name" && $G branch -f origin/main HEAD &&
+  printf 'package dl // edited\n' > pkg/dl/dl.go && $G add -f pkg/dl/dl.go && $G commit -q -m "edit it")
+fires "gitignore excludes it" && { echo "FAIL $name: a tracked file under an ignored name was refused"; exit 1; }
 
 echo "PASS $name"

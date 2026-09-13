@@ -4,21 +4,14 @@
 #
 # The gates before this one read code and count prose. None of them asks
 # whether the idea of the patch was complete, or whether a sentence is true,
-# and those are the defects that got furthest: a reply saying five new
-# static_asserts fail on main when four did, a new test file committed 100755
-# among 100644 siblings, a patch that removed behaviour the repository
-# documents. A second session's review caught each of them (docs/lessons.md,
-# 2026-09-10). Asked how a smaller model could catch what a larger one missed,
-# the ledger answered that it was the seat, not the model: the author had
-# decided the patch was good before writing the sentence. So the reviewer is
-# never the model that wrote the change. It is one tier down by default, which
-# costs less and still brings different blind spots, and never below Sonnet,
-# because a review has to be able to check a standard citation or a CI matrix:
-# Fable's work goes to Opus, Opus's to Sonnet, Sonnet's to Opus.
+# and those are the defects that get furthest, because the author has decided
+# the patch is good before writing the sentence. So the reviewer is never the
+# model that wrote the change. It is one tier down by default, which costs
+# less and still brings different blind spots, and never below Sonnet, because
+# a review has to be able to check a standard citation or a CI matrix: Fable's
+# work goes to Opus, Opus's to Sonnet, Sonnet's to Opus.
 #
-# A review that passed is not a proof. On 2026-09-12 a review passed a reply
-# packet whose author then found, re-reading, that the two functions it cited
-# as precedent compile only under MSVC. The author still re-reads every claim
+# A review that passed is not a proof. The author still re-reads every claim
 # the reviewer did not re-derive.
 #
 # The report is bound to what it read. Its header records the head it attacked
@@ -56,16 +49,15 @@ bad_usage() { echo "review.sh: $1" >&2; exit 2; }
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 here=$(cd "$(dirname "$0")" && pwd)
 
+# A name that mentions two families, such as "claude-haiku-4-5 (sonnet
+# floor)", belongs to neither, so it cannot pass as the one named second.
 family() {
-  local m
+  local m f="" n=0 x
   m=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
-  case "$m" in
-    *fable*) echo fable ;;
-    *opus*) echo opus ;;
-    *sonnet*) echo sonnet ;;
-    *haiku*) echo haiku ;;
-    *) printf '%s\n' "$m" ;;
-  esac
+  for x in fable opus sonnet haiku; do
+    case "$m" in *"$x"*) f=$x; n=$((n + 1)) ;; esac
+  done
+  if [ "$n" -eq 1 ]; then echo "$f"; else printf '%s\n' "$m"; fi
 }
 
 # One tier down, never below sonnet. A family not listed has no default.
@@ -86,14 +78,18 @@ objection() {
     echo "the reviewer is the model that wrote the change ($1)"
   elif [ "$2" = haiku ]; then
     echo "haiku is below the floor: a reviewer has to be able to check a standard citation or a CI matrix"
+  elif [ "$2" != fable ] && [ "$2" != opus ] && [ "$2" != sonnet ]; then
+    echo "'$2' cannot be placed against the Sonnet floor: name a fable, opus or sonnet model"
   fi
 }
 
+# Hash stdin, not the path: sha256sum puts a backslash in front of the digest
+# when the file name holds one, as every Windows path does.
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
+    sha256sum < "$1" | awk '{print $1}'
   else
-    shasum -a 256 "$1" | awk '{print $1}'
+    shasum -a 256 < "$1" | awk '{print $1}'
   fi
 }
 
@@ -101,7 +97,7 @@ cmd_reviewer() {
   [ "$#" -eq 1 ] || bad_usage "reviewer takes one model name"
   local r
   r=$(default_reviewer "$(family "$1")")
-  [ -n "$r" ] || bad_usage "no default reviewer for '$1'; name one with brief --reviewer: any model other than the author's, not below sonnet"
+  [ -n "$r" ] || bad_usage "no default reviewer for '$1'; name one with brief --reviewer: a fable, opus or sonnet model other than the author's"
   echo "$r"
 }
 
@@ -139,6 +135,8 @@ cmd_brief() {
 
   if [ -n "$clone" ]; then
     head=$(git -C "$clone" rev-parse HEAD 2>/dev/null) || bad_usage "$clone is not a git clone"
+    [ -z "$(git -C "$clone" status --porcelain)" ] ||
+      refuse "$clone has uncommitted changes, so the reviewer would read files that are not in ${head:0:12}: commit or stash them first"
     if [ -z "$base" ]; then
       for t in upstream/main upstream/master origin/main origin/master; do
         if git -C "$clone" rev-parse --verify --quiet "$t" >/dev/null; then base="$t"; break; fi
@@ -226,13 +224,18 @@ cmd_check() {
   done
   [ -f "$report" ] || refuse "no review report at $report"
 
-  field() { sed -n "s/^$1: *//p" "$report" | head -1 | tr -d '\r' | sed 's/ *$//'; }
+  # Only the header counts: the lines from the top of the report to the first
+  # blank one. A verdict quoted further down, or a second round appended to
+  # the same file, is not what this review said.
+  local header
+  header=$(awk '{sub(/\r$/, "")} NF == 0 {exit} {print}' "$report")
+  field() { printf '%s\n' "$header" | sed -n "s/^$1: *//p" | head -1 | sed 's/ *$//'; }
   local author reviewer verdict head why now
   author=$(field author-model)
   reviewer=$(field reviewer-model)
   verdict=$(field verdict | tr '[:lower:]' '[:upper:]')
   head=$(field head)
-  [ -n "$author" ] || refuse "$report names no author-model"
+  [ -n "$author" ] || refuse "$report names no author-model in its header, the lines above the first blank line"
   why=$(objection "$(family "$author")" "$(family "$reviewer")")
   [ -z "$why" ] || refuse "$why"
   [ "$verdict" = "POST AS IS" ] ||
@@ -247,8 +250,8 @@ cmd_check() {
   fi
   for t in ${texts[@]+"${texts[@]}"}; do
     [ -f "$t" ] || bad_usage "$t does not exist"
-    grep -q "^text: sha256:$(sha256 "$t")" "$report" ||
-      refuse "$t is not the text that was reviewed: its sha256 is not in $report"
+    printf '%s\n' "$header" | awk -v want="sha256:$(sha256 "$t")" '$1 == "text:" && $2 == want {found = 1} END {exit !found}' ||
+      refuse "$t is not the text that was reviewed: its sha256 is not in the header of $report"
   done
   echo "review: POST AS IS by $reviewer on work by $author${head:+ at ${head:0:12}}"
 }

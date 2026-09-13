@@ -1,40 +1,37 @@
 #!/bin/bash
 # branch-check.sh - the mechanical facts about the branch you are about to file.
 #
-# Three defects on PaloAltoNetworks/docusaurus-openapi-docs #1624 were facts
-# about the branch rather than about the patch, and git could have printed all
-# three before anything left the machine.
+# What you tested is what you file, and the branch carries nothing the project
+# did not ask for. Refused: a dirty working tree; a file whose mode disagrees
+# with its own siblings; a file the branch adds that the repository's own
+# .gitignore excludes; a working artifact; a commit carrying a tool trailer, a
+# session link or a tool identity; a sign-off naming a username; a branch that
+# is not on top of its base; and a comment added to code, test files included,
+# unless a maintainer asked for it (comment-check.sh). Absolute claims in added
+# prose are printed for you to falsify one by one; some of them are true.
 #
-# A reviewer had just shown that a sentence in the added documentation
-# overclaimed. The wording was corrected in the working tree, the branch was
-# rebuilt with `git reset --soft <base>`, and the commits still carried the old
-# sentence: a soft reset leaves the index at the previous commit, so the
-# corrected file was never staged. The tree was dirty and nobody looked. A
-# dirty tree is a refusal here, because what you tested is not what you file.
-#
-# The new test file was committed 100755 where every other test in that
-# repository is 100644, which GitHub renders in the diff. A mode that disagrees
-# with the file's own siblings is a refusal.
-#
-# The overclaiming sentence was an absolute: "removes only the files the plugin
-# generated", which the code falsifies for two file names. Absolutes in added
-# prose are printed for you to check one by one; they are not refused, because
-# some of them are true.
+# A branch that passes gets a stamp at $HOUSEBROKEN_HOME/branch-checks/<head>,
+# which file-pr.sh requires for the head it files.
 #
 # Usage:
-#   bash branch-check.sh [CLONE] [--base REF]
+#   bash branch-check.sh [CLONE] [--base REF] [--asked URL]
 #   bash branch-check.sh --help
 #
 # CLONE defaults to the current directory. REF defaults to the first of
 # upstream/main, upstream/master, origin/main, origin/master that resolves.
+# --asked URL is the maintainer's request for documentation, which turns the
+# comment refusal into a check.
 #
 # Exits 0 when nothing blocks, 1 on a refusal, 2 on a usage error.
 set -u
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 
+here=$(cd "$(dirname "$0")" && pwd)
+home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 clone="."
 base=""
+asked=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
@@ -43,6 +40,13 @@ while [ "$#" -gt 0 ]; do
       base="${1:-}"
       [ -n "$base" ] || { echo "REFUSED: --base needs a ref" >&2; exit 2; }
       ;;
+    --base=*) base="${1#--base=}" ;;
+    --asked)
+      shift
+      asked="${1:-}"
+      [ -n "$asked" ] || { echo "REFUSED: --asked needs the URL of the maintainer's ask" >&2; exit 2; }
+      ;;
+    --asked=*) asked="${1#--asked=}" ;;
     -*) echo "REFUSED: unknown option $1" >&2; exit 2 ;;
     *) clone="$1" ;;
   esac
@@ -124,26 +128,36 @@ $files
 EOF
 
 # A tool trailer is the one thing in a commit that cannot be argued as style.
-# Thirteen open pull requests across ten organisations were found carrying
-# "Co-Authored-By: Claude ..." and four of them a live claude.ai session URL,
-# on NVIDIA, Microsoft, Apple, Uber, Tesla, Apache and IBM repositories. No
-# project asked for it; a harness adds it by default and nobody read the commit
-# before pushing. The body is checked for this at step 9; the commits were not.
-trailers=$(git log --format='%H %s%n%b' "$base..HEAD" 2>/dev/null \
-  | grep -inE 'Co-Authored-By: *Claude|Claude-Session:|https://claude\.ai/code|Generated with .*Claude')
+# Trailers are matched at the start of a line and a tool by its commit
+# identity, so a subject that only names a trailer is not refused.
+trailers=$(git log --format='%h author %an <%ae>, committer %cn <%ce>%n%b' "$base..HEAD" 2>/dev/null \
+  | grep -iE '^co-authored-by:.*(claude|anthropic|copilot|cursor|aider|codex|gemini)|^claude-session:|claude\.ai/code/session_|generated with .*claude|noreply@anthropic\.com|cursoragent@cursor\.com|noreply@aider\.chat')
 if [ -n "$trailers" ]; then
-  block "a commit carries a tool trailer or a session link, which no project asked for"
+  block "a commit carries a tool trailer or a session link, or a tool identity, which no project asked for"
   printf '%s\n' "$trailers" | sed 's/^/    /'
 fi
 
-# DCO wants a human being, and several projects say so in as many words.
-if git log --format='%b' "$base..HEAD" 2>/dev/null | grep -qE '^Signed-off-by:'; then
-  usernames=$(git log --format='%b' "$base..HEAD" 2>/dev/null | grep -E '^Signed-off-by: [a-z0-9_-]+ <')
-  if [ -n "$usernames" ]; then
-    block "a Signed-off-by names a username; the DCO asks for a real name"
-    printf '%s\n' "$usernames" | sed 's/^/    /'
-  fi
+# DCO wants a human being. A one-word name is taken for a username whatever
+# its case; a real one-word name is refused as well, which is the price of
+# catching them.
+usernames=$(git log --format='%b' "$base..HEAD" 2>/dev/null | grep -E '^Signed-off-by: [^ <]+ <')
+if [ -n "$usernames" ]; then
+  block "a Signed-off-by names a username; the DCO asks for a real name"
+  printf '%s\n' "$usernames" | sed 's/^/    /'
 fi
+
+# A comment added to somebody else's code is refused unless its maintainer
+# asked for it; a reworded comment and a new file's opening header pass.
+comment_args=(--base "$base")
+[ -n "$asked" ] && comment_args+=(--asked "$asked")
+comments=$(bash "$here/comment-check.sh" . "${comment_args[@]}" 2>&1); comment_rc=$?
+case "$comment_rc" in
+  0) ;;
+  1) block "the branch adds comments to code that nobody asked for"
+     printf '%s\n' "$comments" | grep -E '^(REFUSED|CHECK): ' | sed 's/^REFUSED: /    /' ;;
+  *) block "comment-check.sh could not run: $comments" ;;
+esac
+printf '%s\n' "$comments" | grep -E '^CHECK: ' | sed 's/^/    /'
 
 # Absolutes in added prose are the claims a maintainer can falsify in one grep.
 claims=$(git diff -U0 "$base..HEAD" -- '*.md' '*.mdx' '*.rst' '*.txt' 2>/dev/null \
@@ -165,5 +179,9 @@ if [ "$blocked" -ne 0 ]; then
   echo "branch-check: refused. Fix the causes above; a refusal is a result."
   exit 1
 fi
+# The stamp file-pr.sh reads: this head passed, against this base, at this time.
+head=$(git rev-parse HEAD)
+mkdir -p "$home/branch-checks"
+printf 'head: %s\nbase: %s\nchecked: %s\n' "$head" "$(git rev-parse "$base")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$home/branch-checks/$head"
 echo
 echo "branch-check: nothing mechanical blocks this branch."

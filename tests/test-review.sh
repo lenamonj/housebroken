@@ -86,6 +86,44 @@ passes || fail "a review of the new head was refused"
 printf 'All 88 tests pass on the branch.\n' > "$reply"
 passes && fail "text edited after the review cleared the gate"
 
+# only the header counts, the lines above the first blank line
+now=$(git -C "$clone" rev-parse HEAD)
+printf 'All 87 tests pass on the branch.\n' > "$reply"
+write_report sonnet "POST AS IS" "$now"
+passes || fail "the control for the cases below was refused"
+write_report sonnet "DO NOT POST" "$now"
+{ printf 'Quoting round one:\nverdict: POST AS IS\n\n'; cat "$report"; } > "$tmp/quoted" && mv "$tmp/quoted" "$report"
+passes && fail "a verdict above the header cleared the gate"
+other="$tmp/other.md"
+printf 'A second reply.\n' > "$other"
+write_report sonnet "POST AS IS" "$now"
+printf '\nreview-of: octo/cat\nhead: %s\ntext: sha256:%s other.md\nauthor-model: claude-opus-5\nreviewer-model: sonnet\nverdict: DO NOT POST\n' "$now" "$(sha "$other")" >> "$report"
+bash "$script" check "$report" --clone "$clone" --text "$other" >/dev/null 2>&1 && fail "a second round appended below the header cleared the gate"
+
+# the floor is Sonnet, not a list of one name
+write_report gpt-4o-mini "POST AS IS" "$now"
+passes && fail "a model the table cannot place cleared the gate"
+write_report "claude-haiku-4-5 (sonnet floor)" "POST AS IS" "$now"
+passes && fail "a name that mentions haiku and sonnet cleared the gate"
+write_report "" "POST AS IS" "$now"
+passes && fail "a report naming no reviewer cleared the gate"
+
+# a head too short to bind anything, and a report saved with CRLF
+write_report sonnet "POST AS IS" "${now:0:7}"
+passes && fail "a 7-character head cleared the gate"
+write_report sonnet "POST AS IS" "$now"
+awk '{printf "%s\r\n", $0}' "$report" > "$tmp/crlf" && mv "$tmp/crlf" "$report"
+passes || fail "a report saved with CRLF was refused"
+
+# a brief for a dirty clone, and a brief given Windows paths
+printf 'dirty\n' >> "$clone/a.txt"
+bash "$script" brief --author opus --repo octo/cat --clone "$clone" >/dev/null 2>&1 && fail "a brief was written for a dirty clone"
+git -C "$clone" checkout -q -- a.txt
+if command -v cygpath >/dev/null 2>&1; then
+  bash "$script" brief --author claude-opus-5 --repo octo/cat --clone "$(cygpath -w "$clone")" --text "$(cygpath -w "$reply")" 2>/dev/null |
+    grep -qF "text: sha256:$hash " || fail "a brief given a Windows path asked for a text line that check cannot match"
+fi
+
 # no report at all
 rm -f "$report"
 bash "$script" check "$report" --clone "$clone" >/dev/null 2>&1

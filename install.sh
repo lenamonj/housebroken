@@ -52,6 +52,7 @@ for need in "$repo/scripts" "$repo/bin/housebroken" "$repo/skills/housebroken" "
   fi
 done
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$repo/pyproject.toml" | head -1)
+[ -n "$version" ] || { echo "install.sh: no version = \"...\" line in $repo/pyproject.toml" >&2; exit 1; }
 
 if [ "$mode" = uninstall ]; then
   for f in "$repo"/scripts/*.sh; do

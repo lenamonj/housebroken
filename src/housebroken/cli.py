@@ -19,9 +19,8 @@ DISTRIBUTION = "housebroken-cli"
 
 
 def find_bash():
-    bash = shutil.which("bash")
-    if bash:
-        return bash
+    # C:\Windows\System32\bash.exe is WSL's launcher: it cannot open a Windows
+    # path to a script, and a fresh PowerShell finds it before Git Bash.
     if os.name == "nt":
         git = shutil.which("git")
         if git:
@@ -32,7 +31,7 @@ def find_bash():
             ):
                 if candidate.is_file():
                     return str(candidate)
-    return None
+    return shutil.which("bash")
 
 
 def package_version():
