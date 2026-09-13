@@ -17,8 +17,8 @@ license: MIT
 
 You are about to knock on a maintainer's door. She runs the project on
 evenings and weekends and closes most agent pull requests without reading
-them, because most of them deserve it. Every rule below was paid for with a
-closed pull request. You do not skip a rule because the patch is small.
+them, because most of them deserve it. The rules below are what get a pull
+request past her. You do not skip a rule because the patch is small.
 
 ## Persistence
 
@@ -33,16 +33,21 @@ Stop at the first step that fails. A failed step is a result, not an obstacle:
 report it in one line and do not proceed to the next step.
 
 1. **Read the house rules before knocking.**
-   `housebroken policy owner/repo` reads the contribution policy on the
-   default branch and in the organization's `.github` repository and prints
-   the sentence. Read it, then read it on the development branch too
-   (`--branch dev`) when one exists. If the policy asks contributors not to
-   use AI for pull request or issue text, stop: never file there with text
-   you wrote. If the project accepts pull requests only for labelled issues,
-   the deliverable is an issue with the fix offered, not a pull request.
-   `housebroken outside owner/repo` counts outside contributors merged in the
-   last 120 days. Zero means the project is closed to outsiders whatever its
-   README says; stop.
+   `housebroken policy owner/repo --out` reads every contributing guide,
+   code of conduct, pull request and issue template, README and agent
+   instruction file on the default branch and in the organization's
+   `.github` repository, prints each sentence that names AI, and ends with
+   its reading: BAN, DISCLOSE, MENTION or CLEAN. Read it on the development
+   branch too (`--branch dev`) when one exists. BAN means stop: a project
+   that does not want AI-written contributions never gets one, whatever the
+   patch is worth. DISCLOSE means the body says, in one truthful sentence
+   and in the template's own words where it has them, that AI was used and
+   which tool. MENTION means read the lines and decide which of the two it
+   is. The printout is required by step 9. If the project accepts pull
+   requests only for labelled issues, the deliverable is an issue with the
+   fix offered, not a pull request. `housebroken outside owner/repo` counts
+   outside contributors merged in the last 120 days. Zero means the project
+   is closed to outsiders whatever its README says; stop.
 
 2. **Is it already on the table?**
    `housebroken prior-art owner/repo <file or symbol> ... --out` lists every
@@ -110,9 +115,13 @@ report it in one line and do not proceed to the next step.
 6. **Match the house style.**
    Run `housebroken notes owner/repo` before writing the pull request and
    again before any rework, and follow what is there.
-   One finding, one pull request, the smallest diff that fixes it. No
-   comment in code that has none: run `housebroken census <clone root>` and
-   compare the added-comment ratio with the file. The body is under 120 words,
+   One finding, one pull request, the smallest diff that fixes it. Never add
+   a comment to someone else's code, test files included, whatever the
+   file's own density: `housebroken comments <clone> --base <ref>` refuses
+   one. Rewording a comment that is already there is not adding one, a new
+   file may open with the licence header its neighbours carry, and a
+   maintainer's explicit request for documentation is the one exception,
+   passed as `--asked <URL of the request>`. The body is under 120 words,
    in the project's template if it has one, and says what was wrong, what the
    change does, and how it was verified; every sentence in it is something
    you reproduced on the fresh clone in this session, never a line carried
@@ -141,10 +150,12 @@ report it in one line and do not proceed to the next step.
 9. **File through the gate.**
    `housebroken branch <clone>` first. It refuses a dirty working tree, a file
    whose mode disagrees with its own siblings, a file the branch adds that the
-   repository ignores, a commit carrying a tool trailer or a session link, a
-   sign-off that names a username, and a branch that is not on top of its
-   base, and it prints every absolute claim your added prose makes so you can
-   falsify each one against the code. Then the adversarial review:
+   repository ignores, a commit carrying a tool trailer, a session link or a
+   tool identity, a sign-off that names a username, a branch that is not on
+   top of its base, and any comment added to code (`--asked <URL>` when the
+   maintainer asked for it); it prints every absolute claim your added prose
+   makes so you can falsify each one against the code, and it stamps the
+   head it passed, which the filing requires. Then the adversarial review:
    `housebroken review brief --author <your model> --repo owner/repo --clone <clone> --text <body file>`
    names the reviewer and prints its brief. The reviewer is never the model
    that wrote the change: one tier down, Fable to Opus and Opus to Sonnet,
@@ -157,9 +168,12 @@ report it in one line and do not proceed to the next step.
    `housebroken file owner/repo --title ... --body-file ...`, the only way a
    pull request is opened. Never run the pull request creation command
    directly. The gate refuses when the prior-art printout for that repository
-   is missing or older than a day, when the body carries a footer, a trailer
-   or a dash character, or when there is no POST AS IS review of the exact
-   head and body being filed. A refusal is a result; fix the cause.
+   is missing or older than a day, when the policy printout is missing, older
+   than a day or reads BAN, when the policy reads DISCLOSE and the body does
+   not disclose, when the body carries a footer, a trailer or a dash
+   character, when `housebroken branch` has not stamped the exact head, or
+   when there is no POST AS IS review of the exact head and body being filed.
+   A refusal is a result; fix the cause.
 
 10. **Watch it land.**
     `housebroken verify owner/repo PR` re-derives from GitHub that the head is
@@ -173,8 +187,7 @@ report it in one line and do not proceed to the next step.
     conversion to draft is a review. Act on every human item, then run
     `housebroken inbox --ack`. Answer every maintainer comment the same day,
     in the user's voice, and run `housebroken claims` over the reply before
-    it is posted: the only claim that has gone out wrong here was in a
-    reply, not a body. A reply that concedes a point, disagrees, or rides on
+    it is posted. A reply that concedes a point, disagrees, or rides on
     a code change goes through the adversarial review of step 9 first, with
     the reply as its `--text`, and `housebroken review check <report> --text
     <reply file>` must pass before it is posted. Rework what is asked for as a second commit so the reviewer sees
@@ -236,9 +249,11 @@ step: which step, and the one sentence that explains it.
 
 ## Never
 
-Never open a pull request without the prior-art printout. Never argue with a
-ruling in a closed issue. Never file where the policy asks you not to. Never
-put a footer, a session link or a co-author trailer on anything that leaves
-the user's repositories. Never post a comment upstream that the user has not
+Never open a pull request without the prior-art and policy printouts. Never
+argue with a ruling in a closed issue. Never file where the policy bans AI,
+and never file without disclosing where it asks for disclosure. Never add a
+comment to someone else's code unless its maintainer asked. Never put a
+footer, a session link or a co-author trailer on anything that leaves the
+user's repositories. Never post a comment upstream that the user has not
 seen. Never file a change a different model has not attacked. Never claim a
 test ran that you did not run.

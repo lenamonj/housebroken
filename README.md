@@ -11,107 +11,74 @@
   <img src="https://img.shields.io/github/v/release/lenamonj/housebroken?style=flat-square&color=111111&label=release" alt="Release">
   <img src="https://img.shields.io/pypi/v/housebroken-cli?style=flat-square&color=111111&label=pypi" alt="PyPI">
   <img src="https://img.shields.io/badge/works%20with-Claude%20Code-111111?style=flat-square" alt="Works with Claude Code">
+  <img src="https://img.shields.io/badge/shellcheck-clean-111111?style=flat-square" alt="shellcheck clean">
   <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/gates-12-E8A23B?style=flat-square" alt="12 gates">
-  <img src="https://img.shields.io/badge/merged%20upstream-29%20PRs%20in%2023%20projects-E8A23B?style=flat-square" alt="29 merged pull requests across 23 projects">
-  <img src="https://img.shields.io/badge/closures%20turned%20into%20gates-5-E8A23B?style=flat-square" alt="5 closures turned into gates">
-  <img src="https://img.shields.io/badge/shellcheck-clean-111111?style=flat-square" alt="shellcheck clean">
-</p>
+A maintainer runs her project on evenings and weekends. She opens GitHub to pull requests from accounts she has never seen, each rewriting a function she wrote years ago, each carrying comments in code that had none, a six-hundred-word body and a footer naming the tool that wrote it. She closes them without reading them, and she is right to.
 
-<p align="center">
-  <strong>29 merged upstream &middot; 23 projects &middot; 5 closures, each one now a gate</strong><br>
-  <sub>Derived from GitHub on 7 September 2026: one account, every patch written by an agent, every filing governed by these rules as they were learned. Apple, Microsoft, Google, Apache and JetBrains are among the mergers. <a href="#numbers">The numbers</a> &middot; <a href="#how-it-works">the twelve gates</a>.</sub>
-</p>
+housebroken is the set of rules that get a pull request past her, written as scripts that refuse to file until every rule is met. The rules are principles, not opinions, and the scripts are the enforcement: a gate that only suggests is followed when remembered.
 
-You know the maintainer. She runs the project on evenings and weekends, has for nine years, and opened GitHub this morning to four pull requests from accounts created last month. Each one rewrites a function she wrote in 2019. Each carries a paragraph of comments in code that had none, a six-hundred-word body, and a footer naming the tool that wrote it. One of them re-argues a decision she closed in April. She closes all four without reading them.
-
-She is right to.
-
-housebroken is the set of rules that get a pull request past her, written as scripts that refuse to file until every rule is met. The rules are not opinions. Each one was paid for with a closed pull request, and the closure is named next to the rule.
-
-## Before / after
-
-Before: one branch, fourteen files, three unrelated fixes, a planning document and an agent config directory in the diff, a comment on every added line, a body that explains the tool, filed against a ruling already made in a closed issue, the project's own test target never run.
-
-After:
+## What passes the door
 
 ```
 one finding, one pull request
-9 lines changed in the project's own style, no comment where the file has none
-1 test that fails on their main and passes with the patch
-body under 120 words, in their template, no footer
+the smallest diff in the project's own style, no comment added to their code
+one test that fails on their main and passes with the patch
+a body under 120 words, in their template, no footer, no trailer
+their policy read first: no filing where AI is banned, disclosure where it is asked
 prior art read and quoted before the branch existed
 their CI target green on a fresh clone of their main
 attacked by a second model before it left, evidence behind every finding
 the CLA known before filing, the SECURITY.md route taken when it applies
 ```
 
-The second one gets merged. Sometimes in twelve minutes.
-
-## Numbers
-
-Every rule here was learned on real repositories with real maintainers. Between late July and 7 September 2026, one account filed pull requests on projects it had never touched before, every patch written by an autonomous agent, every filing governed by these gates as they were learned. Derived from GitHub on 7 September 2026:
-
-| | count |
-|---|--:|
-| pull requests filed | 115 |
-| merged | 29, across 23 projects |
-| open, waiting on a maintainer | 81 |
-| closed without merging | 5 |
-
-The merged patches include ones accepted by Apple, Microsoft, Google, Apache, JetBrains, and the URL parser that Node.js ships. The fastest merge came twelve minutes after filing. Several came the same day.
-
-The five closures matter more than the merges. Each became a gate. Two of the five were the same class, three days apart, because the first lesson was written as prose and prose is followed when remembered. That is why the rules here are scripts that refuse, not a checklist that suggests.
-
-## How it works
+## The rules
 
 <img align="right" width="230" src="assets/treatise.jpg" alt="An obsidian book with chrome corners titled The Housebroken Agent, a treatise on manners for machines calling at the homes of maintainers">
 
-A pull request passes through the door in order. Each step is a script or a rule, and each names the closure that put it there. The verdicts themselves, in the maintainers' words, are in [docs/lessons.md](docs/lessons.md).
+A pull request passes through the door in order, and stops at the first rule it fails. Each rule is a script where a script can hold it. The maintainers' own verdicts that shaped them are kept separately, in [docs/lessons.md](docs/lessons.md).
 
 **1. Read the house rules before knocking.**
-`check-ai-policy.sh` reads the repository's contribution policy on its development branch and in the organization's `.github` repository, and prints the sentence, not a verdict. Some projects ask contributors not to use AI for pull request text; those are never filed. Some accept pull requests only for issues they have labelled; those get an issue with the fix offered.
-`distinct-outside.sh` counts outside contributors merged in the last 120 days. A project that has merged none is closed to outsiders whatever its README says.
+`check-ai-policy.sh` reads every contributing guide, code of conduct, template and agent instruction file on the repository's branch and in the organization's `.github` repository, matched by name without regard to case, and prints each sentence that names AI with its reading: BAN, DISCLOSE, MENTION or CLEAN. A project that bans AI-written contributions never gets one. A project that asks for disclosure gets one truthful sentence in the body. `distinct-outside.sh` counts outside contributors merged in the last 120 days; a project that has merged none is closed to outsiders whatever its README says.
 
 **2. Is it already on the table?**
-`prior-art.sh` lists every issue and pull request, open, closed and merged, that touches the file or symbol, with the type taken from the API field and the closing ruling quoted for every closed item. Two closures built it: a pull request that duplicated an open pull request because a search mixed issues and pull requests and nobody checked the type, and a pull request that argued against a ruling in a closed issue nobody had read.
+`prior-art.sh` lists every issue and pull request, open, closed and merged, that touches the file or symbol, with the type taken from the API and the closing ruling quoted for every closed item. An open pull request that fixes the same thing, or a closed issue that ruled the behaviour intended, ends the work. A ruling is never argued with.
 
 **3. Is it a fix or an opinion?**
-A change that rejects an input the project tolerated, or changes a default, is a breaking change on a stable major. It becomes an issue, never a pull request. Two closures, one class, two projects, before this was a rule.
+A change that rejects an input the project tolerated, changes a default, or narrows what the project publishes is the maintainer's call. It is sent with the call stated in the body: what breaks for existing users, and an offer to narrow or close it. A finding whose only evidence is a measurement is a hold, not a pull request.
 
-**4. Prove it red first.**
-On a fresh clone of the upstream default branch, the new test fails. With the patch, it passes. The proof lives in the pull request as the test, not in the body as a claim.
+**4. Prove it red first, and prove the proof.**
+On a fresh clone of the upstream default branch, the new test fails; with the patch, it passes. Every arm of the experiment prints evidence that its precondition held, files are swapped by content and checked by hash, and two arms that agree exactly have not tested the variable.
 
 **5. Run their CI, not yours.**
-The project's own test target, on the fresh clone, including the lint, format and mutation gates its workflow runs. Two pull requests went red on gates the author had never run, and the maintainer saw it before the author did.
+The project's own test target on the fresh clone, and every gate its pull request workflow runs: lint, format, mutation, API check. A gate not run is a red check the maintainer sees first.
 
 **6. Match the house style.**
-`comment-census.sh` counts added code lines against added comment lines and compares them with the file. No comment in code that has none. Body under 120 words, in the project's template if it has one. No tool footer, no session link, no co-author trailer. When a template asks whether AI was used, the answer is one truthful sentence. Three maintainers said the same thing about comment density before it became a script.
+`comment-check.sh` refuses any comment the branch adds to code, test files included; an existing comment may be reworded, a new file may open with the header its neighbours carry, and a maintainer's explicit request for documentation is the one exception. `comment-census.sh` measures density. The body is under 120 words, in the project's template, and says what was wrong, what changed and how it was verified, every sentence reproduced on the fresh clone. No tool footer, no session link, no co-author trailer, no typographic dash. `claim-check.sh` lists every counted or absolute claim in the body so each is re-derived against the exact revision it names.
 
 **7. Know the paperwork.**
-Every organization gets a card before the first filing: CLA, DCO, signed-commit requirement, template. Some CLA bots post nothing on the pull request and put the instructions in a failed job's log; the card is where that is written down.
+Before the first pull request to an organization: CLA, DCO, signed-commit requirement, disclosure trailer, and the identity clause. Author, committer and sign-off carry the contributor's real name.
 
 **8. Security goes through the side door.**
-A memory-safety or remote-abort finding in a library goes by the project's SECURITY.md route, privately, and never becomes a public pull request until the project answers.
+A memory-safety, remote-abort, injection or path-escape finding goes by the project's SECURITY.md route, privately, and never becomes a public pull request until the project answers.
 
 **9. File through the gate.**
-`branch-check.sh` reads the branch before anything leaves the machine: it refuses a dirty working tree, a file whose mode disagrees with its own siblings, a file the branch adds that the repository's own `.gitignore` excludes, a working artifact, a commit carrying a tool trailer or a session link, a sign-off that names a username, and a branch that is not on top of its base, and it prints every absolute claim the added prose makes so each can be falsified against the code. Three of those came from one review round on a single pull request.
-
-Then a different model attacks the change. `review.sh brief` names the reviewer, never the model that wrote the change: one tier down, Fable to Opus and Opus to Sonnet, and never below Sonnet. The reviewer gets a fresh context, hard read-only limits and an attack list that starts with every claim the prose makes, and every finding it reports carries evidence it produced itself. Its report records the head and the text it read, so a fix it asks for is a new head and gets a new review. The defects reviews like this caught before anything was sent are in [the ledger](docs/lessons.md).
-
-`file-pr.sh` wraps the pull request creation and refuses when the prior-art printout for that repository is missing or older than a day, when the body carries a footer, a trailer, or a typographic dash, or when there is no POST AS IS review of the exact head and body being filed.
+`branch-check.sh` refuses a dirty working tree, a file whose mode disagrees with its siblings, a file the repository's own `.gitignore` excludes, a working artifact, a commit carrying a tool trailer, a session link or a tool identity, a sign-off naming a username, a branch not on top of its base, and any comment added to code; it prints every absolute claim in added prose for falsification, and stamps the head it passed.
+`review.sh` names the adversarial reviewer: a different model from the one that wrote the change, one tier down, never below Sonnet. The reviewer gets a fresh context, hard read-only limits and an attack list that starts with every claim the prose makes; every finding carries evidence it produced itself, and its report is bound to the head and the text it read. A fix is a new head and gets a new review.
+`file-pr.sh` is the only way a pull request is opened. It refuses without a prior-art printout under a day old, a policy printout under a day old that does not read BAN, a body that discloses when the policy asks, a branch stamp for the exact head, and a POST AS IS review of that head and that body.
 
 **10. Watch it land.**
-`verify-filed-pr.sh` re-derives from GitHub that the head is the intended commit, the diff is exactly the intended files, and CI settled green. `pr-sweep.sh` lists every open pull request where the ball is in your court: a maintainer's comment unanswered, a review requesting changes, a red check, a conflict. `inbox.sh` prints every event on your threads since the last acknowledged cursor, with the full body of each comment and review, and a census of failing, blocked and conflicting checks on every open pull request. Every maintainer comment gets a same-day answer. A ruling in a closed issue is never argued with. When the maintainer is right, concede and let them close it.
+`verify-filed-pr.sh` re-derives from GitHub that the head is the intended commit, the diff is exactly the intended files, and CI settled. `inbox.sh` prints every event on your threads since the last acknowledged cursor, bodies included, with a census of failing, blocked and conflicting checks. Every maintainer comment gets a same-day answer in the contributor's voice, checked by `claim-check.sh` and, when it concedes, disagrees or rides on a code change, by the adversarial review. Replies to one repository are spaced ten minutes apart. When the maintainer is right, concede in one sentence. A silent maintainer is never nudged.
 
 **11. Clean up.**
-`fork-hygiene.sh` deletes the fork branch of every merged or closed pull request and lists forks with no pull request left, which are deleted when the work is over. No planning file, agent directory or build output ever enters a diff.
+`fork-hygiene.sh` deletes the fork branch of every merged or closed pull request and lists forks with no pull request left. No planning file, agent directory, journal or build output ever enters a diff.
 
 **12. Three per repository, one finding each.**
-A repository gets at most three pull requests, each one finding, each meeting every rule above on its own.
+A repository gets at most three open pull requests, each one finding, each meeting every rule above on its own, filed at least ten minutes apart.
+
+**13. Write it down before you leave.**
+A house rule learned about a repository goes into `notes.sh` the same session. A maintainer's verdict goes into docs/lessons.md the same day, quoted verbatim with the rule it became. A gate that was wrong, missing or done by hand becomes an issue before the run ends.
 
 ## Install
 
@@ -134,22 +101,23 @@ uv tool install git+https://github.com/lenamonj/housebroken
 
 | script | gate |
 |---|---|
-| `scripts/check-ai-policy.sh` | reads the AI-contribution policy where it actually lives |
+| `scripts/check-ai-policy.sh` | the AI-contribution policy, read where it lives, with its reading: BAN, DISCLOSE, MENTION, CLEAN |
 | `scripts/distinct-outside.sh` | outside contributors merged in 120 days |
 | `scripts/prior-art.sh` | issues and pull requests on the touched files, type stated, rulings quoted |
+| `scripts/comment-check.sh` | refuses a comment added to code nobody asked for |
 | `scripts/comment-census.sh` | added code versus added comments, per branch |
 | `scripts/diff-defaults.sh` | default arguments and one-line wrappers added to keep call sites untouched |
 | `scripts/claim-check.sh` | every falsifiable claim in a body or a reply, listed to re-derive |
-| `scripts/branch-check.sh` | the branch's mechanical facts: clean tree, file modes, artifacts, trailers, sign-offs, absolute claims |
+| `scripts/branch-check.sh` | the branch's mechanical facts: clean tree, modes, artifacts, trailers, sign-offs, comments, absolute claims |
 | `scripts/review.sh` | the adversarial review: a different model attacks the change, and the filing is held to exactly what it read |
-| `scripts/file-pr.sh` | the only way a pull request gets filed |
+| `scripts/file-pr.sh` | the only way a pull request gets filed: five gates in front of `gh pr create` |
 | `scripts/verify-filed-pr.sh` | the filed pull request is what was meant, and CI settled |
 | `scripts/pr-sweep.sh` | every open pull request where the ball is in your court |
 | `scripts/inbox.sh` | what GitHub has to tell you since you last looked, bodies included, with a census of every open pull request |
 | `scripts/notes.sh` | what this repository's maintainers have asked for before |
 | `scripts/fork-hygiene.sh` | branches deleted after merge or close, orphan forks listed |
 
-The scripts are bash and need `gh` and `jq`. They came out of one operator's workshop and some still carry that operator's assumptions; each script's header says what it assumes. Generalizing them is the current work.
+The scripts are bash and need `gh` and `jq`. Each script's header says what it assumes.
 
 ## Not in scope
 
