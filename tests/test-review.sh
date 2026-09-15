@@ -36,7 +36,7 @@ hash=$(sha "$reply")
 brief=$(bash "$script" brief --author claude-opus-5 --repo octo/cat --clone "$clone" --text "$reply" 2>"$tmp/err") ||
   fail "brief exited non-zero"
 for want in "reviewer-model: sonnet" "author-model: claude-opus-5" "head: $head" "text: sha256:$hash" \
-  "All 87 tests" "Nothing leaves this machine" "verdict: POST AS IS | POST WITH CHANGES | DO NOT POST"; do
+  "All 87 tests" "Nothing leaves this machine" "strongest engineer in the language" "4. The form:"   "verdict: POST AS IS | POST WITH CHANGES | DO NOT POST"; do
   printf '%s\n' "$brief" | grep -qF "$want" || fail "brief is missing: $want"
 done
 report="$HOUSEBROKEN_HOME/reviews/review-octo-cat-${head:0:12}.md"

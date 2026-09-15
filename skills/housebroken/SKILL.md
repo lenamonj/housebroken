@@ -161,8 +161,11 @@ report it in one line and do not proceed to the next step.
    that wrote the change: one tier down, Fable to Opus and Opus to Sonnet,
    and never below Sonnet, so Sonnet's work goes to Opus. Hand the brief to a
    fresh agent running that model; anything of yours it reads is for it to
-   attack, not to trust. It writes its report where the brief says, with its
-   own evidence behind every finding. Every fix it asks for is a new head,
+   attack, not to trust. It attacks the form as well as the facts: it writes
+   the changed block the way the strongest engineer in that language would,
+   and a smaller or clearer version is a finding you fix before filing. It
+   writes its report where the brief says, with its own evidence behind
+   every finding. Every fix it asks for is a new head,
    and a new head is reviewed again. When it passes, re-read every claim it
    did not re-derive itself: a passed review is not a proof. Then
    `housebroken file owner/repo --title ... --body-file ...`, the only way a
