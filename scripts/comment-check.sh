@@ -118,11 +118,21 @@ while IFS= read -r f; do
 
   # An added comment line is refused unless a removed comment line in the same
   # hunk pays for it, or it is in the leading comment block of a new file whose
-  # neighbours open with one.
-  awk -F'\t' -v re="$re" -v hdr="$header_ok" -v file="$f" '
+  # neighbours open with one. Every added line between an added /* and its */
+  # is a comment, whatever it starts with.
+  blk=0
+  case "$re" in *'/[*]'*) blk=1 ;; esac
+  awk -F'\t' -v re="$re" -v hdr="$header_ok" -v file="$f" -v blk="$blk" '
     $1 == "-" { if ($4 ~ re) rem[$2]++; next }
     $1 == "+" {
-      if ($4 ~ re) {
+      iscom = ($4 ~ re)
+      if (blk == 1) {
+        if ($3 != prev + 1) inblock = 0
+        prev = $3
+        if (inblock) { iscom = 1; if ($4 ~ /[*]\//) inblock = 0 }
+        else if ($4 ~ /^[[:space:]]*\/[*]/ && $4 !~ /[*]\//) inblock = 1
+      }
+      if (iscom) {
         if (rem[$2] > 0) { rem[$2]--; next }
         if (hdr == 1 && !code_seen) next
         text = $4; sub(/^[[:space:]]+/, "", text)

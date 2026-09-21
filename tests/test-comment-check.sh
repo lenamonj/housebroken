@@ -96,4 +96,17 @@ commit "docs"
 out=$(run); rc=$?
 [ "$rc" = "0" ] || { echo "FAIL $name: a markdown change exited $rc: $out"; exit 1; }
 
+# 9. a block-comment header whose inner lines carry no star passes whole; a block comment below it does not
+$G reset -q --hard main
+printf '/**\n# Copyright The Project Authors\n#\n#     http://example.com/licence\n**/\n\npackage d\n\nfunc D() int { return 4 }\n' > src/d.go
+commit "new file with a block header"
+out=$(run); rc=$?
+[ "$rc" = "0" ] || { echo "FAIL $name: new file with a block-comment header exited $rc: $out"; exit 1; }
+printf '/**\n# Copyright The Project Authors\n**/\n\npackage d\n\n/*\nD returns four.\n*/\nfunc D() int { return 4 }\n' > src/d.go
+commit "new file with a body block comment"
+out=$(run); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: body block comment exited $rc, expected 1: $out"; exit 1; }
+echo "$out" | grep -q "src/d.go:8 adds a comment: D returns four." || { echo "FAIL $name: the inner line of a body block comment was not refused: $out"; exit 1; }
+echo "$out" | grep -q "src/d.go:[1-3] " && { echo "FAIL $name: the header was refused: $out"; exit 1; }
+
 echo "PASS $name"
