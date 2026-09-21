@@ -20,6 +20,8 @@
 # that the caller knows which head sha and which files were intended. Exits
 # non-zero when the head does not match, when checks are red, or when they do
 # not settle before the watch gives up.
+# Exits 3, and says NOT SETTLED, when nothing is wrong but a workflow on the
+# head still waits for a maintainer's approval, so CI has not run.
 set -u
 
 usage() {
@@ -38,6 +40,7 @@ repo="$1"
 pr="$2"
 want="${3:-}"
 fail=0
+unsettled=0
 note() { printf '%-26s %s\n' "$1" "$2"; }
 
 view() {
@@ -66,7 +69,7 @@ view files '.files[] | "   " + .path + "  +" + (.additions|tostring) + "/-" + (.
 echo ""
 echo "-- checks (waits until every check has settled)"
 gh pr checks "$pr" --repo "$repo" --watch --interval 20 >/dev/null 2>&1 || true
-rollup=$(view statusCheckRollup '[.statusCheckRollup[] | (.conclusion // .status)] | group_by(.) | map({k:.[0], n:length}) | .[] | .k + "=" + (.n|tostring)')
+rollup=$(view statusCheckRollup '[.statusCheckRollup[] | (.conclusion // .status // .state)] | group_by(.) | map({k:.[0], n:length}) | .[] | .k + "=" + (.n|tostring)')
 if [ -z "$rollup" ]; then
   note "checks" "none reported"
 else
@@ -75,6 +78,13 @@ else
     *FAILURE*|*TIMED_OUT*|*CANCELLED*|*ACTION_REQUIRED*) note "CHECKS NOT GREEN" "read the logs"; fail=1 ;;
     *IN_PROGRESS*|*QUEUED*|*PENDING*) note "CHECKS DID NOT SETTLE" "watch timed out"; fail=1 ;;
   esac
+fi
+# A fork's workflow that waits for a maintainer's approval has run nothing and
+# is absent from the rollup above.
+waiting=$(gh run list --repo "$repo" --commit "$head" --json conclusion --jq '[.[] | select(.conclusion == "action_required")] | length' 2>/dev/null)
+if [ "${waiting:-0}" -gt 0 ]; then
+  note "WORKFLOWS AWAIT APPROVAL" "$waiting run(s) on this head have not started"
+  unsettled=1
 fi
 
 echo ""
@@ -86,5 +96,8 @@ echo "-- comments, newest last"
 view comments '.comments[] | "   " + .author.login + ": " + (.body | gsub("\n"; " ") | .[0:150])'
 
 echo ""
-if [ "$fail" -eq 0 ]; then echo "PR-VERIFY: OK"; else echo "PR-VERIFY: PROBLEMS ABOVE"; fi
+if [ "$fail" -ne 0 ]; then echo "PR-VERIFY: PROBLEMS ABOVE"
+elif [ "$unsettled" -ne 0 ]; then echo "PR-VERIFY: NOT SETTLED (CI has not run on this head)"
+else echo "PR-VERIFY: OK"; fi
+[ "$fail" -eq 0 ] && [ "$unsettled" -ne 0 ] && exit 3
 exit "$fail"
