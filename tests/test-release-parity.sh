@@ -22,7 +22,7 @@ gh auth status >/dev/null 2>&1 || { echo "SKIP $name: gh not authenticated"; exi
 current=$(grep -m1 '^version = ' "$root/pyproject.toml" | sed 's/.*"\(.*\)".*/\1/')
 [ -n "$current" ] || { echo "FAIL $name: no version in pyproject.toml"; exit 1; }
 
-releases=$(gh release list --repo "$repo" --limit 100 2>/dev/null | awk '/^v/ {print substr($1,2)}')
+releases=$(gh release list --repo "$repo" --limit 100 --json tagName --jq '.[].tagName' 2>/dev/null | tr -d '\r' | sed -n 's/^v//p')
 [ -n "$releases" ] || { echo "FAIL $name: read no releases, so any comparison is vacuous"; exit 1; }
 
 published=$(curl -sS --max-time 30 "https://pypi.org/simple/housebroken-cli/" 2>/dev/null \
