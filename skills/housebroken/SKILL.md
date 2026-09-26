@@ -70,7 +70,9 @@ report it in one line and do not proceed to the next step.
    says behavior changes need discussion first, and a runtime behavior
    change on a stable major that the project's own compatibility promise
    forbids. Even then the patch is pushed to a branch and linked from the
-   issue, so the work is attributable to whoever did it. Classify every
+   issue, so the work is attributable to whoever did it; `housebroken issue
+   owner/repo --title ... --body-file ...` is the only way an issue is
+   opened, and it refuses a body that offers a fix without that link. Classify every
    patch before writing a test for it. A finding whose only red evidence is a measurement, such
    as peak memory or elapsed time, is a hold: a pull request needs a test
    that fails on the default branch for a wrong value, a crash or an
