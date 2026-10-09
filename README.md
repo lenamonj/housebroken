@@ -114,7 +114,7 @@ uv tool install git+https://github.com/lenamonj/housebroken
 | `scripts/file-pr.sh` | the only way a pull request gets filed: five gates in front of `gh pr create` |
 | `scripts/file-issue.sh` | the only way an issue gets filed: the same printouts and prose, and a fix offered is a fix linked |
 | `scripts/verify-filed-pr.sh` | the filed pull request is what was meant, and CI settled |
-| `scripts/pr-sweep.sh` | every open pull request where the ball is in your court |
+| `scripts/pr-sweep.sh` | every open pull request where the ball is in your court, and every merged or closed one whose fork branch is still there, repeated each run until it is gone |
 | `scripts/inbox.sh` | what GitHub has to tell you since you last looked, bodies included, with a census of every open pull request |
 | `scripts/notes.sh` | what this repository's maintainers have asked for before |
 | `scripts/fork-hygiene.sh` | branches deleted after merge or close, orphan forks listed |

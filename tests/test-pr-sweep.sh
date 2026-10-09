@@ -47,6 +47,30 @@ echo "$out" | grep -q '^MERGED google/snappy#257 by danilak-G at 2026-09-07' ||
 jq -e '.open | index("google/snappy#257") == null' "$state" >/dev/null ||
   { echo "FAIL $name: the merged PR survived in the rewritten state"; exit 1; }
 
+# a merged PR whose fork branch still exists is reported as TIDY on every run
+# until the branch is gone. Runs as a public account whose branches are live
+# (the operator's own are already clean); read-only, nothing is deleted.
+user="${TEST_FORK_USER:-AkariH}"
+pr="${TEST_FORK_PR:-ivanfioravanti/kubernetes-the-hard-way-on-azure#87}"
+state2="$tmp/sweep-state-tidy.json"
+HOUSEBROKEN_USER="$user" bash "$script" --all --state "$state2" >/dev/null ||
+  { echo "FAIL $name: first run as $user failed"; exit 1; }
+jq --arg pr "$pr" '.open += [$pr]' "$state2" > "$state2.new" && mv "$state2.new" "$state2"
+out=$(HOUSEBROKEN_USER="$user" bash "$script" --state "$state2") ||
+  { echo "FAIL $name: tidy run exited non-zero"; exit 1; }
+echo "$out" | grep -q "^MERGED $pr " || { echo "FAIL $name: $pr not reported merged"; echo "$out" | head -5; exit 1; }
+echo "$out" | grep -q "^TIDY   $pr " || { echo "FAIL $name: no TIDY line for $pr"; echo "$out" | head -5; exit 1; }
+echo "$out" | grep -q '^fork branches to tidy: 1' || { echo "FAIL $name: tidy count missing"; exit 1; }
+jq -e --arg pr "$pr" '.tidy | map(endswith($pr)) | any' "$state2" >/dev/null ||
+  { echo "FAIL $name: branch not recorded in the state"; exit 1; }
+# the obligation survives a run where the PR is no longer new
+out=$(HOUSEBROKEN_USER="$user" bash "$script" --state "$state2") ||
+  { echo "FAIL $name: third run exited non-zero"; exit 1; }
+echo "$out" | grep -q "^TIDY   $pr " || { echo "FAIL $name: TIDY line did not persist"; exit 1; }
+echo "$out" | grep -q "^MERGED $pr " && { echo "FAIL $name: merge reported twice"; exit 1; }
+branch=$(jq -r --arg pr "$pr" '.tidy[] | select(endswith($pr))' "$state2" | awk '{print $1 "/git/refs/heads/" $2}')
+gh api "repos/$branch" --jq .ref >/dev/null || { echo "FAIL $name: test branch was deleted"; exit 1; }
+
 rm -rf "$tmp"
 trap - EXIT
 echo "PASS $name"

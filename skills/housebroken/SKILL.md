@@ -184,7 +184,9 @@ report it in one line and do not proceed to the next step.
     `housebroken verify owner/repo PR` re-derives from GitHub that the head is
     the intended commit, the diff is exactly the intended files, and CI
     settled. `housebroken sweep` lists every open pull request where the ball
-    is in your court. `housebroken inbox` is the first thing a session does
+    is in your court, and prints a `TIDY` line for every merged or closed
+    pull request whose fork branch still exists, on every run until
+    `housebroken hygiene` has deleted it. `housebroken inbox` is the first thing a session does
     and the only way you learn a thread's state: it prints every event on
     your threads since the last acknowledged cursor with the full body, the
     thread's state, and a census of failing, blocked and conflicting checks

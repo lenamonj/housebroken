@@ -9,7 +9,10 @@
 #
 # A merge or a close drops a PR out of the open list without a word, so each
 # run writes its open set to a state file and the next run reports what left
-# it.
+# it. A PR that left still owns a branch on our fork until someone deletes it,
+# so the sweep records that branch in the state file and prints a TIDY line on
+# every run until `housebroken hygiene` has removed it. The obligation is in
+# the output, not in anyone's memory.
 #
 # Usage:
 #   bash pr-sweep.sh                  # only PRs where the ball is in our court
@@ -77,13 +80,20 @@ if [ -f "$STATE" ]; then
     exit 1
   fi
   echo "--- merged or closed since $last"
+  tidy="$(jq -r '.tidy[]?' "$STATE" | tr -d '\r')"
   gone="$(comm -23 <(jq -r '.open[]?' "$STATE" | tr -d '\r' | sort) <(printf '%s\n' "$open_ids"))"
   while read -r id; do
     [ -n "$id" ] || continue
     gone_repo="${id%#*}"; gone_num="${id##*#}"
-    if ! v="$(gh pr view "$gone_num" --repo "$gone_repo" --json state,mergedAt,closedAt,mergedBy)"; then
+    if ! v="$(gh pr view "$gone_num" --repo "$gone_repo" --json state,mergedAt,closedAt,mergedBy,headRefName,headRepository,headRepositoryOwner)"; then
       echo "pr-sweep.sh: gh pr view $id failed" >&2
       continue
+    fi
+    head_owner="$(printf '%s' "$v" | jq -r '.headRepositoryOwner.login // "-"' | tr -d '\r')"
+    head_fork="$(printf '%s' "$v" | jq -r '.headRepository.name // "-"' | tr -d '\r')"
+    head_branch="$(printf '%s' "$v" | jq -r '.headRefName // "-"' | tr -d '\r')"
+    if [ "$head_owner" = "$ME" ] && [ "$gone_repo" != "$ME/$head_fork" ] && [ "$head_branch" != "-" ]; then
+      tidy="$(printf '%s\n%s\n' "$tidy" "$ME/$head_fork $head_branch $id")"
     fi
     case "$(printf '%s' "$v" | jq -r '.state // "-"' | tr -d '\r')" in
       MERGED)
@@ -99,10 +109,22 @@ if [ -f "$STATE" ]; then
   done <<< "$gone"
 else
   echo "--- no previous sweep recorded"
+  tidy=""
 fi
 
-if ! printf '%s\n' "$open_ids" | jq -R -s --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{lastRun: $t, open: (split("\n") | map(select(length > 0)))}' > "$STATE"; then
+# every recorded fork branch is checked again; it leaves the list only once GitHub says it is gone
+keep=""; ntidy=0
+while read -r fork branch id; do
+  [ -n "$fork" ] || continue
+  gh api "repos/$fork/git/refs/heads/$branch" >/dev/null 2>&1 || continue
+  ntidy=$((ntidy + 1))
+  keep="$(printf '%s\n%s\n' "$keep" "$fork $branch $id")"
+  printf 'TIDY   %-38s fork branch %s %s still exists: run housebroken hygiene\n' "$id" "$fork" "$branch"
+done <<< "$(printf '%s\n' "$tidy" | awk 'NF == 3 && !seen[$0]++')"
+
+if ! jq -n --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg open "$(printf '%s\n' "$open_ids")" --arg tidy "$(printf '%s\n' "$keep")" \
+  '{lastRun: $t, open: ($open | split("\n") | map(select(length > 0))), tidy: ($tidy | split("\n") | map(select(length > 0)))}' > "$STATE"; then
   echo "pr-sweep.sh: cannot write $STATE" >&2
   exit 1
 fi
@@ -136,3 +158,5 @@ while IFS=$'\t' read -r repo num updated title; do
   fi
 done <<< "$list"
 echo "open PRs: $n; needing action: $act"
+[ "$ntidy" -gt 0 ] && echo "fork branches to tidy: $ntidy (housebroken hygiene)"
+exit 0
