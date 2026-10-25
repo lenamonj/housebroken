@@ -99,8 +99,11 @@ report it in one line and do not proceed to the next step.
    commit, so a correction made after that commit is not in the new one. When the
    patched function serves several public entry points or has several
    branches, the test is a grid: every entry point through every branch,
-   plus the zero, identity and signed-boundary rows. A reviewer lists the
-   empty cells otherwise.
+   plus the zero, identity and signed-boundary rows. A patch that
+   reconciles two coupled setters keeps a value that already satisfies the
+   invariant instead of resetting it, and its grid has a row for every
+   order the two are called in, the same value twice and null included. A
+   reviewer lists the empty cells otherwise.
 
 5. **Run their CI, not yours.**
    Run the project's own test target on the fresh clone, and every gate its
