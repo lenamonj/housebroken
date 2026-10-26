@@ -91,8 +91,10 @@ while IFS= read -r f; do
   [ -n "$entry" ] || continue
   mode=$(printf '%s\n' "$entry" | awk '{print $1}')
 
-  # A mode is only wrong relative to the file's own neighbours.
-  if [ "$mode" = "100755" ]; then
+  # A mode is only wrong relative to the file's own neighbours, and only the
+  # branch's to answer for when the base does not already carry it.
+  base_mode=$(git ls-tree "$base" -- "$f" 2>/dev/null | awk '{print $1}')
+  if [ "$mode" = "100755" ] && [ "$base_mode" != "100755" ]; then
     case "$f" in
       *.*) ext=".${f##*.}" ;;
       *) ext="" ;;

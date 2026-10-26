@@ -56,6 +56,26 @@ fires "100755" || { echo "FAIL $name: exec mode not refused"; exit 1; }
 (cd "$repo" && $G update-index --chmod=-x src/c.test.ts && $G commit -q -m "mode back")
 fires "100755" && { echo "FAIL $name: mode refusal survived chmod 644"; exit 1; }
 
+# 2b. a mode the base already carries is not the branch's to answer for
+# (Tencent/MMKV ships Core/MMKV_IO.cpp 100755 among 100644 siblings)
+legacy="$root/legacy"
+mkdir -p "$legacy/src" || exit 1
+(
+  cd "$legacy" || exit 1
+  $G init -q -b main .
+  printf 'export const a = 1;\n' > src/a.test.ts
+  printf 'export const b = 2;\n' > src/b.test.ts
+  printf 'export const x = 1;\n' > src/x.test.ts
+  $G add -A && $G update-index --chmod=+x src/x.test.ts && $G commit -q -m base
+  $G branch -f origin/main main
+  $G checkout -q -b feature
+  printf 'export const x = 2;\n' > src/x.test.ts
+  $G add -A && $G update-index --chmod=+x src/x.test.ts && $G commit -q -m "edit x"
+) || { echo "FAIL $name: legacy fixture failed"; exit 1; }
+(cd "$legacy" && git ls-tree HEAD src/x.test.ts | grep -q '^100755' && git ls-tree origin/main src/x.test.ts | grep -q '^100755') \
+  || { echo "FAIL $name: legacy fixture lost the 100755 mode"; exit 1; }
+bash "$script" "$legacy" --base origin/main 2>&1 | grep -q "100755" && { echo "FAIL $name: a mode inherited from the base was refused"; exit 1; }
+
 # 3. a committed file the repository's own .gitignore excludes
 mkdir -p "$repo/dist"
 printf 'built\n' > "$repo/dist/out.js"
