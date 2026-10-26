@@ -47,6 +47,14 @@ echo "$out" | grep -q '^MERGED google/snappy#257 by danilak-G at 2026-09-07' ||
 jq -e '.open | index("google/snappy#257") == null' "$state" >/dev/null ||
   { echo "FAIL $name: the merged PR survived in the rewritten state"; exit 1; }
 
+# a PR filed and merged between two runs was never in the stored open set
+# (Tencent/MMKV#1700, filed 11:32Z and merged 12:46Z on 2026-10-26)
+jq '.lastRun = "2026-10-26T11:00:00Z"' "$state" > "$state.new" && mv "$state.new" "$state"
+out=$(bash "$script" --state "$state") || { echo "FAIL $name: between-runs run exited non-zero"; exit 1; }
+echo "$out" | grep -q '^MERGED Tencent/MMKV#1700 by lingol at 2026-10-26' ||
+  { echo "FAIL $name: a PR filed and merged between runs was not reported"; echo "$out" | head -5; exit 1; }
+[ "$(echo "$out" | grep -c '^MERGED Tencent/MMKV#1700 ')" = "1" ] || { echo "FAIL $name: between-runs merge reported twice"; exit 1; }
+
 # a merged PR whose fork branch still exists is reported as TIDY on every run
 # until the branch is gone. Runs as a public account whose branches are live
 # (the operator's own are already clean); read-only, nothing is deleted.

@@ -82,6 +82,15 @@ if [ -f "$STATE" ]; then
   echo "--- merged or closed since $last"
   tidy="$(jq -r '.tidy[]?' "$STATE" | tr -d '\r')"
   gone="$(comm -23 <(jq -r '.open[]?' "$STATE" | tr -d '\r' | sort) <(printf '%s\n' "$open_ids"))"
+  # A PR filed and merged between two runs was never in the stored open set.
+  if printf '%s' "$last" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'; then
+    if ! closed="$(gh search prs --author "$ME" --state closed --closed ">=$last" --limit 100 --json repository,number \
+      --jq '.[] | "\(.repository.nameWithOwner)#\(.number)"')"; then
+      echo "pr-sweep.sh: gh search prs failed for PRs of $ME closed since $last" >&2
+      exit 1
+    fi
+    gone="$(printf '%s\n%s\n' "$gone" "$closed" | tr -d '\r' | awk 'NF && !seen[$0]++')"
+  fi
   while read -r id; do
     [ -n "$id" ] || continue
     gone_repo="${id%#*}"; gone_num="${id##*#}"
