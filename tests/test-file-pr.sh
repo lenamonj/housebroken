@@ -77,7 +77,7 @@ policy "CLEAN (no policy file names AI)"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "no branch stamp exited $rc, expected 2"
 printf '%s' "$out" | grep -q "REFUSED: branch-check.sh has not passed head" || fail "a missing branch stamp printed no refusal"
-stamp() { mkdir -p "$HOUSEBROKEN_HOME/branch-checks"; printf 'head: %s\n' "$1" > "$HOUSEBROKEN_HOME/branch-checks/$1"; }
+stamp() { mkdir -p "$HOUSEBROKEN_HOME/branch-checks"; printf 'head: %s\nbase-ref: %s\n' "$1" "${2:-origin/master}" > "$HOUSEBROKEN_HOME/branch-checks/$1"; }
 stamp "$head"
 
 # gate five: no adversarial review
@@ -104,6 +104,25 @@ review sonnet "POST AS IS"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 0 ] || fail "a reviewed clean dry run exited $rc, expected 0: $out"
 printf '%s' "$out" | grep -q "DRY RUN, not filed" || fail "clean dry run did not print the command"
+
+# the branch was checked against a different base from the one it is filed into
+# (Tencent/MMKV takes pull requests on dev; a branch checked against master
+# would have had every diff gate read the wrong diff)
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" --base dev 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a branch checked against master and filed into dev exited $rc, expected 2"
+printf '%s' "$out" | grep -q "REFUSED: branch-check.sh measured this head against origin/master" || fail "a base mismatch printed no refusal: $out"
+stamp "$head" origin/dev
+bash "$script" octocat/Hello-World --title t --body-file "$clean" --base dev >/dev/null 2>&1 || fail "a branch checked against dev and filed into dev was refused"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a branch checked against dev and filed into the default branch exited $rc, expected 2"
+stamp "$head"
+
+# a body over 120 words is refused
+long="$HOUSEBROKEN_HOME/long.md"
+for _ in $(seq 1 121); do printf 'word '; done > "$long"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$long" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a 121-word body exited $rc, expected 2"
+printf '%s' "$out" | grep -q "REFUSED: the body is 121 words" || fail "a long body printed no refusal: $out"
 
 # the body file may be named either way gh reads it
 bash "$script" octocat/Hello-World --title t -F "$clean" >/dev/null 2>&1 || fail "-F FILE was refused"

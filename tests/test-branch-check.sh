@@ -42,6 +42,7 @@ echo "$out" | grep -q "nothing mechanical blocks" || { echo "FAIL $name: clean b
 stamp="$HOUSEBROKEN_HOME/branch-checks/$(cd "$repo" && git rev-parse HEAD)"
 [ -f "$stamp" ] || { echo "FAIL $name: a passing branch left no stamp at $stamp"; exit 1; }
 grep -q "^head: " "$stamp" || { echo "FAIL $name: the stamp does not name the head"; exit 1; }
+grep -q "^base-ref: origin/main$" "$stamp" || { echo "FAIL $name: the stamp does not name the base it measured against"; exit 1; }
 
 # 1. dirty tree
 printf 'export const a = 99;\n' > "$repo/src/a.test.ts"

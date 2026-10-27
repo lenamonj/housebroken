@@ -184,6 +184,6 @@ fi
 # The stamp file-pr.sh reads: this head passed, against this base, at this time.
 head=$(git rev-parse HEAD)
 mkdir -p "$home/branch-checks"
-printf 'head: %s\nbase: %s\nchecked: %s\n' "$head" "$(git rev-parse "$base")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$home/branch-checks/$head"
+printf 'head: %s\nbase: %s\nbase-ref: %s\nchecked: %s\n' "$head" "$(git rev-parse "$base")" "$base" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$home/branch-checks/$head"
 echo
 echo "branch-check: nothing mechanical blocks this branch."

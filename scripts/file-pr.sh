@@ -47,9 +47,11 @@ gates:
               be under 24 hours old and not read RESULT: BAN; when it reads
               RESULT: DISCLOSE the body must name the AI use
   prose       no tool footer, session trailer, co-author trailer, em dash or
-              en dash, in any case, in the --body-file or the --title
+              en dash, in any case, in the --body-file or the --title; a
+              body of at most 120 words
   branch      $HOUSEBROKEN_HOME/branch-checks/<head> must exist, written by
-              branch-check.sh when this head passed
+              branch-check.sh when this head passed, against the branch this
+              files into (--base, or the repository's default branch)
   review      run from the clone being filed; the report at
               $HOUSEBROKEN_HOME/reviews/review-<owner>-<repo>-<head12>.md must
               pass review.sh check for this head and the --body-file, and an
@@ -128,6 +130,7 @@ check_text() {
 # as its own argument or after an equals sign.
 bodyfile=""
 title=""
+filebase=""
 pass=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -135,8 +138,10 @@ while [ "$#" -gt 0 ]; do
     --body-file=*) bodyfile="${1#--body-file=}"; pass+=("$1") ;;
     -t|--title) title="${2:-}"; pass+=("$1" "${2:-}"); shift ;;
     --title=*) title="${1#--title=}"; pass+=("$1") ;;
-    -B|--base|-l|--label|-a|--assignee|-r|--reviewer|-m|--milestone|-p|--project) pass+=("$1" "${2:-}"); shift ;;
-    --base=*|--label=*|--assignee=*|--reviewer=*|--milestone=*|--project=*) pass+=("$1") ;;
+    -B|--base) filebase="${2:-}"; pass+=("$1" "${2:-}"); shift ;;
+    --base=*) filebase="${1#--base=}"; pass+=("$1") ;;
+    -l|--label|-a|--assignee|-r|--reviewer|-m|--milestone|-p|--project) pass+=("$1" "${2:-}"); shift ;;
+    --label=*|--assignee=*|--reviewer=*|--milestone=*|--project=*) pass+=("$1") ;;
     -d|--draft|--no-maintainer-edit) pass+=("$1") ;;
     *)
       echo "REFUSED: file-pr.sh does not pass $1 to gh pr create: the body comes from one --body-file, the head is the branch you are on, the repository is the first argument" >&2
@@ -152,6 +157,11 @@ if [ "$bodyfile" = "-" ] || [ ! -f "$bodyfile" ]; then
 fi
 check_text "body file $bodyfile" "$(cat "$bodyfile")"
 check_text "--title" "$title"
+words=$(wc -w < "$bodyfile" | tr -d ' ')
+if [ "$words" -gt 120 ]; then
+  echo "REFUSED: the body is $words words - say what was wrong, what the change does and how it was verified in 120 or fewer" >&2
+  exit 2
+fi
 if [ "$policy_result" = "DISCLOSE" ] && ! grep -qiE '\bAI\b|LLM|Claude|Copilot|ChatGPT|language model|assist' "$bodyfile"; then
   echo "REFUSED: $repo requires AI use to be disclosed ($policy) and the body does not name it" >&2
   exit 2
@@ -162,6 +172,22 @@ if [ ! -f "$home/branch-checks/$head" ]; then
   echo "REFUSED: branch-check.sh has not passed head ${head:0:12} - run it from this clone first" >&2
   exit 2
 fi
+# Every diff gate read the diff against the stamp's base; it must be the branch this files into.
+checked=$(sed -n 's/^base-ref: //p' "$home/branch-checks/$head" | tr -d '\r')
+if [ -z "$checked" ]; then
+  echo "REFUSED: the branch-check stamp for head ${head:0:12} names no base - rerun branch-check.sh" >&2
+  exit 2
+fi
+target="$filebase"
+if [ -z "$target" ]; then
+  target=$(gh repo view "$repo" --json defaultBranchRef --jq .defaultBranchRef.name 2>/dev/null | tr -d '\r')
+  [ -n "$target" ] || { echo "REFUSED: cannot read the default branch of $repo - pass --base" >&2; exit 2; }
+fi
+case "$checked" in
+  "$target"|*/"$target") ;;
+  *) echo "REFUSED: branch-check.sh measured this head against $checked, but it is filed into $target - rerun branch-check.sh --base <remote>/$target" >&2
+     exit 2 ;;
+esac
 review="$home/reviews/review-${repo%%/*}-${repo##*/}-${head:0:12}.md"
 if [ ! -f "$review" ]; then
   echo "REFUSED: no adversarial review at $review - run review.sh brief and have a different model attack this head" >&2
