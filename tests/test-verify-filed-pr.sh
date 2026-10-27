@@ -45,6 +45,8 @@ out=$(STUB_DIR="$stub" PATH="$stub:$PATH" bash "$script" o/r 1); rc=$?
 [ "$rc" = "3" ] || { echo "FAIL $name: a run awaiting approval exited $rc, expected 3"; exit 1; }
 echo "$out" | grep -q "^   SUCCESS=1" || { echo "FAIL $name: a commit status's state was not read: $out"; exit 1; }
 echo "$out" | grep -q "^PR-VERIFY: NOT SETTLED" || { echo "FAIL $name: a run awaiting approval did not read NOT SETTLED: $out"; exit 1; }
+echo "$out" | grep -q "^PR-VERIFY: NOT SETTLED (1 workflow run(s) wait for a maintainer to approve them; nothing settles until one does, so move on)$" ||
+  { echo "FAIL $name: a run awaiting approval did not say who it waits on: $out"; exit 1; }
 
 printf '%s' '[{"conclusion":"success"}]' > "$stub/runs.json"
 out=$(STUB_DIR="$stub" PATH="$stub:$PATH" bash "$script" o/r 1)

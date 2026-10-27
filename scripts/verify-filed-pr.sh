@@ -97,6 +97,7 @@ view comments '.comments[] | "   " + .author.login + ": " + (.body | gsub("\n"; 
 
 echo ""
 if [ "$fail" -ne 0 ]; then echo "PR-VERIFY: PROBLEMS ABOVE"
+elif [ "${waiting:-0}" -gt 0 ]; then echo "PR-VERIFY: NOT SETTLED ($waiting workflow run(s) wait for a maintainer to approve them; nothing settles until one does, so move on)"
 elif [ "$unsettled" -ne 0 ]; then echo "PR-VERIFY: NOT SETTLED (CI has not run on this head)"
 else echo "PR-VERIFY: OK"; fi
 [ "$fail" -eq 0 ] && [ "$unsettled" -ne 0 ] && exit 3
