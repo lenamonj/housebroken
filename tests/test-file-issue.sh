@@ -45,7 +45,7 @@ policy "CLEAN (no policy file names AI)"
 
 # gate three: an em dash, a session link and a co-author trailer in the body; a dash in the title
 for bad in 'the parser \xe2\x80\x94 one line' 'see https://claude.ai/code/session_abc' 'Co-Authored-By: x'; do
-  printf "$bad\n" > "$HOUSEBROKEN_HOME/bad.md"
+  printf '%b\n' "$bad" > "$HOUSEBROKEN_HOME/bad.md"
   out=$(run --title t --body-file "$HOUSEBROKEN_HOME/bad.md"); rc=$?
   [ "$rc" -eq 2 ] || fail "body '$bad' exited $rc, expected 2"
   printf '%s' "$out" | grep -q "REFUSED" || fail "body '$bad' printed no refusal"

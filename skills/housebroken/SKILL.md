@@ -179,8 +179,11 @@ report it in one line and do not proceed to the next step.
    is missing or older than a day, when the policy printout is missing, older
    than a day or reads BAN, when the policy reads DISCLOSE and the body does
    not disclose, when the body carries a footer, a trailer or a dash
-   character, when `housebroken branch` has not stamped the exact head, or
-   when there is no POST AS IS review of the exact head and body being filed.
+   character or runs past 120 words, when `housebroken branch` has not
+   stamped the exact head against the branch it is filed into (`--base`
+   to both when the project takes pull requests on a branch other than its
+   default), or when there is no POST AS IS review of the exact head and
+   body being filed.
    A refusal is a result; fix the cause.
 
 10. **Watch it land.**

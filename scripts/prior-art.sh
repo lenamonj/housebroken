@@ -9,7 +9,9 @@
 # 2026-09-04) argued against a ruling already made in CLOSED issue #98, which
 # nobody read, so this script prints the last non-author comment on every closed
 # item. A term containing a slash or a dot is treated as a file path and the
-# commit history of that path is scanned for the PRs that touched it.
+# commit history of that path is scanned for the PRs that touched it, and
+# every open PR that changes it is listed, which no text search finds
+# (Shopify/ruby-lsp #4103 deleted the file a fix was written against).
 # Written 2026-09-07.
 #
 # Usage:
@@ -34,7 +36,8 @@ usage: prior-art.sh owner/repo <term>... [--out]
 
   owner/repo  the upstream repository to search
   <term>      a symbol, phrase or file path; a term with a slash or a dot is
-              also treated as a path and its commit history is scanned
+              also treated as a path: its commit history is scanned and
+              every open PR that changes it is listed
   --out       save the printout under $HOUSEBROKEN_HOME/prior-art/
 
 environment:
@@ -70,7 +73,8 @@ calls=0
 items=0
 tmp=$(mktemp) || { echo "prior-art.sh: cannot create temp file" >&2; exit 1; }
 row=$(mktemp) || { echo "prior-art.sh: cannot create temp file" >&2; exit 1; }
-trap 'rm -f "$tmp" "$row"' EXIT
+openfiles=$(mktemp) || { echo "prior-art.sh: cannot create temp file" >&2; exit 1; }
+trap 'rm -f "$tmp" "$row" "$openfiles"' EXIT
 
 # last comment on a closed item written by somebody other than its author
 last_word() {
@@ -132,6 +136,30 @@ for term in "${terms[@]}"; do
         printf '| PR | #%s | merged | %s | %s | %s |  |\n' "$num" "$date" "$author" "$subject" >>"$tmp"
         items=$((items+1))
       done <"$row"
+
+      # an open PR that changes the path is prior art even when no title or body names it
+      if [ ! -s "$openfiles" ]; then
+        # shellcheck disable=SC2016  # $p is a jq variable
+        gh pr list -R "$repo" --state open --limit 200 --json number,createdAt,author,title,changedFiles,files \
+          --jq '.[] | . as $p | (if .changedFiles > (.files | length) then ["MORE"] else [.files[].path] end)[] |
+                [($p.number|tostring), $p.createdAt[0:10], $p.author.login,
+                 ($p.title|gsub("[|]";"/")|gsub("[\n\r\t]";" ")), .] | @tsv' >"$openfiles" ||
+          { echo "prior-art.sh: open PR listing failed for $repo" >&2; exit 1; }
+        calls=$((calls+1))
+        # GitHub returns at most 100 files per PR here; a larger PR is read in full
+        awk -F'\t' '$5 == "MORE"' "$openfiles" | while IFS=$'\t' read -r num date author title _; do
+          gh api --paginate "repos/$repo/pulls/$num/files?per_page=100" --jq '.[].filename' |
+            while IFS= read -r f; do printf '%s\t%s\t%s\t%s\t%s\n' "$num" "$date" "$author" "$title" "$f"; done
+        done >"$row"
+        cat "$row" >>"$openfiles"
+        [ -s "$openfiles" ] || printf 'none\n' >"$openfiles"
+      fi
+      while IFS=$'\t' read -r num date author title path; do
+        case "$path" in "$term"|*/"$term") ;; *) continue ;; esac
+        grep -q "^| PR | #$num | open, changes this file |" "$tmp" && continue
+        printf '| PR | #%s | open, changes this file | %s | %s | %s |  |\n' "$num" "$date" "$author" "$title" >>"$tmp"
+        items=$((items+1))
+      done <"$openfiles"
       ;;
   esac
 done
