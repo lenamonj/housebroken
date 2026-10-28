@@ -157,8 +157,11 @@ report it in one line and do not proceed to the next step.
    whose mode disagrees with its own siblings, a file the branch adds that the
    repository ignores, a commit carrying a tool trailer, a session link or a
    tool identity, a sign-off that names a username, a branch that is not on
-   top of its base, and any comment added to code (`--asked <URL>` when the
-   maintainer asked for it); it prints every absolute claim your added prose
+   top of its base, any comment added to code (`--asked <URL>` when the
+   maintainer asked for it), a warning suppression the branch adds until
+   `--warning-log` shows each suppressed warning firing, and reflection added
+   to a .NET project that declares AOT or trim support until `--aot-log`
+   shows an AOT publish you ran the changed path under; it prints every absolute claim your added prose
    makes so you can falsify each one against the code, and it stamps the
    head it passed, which the filing requires. Then the adversarial review:
    `housebroken review brief --author <your model> --repo owner/repo --clone <clone> --text <body file>`
@@ -166,7 +169,14 @@ report it in one line and do not proceed to the next step.
    that wrote the change: one tier down, Fable to Opus and Opus to Sonnet,
    and never below Sonnet, so Sonnet's work goes to Opus. Hand the brief to a
    fresh agent running that model; anything of yours it reads is for it to
-   attack, not to trust. It attacks the form as well as the facts: it writes
+   attack, not to trust. Before it reads the diff, it reads only the bug and
+   the code at the base and writes the fix it would send, saved where the
+   brief says; the report names that file, and the gate refuses a code review
+   without it. A maintainer reads the bug, not our diff, and writes their own
+   fix; the reviewer does the same first. It then traces every value the change
+   uses to where its type or comparer was last known, covers the input shapes
+   the neighbouring tests use, and runs the changed path in every mode the
+   project promises to run on. It attacks the form as well as the facts: it writes
    the changed block the way the strongest engineer in that language would,
    and a smaller or clearer version is a finding you fix before filing. It
    writes its report where the brief says, with its own evidence behind
