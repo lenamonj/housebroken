@@ -87,10 +87,16 @@ printf '%s' "$out" | grep -q "REFUSED: no adversarial review" || fail "a missing
 
 report="$HOUSEBROKEN_HOME/reviews/review-octocat-Hello-World-${head:0:12}.md"
 mkdir -p "$HOUSEBROKEN_HOME/reviews"
+blind="$HOUSEBROKEN_HOME/reviews/blind.diff"
 review() { # reviewer verdict
-  printf 'review-of: octocat/Hello-World\nhead: %s\ntext: sha256:%s clean.md\nauthor-model: opus\nreviewer-model: %s\nverdict: %s\n' \
-    "$head" "$(sha "$clean")" "$1" "$2" > "$report"
+  printf 'review-of: octocat/Hello-World\nhead: %s\ntext: sha256:%s clean.md\nauthor-model: opus\nreviewer-model: %s\nblind-fix: %s\nverdict: %s\n' \
+    "$head" "$(sha "$clean")" "$1" "$blind" "$2" > "$report"
 }
+
+review sonnet "POST AS IS"
+bash "$script" octocat/Hello-World --title t --body-file "$clean" >/dev/null 2>&1
+[ "$?" -eq 2 ] || fail "a review whose blind fix was never written did not stop the filing"
+printf 'the reviewer fix\n' > "$blind"
 
 review sonnet "DO NOT POST"
 bash "$script" octocat/Hello-World --title t --body-file "$clean" >/dev/null 2>&1

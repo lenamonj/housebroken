@@ -180,6 +180,11 @@ EOF
     printf -- '- context from the author, to attack rather than trust: %s\n' "$t"
   done
 
+  local blind="$home/reviews/blind-${repo%%/*}-${repo##*/}-$key.diff"
+  if [ -n "$clone" ]; then
+    printf '\n0. Before you read the diff, fix it yourself.\n'
+    printf '   Read only the problem: the issue or the description of the bug, and the code at %s. In a copy of the clone at that commit, write the fix you would send, with its test, and save it as a diff to %s. Only then read the change under review and compare. A design that differs from yours in where it fixes the problem, what it recomputes or what it can break is a finding: SHOULD FIX when yours is better, with both versions side by side. The point is the design you reach without the author'"'"'s anchoring it; a maintainer reads the bug, not our diff, and writes their own.\n' "${mb:-the base}" "$blind"
+  fi
   printf '\nAttack at least\n'
   printf '1. Every claim the text makes, re-derived now against the exact revision it names.\n'
   for t in ${texts[@]+"${texts[@]}"}; do
@@ -194,9 +199,15 @@ EOF
 6. Prior art: nothing duplicates an open pull request or argues with a ruling in a closed issue.
 7. The text: it leads with the fact; no verdict on the reviewer, no thanks, apology or offer of help; a reply runs one to three sentences and a body stays under 120 words; no footer, trailer or typographic dash; every sentence is true as literally worded.
 8. Anything else that would embarrass the author in front of this maintainer.
-
-Report
 EOF
+  if [ -n "$clone" ]; then
+    cat <<'EOF'
+9. Where the information is lost: trace every value the change uses back to the last place its type, comparer or source was known. A change that recomputes what a caller already had (a second lookup, a second enumeration, reflection to recover a type the generic code knew, a default comparer standing in for the caller's) fixes the symptom where it surfaced, not where it began. That is SHOULD FIX, with the version that carries the caller's result forward.
+10. Inputs the project already tests: list the input shapes the test files beside the changed code use, such as custom comparers, culture, single-use or lazy sequences, null, empty, very large, concurrent callers. Every shape the changed code can receive that the new tests leave out is a finding; run the change on it.
+11. What the project promises to run on: read the manifests and CI matrix for AOT, trimming, no_std, wasm, minimum language or runtime versions, and every platform leg. Run the changed path in each mode the project promises, not only the default build; a clean build is not a run. A suppression the change adds has to be shown covering a warning that fires.
+EOF
+  fi
+  printf '\nReport\n'
   printf 'Write it to %s. It must start with exactly these lines, with the verdict filled in:\n\n' "$report"
   printf 'review-of: %s\n' "$repo"
   [ -n "$head" ] && printf 'head: %s\n' "$head"
@@ -204,6 +215,7 @@ EOF
     printf 'text: sha256:%s %s\n' "$(sha256 "$t")" "$(basename "$t")"
   done
   printf 'author-model: %s\nreviewer-model: %s\n' "$author" "$reviewer"
+  [ -n "$head" ] && printf 'blind-fix: %s\n' "$blind"
   printf 'verdict: POST AS IS | POST WITH CHANGES | DO NOT POST\n\n'
   cat <<'EOF'
 POST AS IS means nothing BLOCKING or SHOULD FIX remains. POST WITH CHANGES means the author fixes what you found and the fixed version comes back for another review. DO NOT POST means it should not go at all. After the header, number your findings, each with a severity (BLOCKING, SHOULD FIX or NIT), the evidence, and the exact fix, with replacement text in full for any wording. A report with no findings says what was checked and how.
@@ -241,6 +253,15 @@ cmd_check() {
   [ -z "$why" ] || refuse "$why"
   [ "$verdict" = "POST AS IS" ] ||
     refuse "the verdict is '${verdict:-missing}' and only POST AS IS clears the gate: fix what the review found and review the new version"
+
+  # A reviewer that read our diff first critiques our design; shouldly #1335
+  # went out with a fix the maintainer replaced, because nobody wrote another.
+  if [ -n "$head" ]; then
+    local blind
+    blind=$(field blind-fix)
+    [ -n "$blind" ] || refuse "$report reviews code at ${head:0:12} and names no blind-fix: the reviewer's own fix, written before reading ours"
+    [ -f "$blind" ] || refuse "the blind fix $blind named in $report does not exist"
+  fi
 
   if [ -n "$clone" ]; then
     now=$(git -C "$clone" rev-parse HEAD 2>/dev/null) || bad_usage "$clone is not a git clone"

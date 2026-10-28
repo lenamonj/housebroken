@@ -36,7 +36,8 @@ hash=$(sha "$reply")
 brief=$(bash "$script" brief --author claude-opus-5 --repo octo/cat --clone "$clone" --text "$reply" 2>"$tmp/err") ||
   fail "brief exited non-zero"
 for want in "reviewer-model: sonnet" "author-model: claude-opus-5" "head: $head" "text: sha256:$hash" \
-  "All 87 tests" "Nothing leaves this machine" "strongest engineer in the language" "4. The form:"   "verdict: POST AS IS | POST WITH CHANGES | DO NOT POST"; do
+  "All 87 tests" "Nothing leaves this machine" "strongest engineer in the language" "4. The form:" \
+  "0. Before you read the diff" "blind-fix: " "Where the information is lost" "Inputs the project already tests" "What the project promises to run on" "verdict: POST AS IS | POST WITH CHANGES | DO NOT POST"; do
   printf '%s\n' "$brief" | grep -qF "$want" || fail "brief is missing: $want"
 done
 report="$HOUSEBROKEN_HOME/reviews/review-octo-cat-${head:0:12}.md"
@@ -46,6 +47,8 @@ grep -qF "$report" "$tmp/err" || fail "brief did not name the report path $repor
 # a reply with no clone is keyed by its own hash
 bash "$script" brief --author fable --repo octo/cat --text "$reply" 2>"$tmp/err" >/dev/null || fail "text-only brief exited non-zero"
 grep -qF "review-octo-cat-${hash:0:12}.md" "$tmp/err" || fail "text-only brief was not keyed by the text's sha256"
+bash "$script" brief --author fable --repo octo/cat --text "$reply" 2>/dev/null | grep -qF "blind-fix:" &&
+  fail "a text-only brief asked for a blind fix, which has no code to fix"
 
 # an override that breaks the rule is refused; one that keeps it is not
 bash "$script" brief --author opus --reviewer claude-opus-5 --repo octo/cat --clone "$clone" >/dev/null 2>&1
@@ -56,9 +59,11 @@ bash "$script" brief --author opus --reviewer fable --repo octo/cat --clone "$cl
   fail "a different, stronger reviewer was refused"
 
 # check: the report the brief asked for, then broken one line at a time
-write_report() { # reviewer verdict head
-  printf 'review-of: octo/cat\nhead: %s\ntext: sha256:%s reply.md\nauthor-model: claude-opus-5\nreviewer-model: %s\nverdict: %s\n\n1. NIT: nothing blocking.\n' \
-    "$3" "$hash" "$1" "$2" > "$report"
+blind="$tmp/blind.diff"
+printf 'the reviewer fix, written before reading ours\n' > "$blind"
+write_report() { # reviewer verdict head [blind-fix path]
+  printf 'review-of: octo/cat\nhead: %s\ntext: sha256:%s reply.md\nauthor-model: claude-opus-5\nreviewer-model: %s\nblind-fix: %s\nverdict: %s\n\n1. NIT: nothing blocking.\n' \
+    "$3" "$hash" "$1" "${4-$blind}" "$2" > "$report"
 }
 passes() { bash "$script" check "$report" --clone "$clone" --text "$reply" >/dev/null 2>&1; }
 
@@ -74,6 +79,14 @@ write_report haiku "POST AS IS" "$head"
 passes && fail "a reviewer below the floor cleared the gate"
 write_report sonnet "POST AS IS | POST WITH CHANGES | DO NOT POST" "$head"
 passes && fail "an unfilled verdict cleared the gate"
+
+# a code review whose reviewer wrote no fix of its own before reading ours (shouldly #1335)
+write_report sonnet "POST AS IS" "$head" ""
+passes && fail "a code review naming no blind fix cleared the gate"
+write_report sonnet "POST AS IS" "$head" "$tmp/no-such-fix.diff"
+passes && fail "a blind fix path that does not exist cleared the gate"
+write_report sonnet "POST AS IS" "$head"
+passes || fail "the blind fix control was refused"
 
 # the branch moves after the review, then the new head is reviewed
 write_report sonnet "POST AS IS" "$head"

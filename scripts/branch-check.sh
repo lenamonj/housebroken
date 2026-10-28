@@ -7,20 +7,29 @@
 # .gitignore excludes; a working artifact; a commit carrying a tool trailer, a
 # session link or a tool identity; a sign-off naming a username; a branch that
 # is not on top of its base; and a comment added to code, test files included,
-# unless a maintainer asked for it (comment-check.sh). Absolute claims in added
-# prose are printed for you to falsify one by one; some of them are true.
+# unless a maintainer asked for it (comment-check.sh); a warning suppression the
+# branch adds, until a build log shows the warning it suppresses firing; and
+# reflection added to a .NET project that declares itself AOT compatible or
+# trimmable, until an AOT publish log is given. shouldly #1335 suppressed an
+# IL2075 that never fired, and the reflection under it found nothing under
+# Native AOT. Absolute claims in added prose are printed for you to falsify one
+# by one; some of them are true.
 #
 # A branch that passes gets a stamp at $HOUSEBROKEN_HOME/branch-checks/<head>,
 # which file-pr.sh requires for the head it files.
 #
 # Usage:
 #   bash branch-check.sh [CLONE] [--base REF] [--asked URL]
+#                        [--warning-log FILE] [--aot-log FILE]
 #   bash branch-check.sh --help
 #
 # CLONE defaults to the current directory. REF defaults to the first of
 # upstream/main, upstream/master, origin/main, origin/master that resolves.
 # --asked URL is the maintainer's request for documentation, which turns the
-# comment refusal into a check.
+# comment refusal into a check. --warning-log FILE is a build log of the
+# branch without its suppressions; it must name every warning id they suppress.
+# --aot-log FILE is the output of an AOT publish (dotnet publish
+# -p:PublishAot=true) of the branch, run and read.
 #
 # Exits 0 when nothing blocks, 1 on a refusal, 2 on a usage error.
 set -u
@@ -32,6 +41,8 @@ home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 clone="."
 base=""
 asked=""
+warnlog=""
+aotlog=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
@@ -47,6 +58,16 @@ while [ "$#" -gt 0 ]; do
       [ -n "$asked" ] || { echo "REFUSED: --asked needs the URL of the maintainer's ask" >&2; exit 2; }
       ;;
     --asked=*) asked="${1#--asked=}" ;;
+    --warning-log)
+      shift
+      warnlog="${1:-}"
+      [ -f "$warnlog" ] || { echo "REFUSED: --warning-log needs a build log file" >&2; exit 2; }
+      ;;
+    --aot-log)
+      shift
+      aotlog="${1:-}"
+      [ -f "$aotlog" ] || { echo "REFUSED: --aot-log needs an AOT publish log file" >&2; exit 2; }
+      ;;
     -*) echo "REFUSED: unknown option $1" >&2; exit 2 ;;
     *) clone="$1" ;;
   esac
@@ -160,6 +181,39 @@ case "$comment_rc" in
   *) block "comment-check.sh could not run: $comments" ;;
 esac
 printf '%s\n' "$comments" | grep -E '^CHECK: ' | sed 's/^/    /'
+
+# A suppression hides a warning from the maintainer too, so it has to be shown
+# that the warning exists. A suppression covering nothing usually covers code
+# that is wrong in a way the analyzer cannot see.
+added=$(git diff -U0 "$base..HEAD" -- . ':(exclude)*.md' ':(exclude)*.rst' ':(exclude)*.txt' 2>/dev/null \
+  | grep '^+' | grep -v '^+++' | sed 's/^+//')
+suppressions=$(printf '%s\n' "$added" | grep -E 'UnconditionalSuppressMessage|SuppressMessage\(|#pragma warning disable|@SuppressWarnings|@Suppress\(|#!?\[allow\(|nolint|NOLINT|noqa|eslint-disable|@ts-ignore|@ts-expect-error|type: *ignore|pylint: *disable|rubocop:disable|swiftlint:disable')
+if [ -n "$suppressions" ]; then
+  ids=$(printf '%s\n' "$suppressions" | grep -oE '\b[A-Z]{1,4}[0-9]{3,5}\b' | sort -u)
+  unshown=""
+  if [ -z "$warnlog" ]; then
+    unshown="no --warning-log given"
+  else
+    for id in $ids; do grep -q "$id" "$warnlog" || unshown="$unshown $id"; done
+  fi
+  if [ -n "$unshown" ]; then
+    block "the branch adds a warning suppression, and no build log shows the warning firing ($unshown)"
+    printf '%s\n' "$suppressions" | sed 's/^/    /'
+  fi
+fi
+
+# The trim analyzer does not flag object.GetType().GetProperty(...), so a clean
+# build proves nothing about reflection under Native AOT; only a publish does.
+aotdecl=$(git grep -lE '<(IsAotCompatible|IsTrimmable|PublishAot|EnableTrimAnalyzer|EnableAotAnalyzer)( [^>]*)?>[[:space:]]*true' HEAD -- '*.csproj' '*.props' '*.targets' 2>/dev/null \
+  | sed 's/^HEAD://' | tr '\n' ' ')
+if [ -n "$aotdecl" ]; then
+  reflection=$(git diff -U0 "$base..HEAD" -- '*.cs' 2>/dev/null | grep '^+' | grep -v '^+++' | sed 's/^+//' \
+    | grep -E '\.Get(Property|Properties|Method|Methods|Field|Fields|Member|Members|Interfaces)\(|Activator\.CreateInstance|MakeGenericType|MakeGenericMethod|Type\.GetType\(|\.InvokeMember\(')
+  if [ -n "$reflection" ] && ! { [ -n "$aotlog" ] && grep -q "Generating native code" "$aotlog"; }; then
+    block "the branch adds reflection to a project that declares AOT or trim support (${aotdecl% }), and no --aot-log shows an AOT publish"
+    printf '%s\n' "$reflection" | sed 's/^/    /'
+  fi
+fi
 
 # Absolutes in added prose are the claims a maintainer can falsify in one grep.
 claims=$(git diff -U0 "$base..HEAD" -- '*.md' '*.mdx' '*.rst' '*.txt' 2>/dev/null \

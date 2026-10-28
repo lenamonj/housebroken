@@ -162,4 +162,35 @@ fires "adds comments" && { echo "FAIL $name: comment refusal survived removing t
   printf 'package dl // edited\n' > pkg/dl/dl.go && $G add -f pkg/dl/dl.go && $G commit -q -m "edit it")
 fires "gitignore excludes it" && { echo "FAIL $name: a tracked file under an ignored name was refused"; exit 1; }
 
+# 13. a warning suppression the branch adds is refused until a build log shows the warning firing
+# (shouldly #1335 suppressed IL2075, which never fired, and the reflection it covered broke under AOT)
+(cd "$repo" && printf 'class S {\n    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "x")]\n    void M() { }\n}\n' > src/S.cs &&
+  $G add -A && $G commit -q -m "add a suppression")
+fires "adds a warning suppression" || { echo "FAIL $name: an added suppression not refused"; exit 1; }
+printf 'Build succeeded.\n    0 Warning(s)\n' > "$root/quiet.log"
+bash "$script" "$repo" --base origin/main --warning-log "$root/quiet.log" 2>&1 | grep -q "adds a warning suppression" \
+  || { echo "FAIL $name: a log without IL2075 lifted the suppression refusal"; exit 1; }
+printf 'S.cs(3,9): warning IL2075: GetProperty on an unannotated type\n' > "$root/fires.log"
+bash "$script" "$repo" --base origin/main --warning-log "$root/fires.log" 2>&1 | grep -q "adds a warning suppression" \
+  && { echo "FAIL $name: a log showing IL2075 did not lift the suppression refusal"; exit 1; }
+(cd "$repo" && printf 'class S {\n    void M() { }\n}\n' > src/S.cs && $G add -A && $G commit -q --amend -m "add S")
+fires "adds a warning suppression" && { echo "FAIL $name: suppression refusal survived removing the suppression"; exit 1; }
+(cd "$repo" && printf 'class S {\n#pragma warning disable CS8602\n    void M() { }\n}\n' > src/S.cs && $G add -A && $G commit -q --amend -m "add S")
+fires "adds a warning suppression" || { echo "FAIL $name: a #pragma warning disable not refused"; exit 1; }
+(cd "$repo" && printf 'class S {\n    void M() { }\n}\n' > src/S.cs && $G add -A && $G commit -q --amend -m "add S")
+
+# 14. reflection added to a project that declares itself AOT compatible is refused until an AOT publish log is given
+(cd "$repo" && printf 'class R {\n    object K(object o) => o.GetType().GetProperty("Key")?.GetValue(o);\n}\n' > src/R.cs &&
+  $G add -A && $G commit -q -m "add reflection")
+fires "adds reflection" && { echo "FAIL $name: reflection refused in a project that declares no AOT support"; exit 1; }
+# shellcheck disable=SC2016  # $(...) is MSBuild syntax, written literally
+(cd "$repo" && printf '<Project>\n  <PropertyGroup>\n    <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('"'"'$(TargetFramework)'"'"', '"'"'net8.0'"'"'))">true</IsAotCompatible>\n  </PropertyGroup>\n</Project>\n' > src/Lib.csproj &&
+  $G add -A && $G commit -q -m "declare AOT")
+fires "adds reflection to a project that declares AOT" || { echo "FAIL $name: reflection in an AOT-compatible project not refused"; exit 1; }
+bash "$script" "$repo" --base origin/main --aot-log "$root/quiet.log" 2>&1 | grep -q "adds reflection" \
+  || { echo "FAIL $name: a log that is not an AOT publish lifted the reflection refusal"; exit 1; }
+printf 'Generating native code\n  R -> /tmp/publish/R\n' > "$root/aot.log"
+bash "$script" "$repo" --base origin/main --aot-log "$root/aot.log" 2>&1 | grep -q "adds reflection" \
+  && { echo "FAIL $name: an AOT publish log did not lift the reflection refusal"; exit 1; }
+
 echo "PASS $name"
