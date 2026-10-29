@@ -43,6 +43,7 @@ base=""
 asked=""
 warnlog=""
 aotlog=""
+allows=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
@@ -67,6 +68,11 @@ while [ "$#" -gt 0 ]; do
       shift
       aotlog="${1:-}"
       [ -f "$aotlog" ] || { echo "REFUSED: --aot-log needs an AOT publish log file" >&2; exit 2; }
+      ;;
+    --allow)
+      shift
+      [ -n "${1:-}" ] || { echo "REFUSED: --allow needs a path" >&2; exit 2; }
+      allows+=("$1")
       ;;
     -*) echo "REFUSED: unknown option $1" >&2; exit 2 ;;
     *) clone="$1" ;;
@@ -158,8 +164,14 @@ while IFS= read -r f; do
   fi
 
   case "$f" in
-    .jeffy/*|*/.jeffy/*|PLAN.md|*/PLAN.md|JOURNAL.md|*/JOURNAL.md|*.orig|*.rej)
+    .jeffy/*|*/.jeffy/*|.claude/*|*/.claude/*|.cursor/*|*/.cursor/*|PLAN.md|*/PLAN.md|JOURNAL.md|*/JOURNAL.md|*.orig|*.rej|*.bak|*.swp|.DS_Store|*/.DS_Store|Thumbs.db|*/Thumbs.db)
       block "$f is a working artifact and has no place in the diff" ;;
+  esac
+  # An agent's instruction or scratch file is an artifact when this branch adds
+  # it; a project that already keeps one may have it edited.
+  case "$(basename "$f")" in
+    CLAUDE.md|AGENTS.md|GEMINI.md|STATUS.md|NOTES.md|TODO.md)
+      git cat-file -e "$base:$f" 2>/dev/null || block "$f is added by this branch and reads as an agent's working file" ;;
   esac
 done <<EOF
 $files
@@ -247,6 +259,42 @@ if [ -n "$aotdecl" ]; then
     block "the branch adds reflection to a project that declares AOT or trim support (${aotdecl% }), and no --aot-log shows an AOT publish of it"
     printf '%s\n' "$reflection" | sed 's/^/    /'
   fi
+fi
+
+# What embarrasses a contributor first, file by file: a secret or a personal
+# path in an added line, a lockfile or generated file, a binary, and a file
+# rewritten for its line endings or whitespace. --allow PATH names a file the
+# change really is about, such as a dependency bump's lockfile.
+allowed() { local a; for a in ${allows[@]+"${allows[@]}"}; do [ "$1" = "$a" ] && return 0; done; return 1; }
+leak_re='[A-Za-z]:[\\/]Users[\\/][^\\/ ]+|/home/[a-z][a-z0-9_-]*/|/Users/[A-Za-z][^/ ]*/|/mnt/[a-z]/Users/|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}'
+nfiles=0; nadded=0
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  nfiles=$((nfiles + 1))
+  stat=$(git diff --numstat "$base..HEAD" -- "$f" | head -1)
+  case "$f" in *test*|*spec*) ;; *) nadded=$((nadded + $(printf '%s' "$stat" | awk '{print ($1 == "-") ? 0 : $1}'))) ;; esac
+  allowed "$f" && continue
+  leaks=$(git diff -U0 "$base..HEAD" -- "$f" | grep '^+' | grep -v '^+++' | grep -oE "$leak_re" | sort -u)
+  [ -z "$leaks" ] || block "$f adds a personal path or a credential: $(printf '%s' "$leaks" | tr '\n' ' ')"
+  case "$f" in
+    package-lock.json|*/package-lock.json|yarn.lock|*/yarn.lock|pnpm-lock.yaml|*/pnpm-lock.yaml|Cargo.lock|*/Cargo.lock|go.sum|*/go.sum|poetry.lock|*/poetry.lock|uv.lock|*/uv.lock|Gemfile.lock|*/Gemfile.lock|composer.lock|*/composer.lock|packages.lock.json|*/packages.lock.json|vendor/*|*/vendor/*|node_modules/*|*/node_modules/*|*.min.js|*.pb.go|*_generated.*|*.g.cs|*.designer.cs|*.Designer.cs)
+      block "$f is a lockfile, vendored or generated file - a build rewrote it, or pass --allow $f if the change is about it" ;;
+  esac
+  case "$stat" in
+    -*) block "$f is binary - pass --allow $f if the change needs it" ;;
+    *)
+      total=$(printf '%s' "$stat" | awk '{print $1 + $2}')
+      real=$(git diff --numstat -w --ignore-cr-at-eol "$base..HEAD" -- "$f" | awk '{print $1 + $2}')
+      if [ "$total" -ge 10 ] && [ $((${real:-0} * 2)) -lt "$total" ]; then
+        block "$f changes $total lines, of which ${real:-0} differ beyond whitespace and line endings - restore the file's own endings"
+      fi
+      ;;
+  esac
+done <<EOF
+$files
+EOF
+if [ "$nfiles" -gt 4 ] || [ "$nadded" -gt 150 ]; then
+  echo "CHECK: $nfiles files and $nadded added lines outside tests - one finding, the smallest diff that fixes it"
 fi
 
 # Absolutes in added prose are the claims a maintainer can falsify in one grep.

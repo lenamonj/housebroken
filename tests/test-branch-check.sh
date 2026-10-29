@@ -238,4 +238,33 @@ fires "the base moved" && { echo "FAIL $name: restoring the upstream did not lif
 bash "$script" "$repo" --base localbase 2>&1 | grep -q "is not a remote-tracking ref" \
   || { echo "FAIL $name: a local-branch base was not refused"; exit 1; }
 
+# 16. What embarrasses a contributor first: a personal path, a token, a
+# lockfile, a binary, an agent's file, a whole file rewritten for its endings.
+hygiene_re="personal path|lockfile|is binary|agent's working file|working artifact|beyond whitespace"
+hyg() { # setup expected-refusal ("" for none) [extra branch-check args...]
+  local setup="$1" want="$2"; shift 2
+  (cd "$repo" && eval "$setup" && $G add -A && $G commit -q -m hyg) || { echo "FAIL $name: setup failed: $setup"; exit 1; }
+  out=$(bash "$script" "$repo" --base origin/main "$@" 2>&1)
+  if [ -n "$want" ]; then
+    printf '%s' "$out" | grep -q "$want" || { echo "FAIL $name: not refused ($want): $setup"; echo "$out"; exit 1; }
+  else
+    printf '%s' "$out" | grep -qE "$hygiene_re" && { echo "FAIL $name: refused: $setup"; echo "$out"; exit 1; }
+  fi
+  (cd "$repo" && git reset -q --hard HEAD~1)
+}
+hyg "printf 'export const h = 16;\n' > src/h16.test.ts" ""
+hyg "printf 'const p = \"C:/Users/lenam/jeffy-prs/x\";\n' > src/p.ts" "personal path"
+hyg "printf 'const p = \"/home/jeff/src/x\";\n' > src/p.ts" "personal path"
+hyg "printf 'const t = \"ghp_%s\";\n' abcdefghijklmnopqrstuvwxyz0123 > src/t.ts" "credential"
+hyg "printf '{}\n' > package-lock.json" "lockfile"
+hyg "printf '{}\n' > package-lock.json" "" --allow package-lock.json
+hyg "printf '\000\001\002' > src/blob.bin" "is binary"
+hyg "printf '# notes\n' > CLAUDE.md" "agent's working file"
+hyg "mkdir -p .claude && printf '{}\n' > .claude/settings.json" "working artifact"
+# the base carries a 40-line LF file; the branch rewrites it with CRLF and one real change
+(cd "$repo" && for i in $(seq 1 40); do printf 'line %s\n' "$i"; done > src/long.txt &&
+  $G add -A && $G commit -q -m "long file" && setbase HEAD) || { echo "FAIL $name: CRLF fixture failed"; exit 1; }
+hyg "sed -i 's/\$/\r/; s/^line 7\r\$/line seven\r/' src/long.txt" "beyond whitespace"
+hyg "sed -i 's/^line 7\$/line seven/' src/long.txt" ""
+
 echo "PASS $name"
