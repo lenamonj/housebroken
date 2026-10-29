@@ -144,7 +144,8 @@ report it in one line and do not proceed to the next step.
    file may open with the licence header its neighbours carry, and a
    maintainer's explicit request for documentation is the one exception,
    passed as `--asked <URL of the request>`. The body is under 120 words,
-   in the project's template if it has one, and says what was wrong, what the
+   in the project's template if it has one (the answer to the template's
+   own AI question is counted apart, at most 50 words), and says what was wrong, what the
    change does, and how it was verified; every sentence in it is something
    you reproduced on the fresh clone in this session, never a line carried
    from a journal. No tool footer, no session link, no

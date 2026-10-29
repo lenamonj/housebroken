@@ -48,7 +48,8 @@ gates:
               RESULT: DISCLOSE the body must name the AI use
   prose       no tool footer, session trailer, co-author trailer, em dash or
               en dash, in any case, in the --body-file or the --title; a
-              body of at most 120 words
+              body of at most 120 words of its own, the answer to the
+              template's AI question counted apart and held to 50
   branch      $HOUSEBROKEN_HOME/branch-checks/<head> must exist, written by
               branch-check.sh when this head passed, against the branch this
               files into (--base, or the repository's default branch)
@@ -160,17 +161,29 @@ check_text "body file $bodyfile" "$(cat "$bodyfile")"
 check_text "--title" "$title"
 # The project's own template text is kept verbatim and is not ours to count:
 # HTML comments and every line the saved template carries, a ticked box read
-# as its unticked line, are left out before the words are counted.
+# as its unticked line, are left out before the words are counted. The
+# answer written after a template line that asks about AI is the project's
+# requirement, not ours: it is counted on its own and held to 50 words.
 template="$home/policy/template-${repo%%/*}-${repo##*/}.md"
 [ -f "$template" ] || template=/dev/null
-words=$(awk -v T="$template" '
+read -r words ai_words < <(awk -v T="$template" '
   function norm(s) { gsub(/\[[xX]\]/, "[ ]", s); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
   BEGIN { while ((getline l < T) > 0) { l = norm(l); if (l != "") t[l] = 1 } }
   { l = norm($0); if (l in t) next
-    for (k in t) if (index(l, k) == 1) { l = substr(l, length(k) + 1); break }
-    print l }' "$bodyfile" | wc -w | tr -d ' ')
+    best = ""
+    for (k in t) if (index(l, k) == 1 && length(k) > length(best)) best = k
+    if (best != "") {
+      l = substr(l, length(best) + 1)
+      if (tolower(best) ~ /(^|[^a-z])ai([^a-z]|$)|artificial intelligence|generative|llm|language model/) { ai += split(l, w); next }
+    }
+    ours += split(l, w) }
+  END { print ours + 0, ai + 0 }' "$bodyfile")
 if [ "$words" -gt 120 ]; then
   echo "REFUSED: the body is $words words outside the project's template - say what was wrong, what the change does and how it was verified in 120 or fewer" >&2
+  exit 2
+fi
+if [ "$ai_words" -gt 50 ]; then
+  echo "REFUSED: the answer to the template's AI question is $ai_words words - name the tool and what it did in 50 or fewer" >&2
   exit 2
 fi
 if [ "$policy_result" = "DISCLOSE" ] && ! grep -qiE '\bAI\b|LLM|Claude|Copilot|ChatGPT|language model|assist' "$bodyfile"; then

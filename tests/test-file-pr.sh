@@ -224,6 +224,19 @@ printf '%s' "$out" | grep -q "REFUSED: the body is" && fail "template text was c
 { cat "$template"; cat "$long"; printf '\n'; } > "$templated"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$templated" 2>&1)
 printf '%s' "$out" | grep -q "REFUSED: the body is 121 words outside the project's template" || fail "121 words of ours beside a template were not refused: $out"
+
+# the answer to the template's own AI question is the project's requirement,
+# not ours: 110 words plus a 30-word answer files; a 51-word answer is refused
+printf -- '- [ ] I used AI to create any part of this pull request. Which AI tool was used?\n' >> "$template"
+answer() { { printf -- '- [x] I used AI to create any part of this pull request. Which AI tool was used? '
+  for _ in $(seq 1 "$1"); do printf 'answer '; done; printf '\n'
+  for _ in $(seq 1 110); do printf 'word '; done; printf '\n'; } > "$templated"; }
+answer 30
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$templated" 2>&1)
+printf '%s' "$out" | grep -q "REFUSED: the body is" && fail "the answer to the template's AI question was counted against the body: $out"
+answer 51
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$templated" 2>&1)
+printf '%s' "$out" | grep -q "REFUSED: the answer to the template's AI question is 51 words" || fail "a 51-word AI answer was not refused: $out"
 rm -f "$template"
 
 # the body file may be named either way gh reads it
