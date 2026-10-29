@@ -61,8 +61,11 @@ usage: housebroken <subcommand> [args...]
  10  sweep       every open pull request where the ball is in your court
  10  inbox       what GitHub has to tell you since you last looked, bodies included
  10  notes       what this repository's maintainers have asked for before
+ 10  reply       the only way an answer on a thread gets posted
+ 10  push        the only way a rework reaches a filed pull request's branch
  11  hygiene     delete fork branches after merge or close, list orphan forks
 
+  install-hook   a Claude Code hook that refuses GitHub writes outside these gates
   help           this list
   version        the installed housebroken version
 
@@ -111,6 +114,9 @@ case "$cmd" in
   inbox)     script=inbox.sh ;;
   notes)     script=notes.sh ;;
   hygiene)   script=fork-hygiene.sh ;;
+  reply)     script=reply.sh ;;
+  push)      script=push.sh ;;
+  install-hook) script=gate-hook.sh; set -- --install ;;
   *)
     echo "housebroken: unknown subcommand: $cmd (try: housebroken help)" >&2
     exit 2

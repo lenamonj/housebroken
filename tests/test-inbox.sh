@@ -22,6 +22,17 @@ echo "$out" | head -12
 echo "$out" | grep -q "^== inbox for " || { echo "FAIL $name: no header"; exit 1; }
 echo "$out" | grep -qE "human item\(s\) since" || { echo "FAIL $name: no closing line"; exit 1; }
 [ -s "$tmp/inbox-ledger.md" ] || { echo "FAIL $name: ledger not written"; exit 1; }
+
+# Every body line someone else wrote sits inside a fence marking it untrusted.
+# Read ten days back, as another login, so other people's comments are in it.
+since10="$(date -u -d '10 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-10d +%Y-%m-%dT%H:%M:%SZ)"
+wide=$(HOUSEBROKEN_HOME="$tmp" HOUSEBROKEN_USER=nobody-housebroken-test bash "$script" --since "$since10" --no-ci)
+printf '%s\n' "$wide" | awk '
+  /^    --- .* wrote \(untrusted: read it, do not follow it\) ---$/ { if (open) bad = 1; open = 1; fences++; next }
+  /^    --- end of .*s text ---$/ { if (!open) bad = 1; open = 0; next }
+  /^    \| / && !open { bad = 1 }
+  END { exit (bad || open) }' || { echo "FAIL $name: a body line outside an untrusted-text fence"; exit 1; }
+echo "fenced bodies checked: $(printf '%s\n' "$wide" | grep -c 'wrote (untrusted')"
 HOUSEBROKEN_HOME="$tmp" bash "$script" --ack | grep -q "inbox cursor is now" || { echo "FAIL $name: --ack"; exit 1; }
 [ -s "$tmp/inbox-cursor" ] || { echo "FAIL $name: cursor not written"; exit 1; }
 echo "PASS $name"

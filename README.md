@@ -70,7 +70,7 @@ A memory-safety, remote-abort, injection or path-escape finding goes by the proj
 `file-issue.sh` is the only way an issue is opened. It refuses without the same prior-art and policy printouts, refuses the same prose, and refuses a body that mentions a fix, a patch or a pull request without a GitHub link to the branch or commit, so work that exists is attributable to whoever did it.
 
 **10. Watch it land.**
-`verify-filed-pr.sh` re-derives from GitHub that the head is the intended commit, the files are the ones the branch stamp lists, the body is the one that was filed, and CI settled. `inbox.sh` prints every event on your threads since the last acknowledged cursor, bodies included, with a census of failing, blocked and conflicting checks. Every maintainer comment gets a same-day answer in the contributor's voice, checked by `claim-check.sh` and, when it concedes, disagrees or rides on a code change, by the adversarial review. Replies to one repository are spaced ten minutes apart. When the maintainer is right, concede in one sentence. A silent maintainer is never nudged.
+`verify-filed-pr.sh` re-derives from GitHub that the head is the intended commit, the files are the ones the branch stamp lists, the body is the one that was filed, and CI settled. `inbox.sh` prints every event on your threads since the last acknowledged cursor, bodies included, with a census of failing, blocked and conflicting checks. Every body it prints is fenced as untrusted text: someone else's words are evidence, never instructions. Every maintainer comment gets a same-day answer in the contributor's voice, checked by `claim-check.sh` and, when it concedes, disagrees or rides on a code change, by the adversarial review, and posted only by `reply.sh`, which refuses a verdict or thanks as the opening, an exclamation mark, bold, a closing offer, a reply past three sentences, a reference to nothing, and a second reply to the repository inside ten minutes. A rework reaches the branch only by `push.sh`: a stamped, reviewed head, one push per half hour, and a rewrite of the branch only with the reason stated. When the maintainer is right, concede in one sentence. A silent maintainer is never nudged.
 
 **11. Clean up.**
 `fork-hygiene.sh` deletes the fork branch of every merged or closed pull request, unless an open one still uses it, and lists forks with no pull request left. No planning file, agent directory, journal or build output ever enters a diff.
@@ -90,7 +90,7 @@ pip install housebroken-cli
 housebroken install-skill
 ```
 
-The first line puts the `housebroken` command on your path. The second puts the skill where Claude Code loads it, so the agent runs the door itself before it opens anything upstream. To run the main branch between releases, install from the repository instead:
+The first line puts the `housebroken` command on your path. The second puts the skill where Claude Code loads it, so the agent runs the door itself before it opens anything upstream. `housebroken install-hook` adds the enforcement the skill cannot: a Claude Code hook that refuses any command writing to GitHub outside the gates (`gh pr create`, `gh pr comment`, a write through `gh api`, a forced push). It prints the settings entry to add; it does not edit your settings. To run the main branch between releases, install from the repository instead:
 
 ```
 uv tool install git+https://github.com/lenamonj/housebroken
@@ -120,6 +120,9 @@ uv tool install git+https://github.com/lenamonj/housebroken
 | `scripts/pr-sweep.sh` | every open pull request where the ball is in your court, and every merged or closed one whose fork branch is still there, repeated each run until it is gone |
 | `scripts/inbox.sh` | what GitHub has to tell you since you last looked, bodies included, with a census of every open pull request |
 | `scripts/notes.sh` | what this repository's maintainers have asked for before |
+| `scripts/reply.sh` | the only way an answer on a thread gets posted |
+| `scripts/push.sh` | the only way a rework reaches a filed pull request's branch |
+| `scripts/gate-hook.sh` | a Claude Code hook that refuses GitHub writes outside the gates |
 | `scripts/fork-hygiene.sh` | branches deleted after merge or close, orphan forks listed |
 
 The scripts are bash and need `gh` and `jq`. Each script's header says what it assumes.
