@@ -216,9 +216,10 @@ EOF
   done
   printf 'author-model: %s\nreviewer-model: %s\n' "$author" "$reviewer"
   [ -n "$head" ] && printf 'blind-fix: %s\n' "$blind"
+  printf 'skipped: none | <the item numbers you did not attack, each with why>\n'
   printf 'verdict: POST AS IS | POST WITH CHANGES | DO NOT POST\n\n'
   cat <<'EOF'
-POST AS IS means nothing BLOCKING or SHOULD FIX remains. POST WITH CHANGES means the author fixes what you found and the fixed version comes back for another review. DO NOT POST means it should not go at all. After the header, number your findings, each with a severity (BLOCKING, SHOULD FIX or NIT), the evidence, and the exact fix, with replacement text in full for any wording. A report with no findings says what was checked and how.
+POST AS IS means nothing BLOCKING or SHOULD FIX remains and nothing was skipped. POST WITH CHANGES means the author fixes what you found and the fixed version comes back for another review. DO NOT POST means it should not go at all. An item that does not apply to this change is not skipped: say in its place why it does not apply. A skipped item is one you did not do, for time, tools or access, and the gate refuses POST AS IS over it. After the header, number your findings, each on its own line as "N. SEVERITY: title" with SEVERITY one of BLOCKING, SHOULD FIX or NIT, then the evidence, and the exact fix, with replacement text in full for any wording. The gate reads those lines: a BLOCKING or SHOULD FIX line under POST AS IS is refused. A report with no findings says what was checked and how. The blind fix is a unified diff with its hunks.
 EOF
 }
 
@@ -261,7 +262,21 @@ cmd_check() {
     blind=$(field blind-fix)
     [ -n "$blind" ] || refuse "$report reviews code at ${head:0:12} and names no blind-fix: the reviewer's own fix, written before reading ours"
     [ -f "$blind" ] || refuse "the blind fix $blind named in $report does not exist"
+    if ! grep -qE '^(diff --git |--- )' "$blind" || ! grep -q '^@@' "$blind"; then
+      refuse "the blind fix $blind is not a diff: it must carry the reviewer's own change, hunks and all"
+    fi
   fi
+
+  # The verdict is the header; the findings are the body. A POST AS IS over an
+  # open BLOCKING or SHOULD FIX finding, or over items the reviewer never
+  # attacked, is a header that disagrees with its own report.
+  local skipped open
+  skipped=$(field skipped)
+  [ -n "$skipped" ] || refuse "$report has no skipped: line in its header - 'none', or the items not attacked"
+  printf '%s' "$skipped" | grep -qiE '^none\.?$' ||
+    refuse "the review skipped items ($skipped), so POST AS IS covers less than the brief: attack them or review again"
+  open=$(grep -iE '^[[:space:]#*]*[0-9]+[.)][[:space:]*]*(BLOCKING|SHOULD FIX)\b|^[[:space:]*-]*severity:[[:space:]*]*(BLOCKING|SHOULD FIX)\b' "$report")
+  [ -z "$open" ] || refuse "the verdict is POST AS IS but the report lists open findings: $(printf '%s' "$open" | head -1 | cut -c1-120)"
 
   if [ -n "$clone" ]; then
     now=$(git -C "$clone" rev-parse HEAD 2>/dev/null) || bad_usage "$clone is not a git clone"

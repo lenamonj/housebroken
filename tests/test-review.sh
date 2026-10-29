@@ -37,7 +37,7 @@ brief=$(bash "$script" brief --author claude-opus-5 --repo octo/cat --clone "$cl
   fail "brief exited non-zero"
 for want in "reviewer-model: sonnet" "author-model: claude-opus-5" "head: $head" "text: sha256:$hash" \
   "All 87 tests" "Nothing leaves this machine" "strongest engineer in the language" "4. The form:" \
-  "0. Before you read the diff" "blind-fix: " "Where the information is lost" "Inputs the project already tests" "What the project promises to run on" "verdict: POST AS IS | POST WITH CHANGES | DO NOT POST"; do
+  "0. Before you read the diff" "blind-fix: " "Where the information is lost" "Inputs the project already tests" "What the project promises to run on" "skipped: none | " "verdict: POST AS IS | POST WITH CHANGES | DO NOT POST"; do
   printf '%s\n' "$brief" | grep -qF "$want" || fail "brief is missing: $want"
 done
 report="$HOUSEBROKEN_HOME/reviews/review-octo-cat-${head:0:12}.md"
@@ -60,10 +60,12 @@ bash "$script" brief --author opus --reviewer fable --repo octo/cat --clone "$cl
 
 # check: the report the brief asked for, then broken one line at a time
 blind="$tmp/blind.diff"
-printf 'the reviewer fix, written before reading ours\n' > "$blind"
+printf 'diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+the reviewer fix\n' > "$blind"
+skipped=none
+findings='1. NIT: nothing blocking.'
 write_report() { # reviewer verdict head [blind-fix path]
-  printf 'review-of: octo/cat\nhead: %s\ntext: sha256:%s reply.md\nauthor-model: claude-opus-5\nreviewer-model: %s\nblind-fix: %s\nverdict: %s\n\n1. NIT: nothing blocking.\n' \
-    "$3" "$hash" "$1" "${4-$blind}" "$2" > "$report"
+  printf 'review-of: octo/cat\nhead: %s\ntext: sha256:%s reply.md\nauthor-model: claude-opus-5\nreviewer-model: %s\nblind-fix: %s\nskipped: %s\nverdict: %s\n\n%s\n' \
+    "$3" "$hash" "$1" "${4-$blind}" "$skipped" "$2" "$findings" > "$report"
 }
 passes() { bash "$script" check "$report" --clone "$clone" --text "$reply" >/dev/null 2>&1; }
 
@@ -87,6 +89,30 @@ write_report sonnet "POST AS IS" "$head" "$tmp/no-such-fix.diff"
 passes && fail "a blind fix path that does not exist cleared the gate"
 write_report sonnet "POST AS IS" "$head"
 passes || fail "the blind fix control was refused"
+printf '\n' > "$tmp/empty.diff"
+write_report sonnet "POST AS IS" "$head" "$tmp/empty.diff"
+passes && fail "an empty blind fix cleared the gate"
+printf 'I would fix it the same way.\n' > "$tmp/prose.diff"
+write_report sonnet "POST AS IS" "$head" "$tmp/prose.diff"
+passes && fail "a blind fix that is prose, not a diff, cleared the gate"
+
+# the header says POST AS IS and the body disagrees, or items were skipped
+for f in '1. BLOCKING: the test never runs.' '2) SHOULD FIX: the comparer is lost.' '### 3. BLOCKING: AOT' '**Severity:** SHOULD FIX'; do
+  findings="1. NIT: fine.
+$f"
+  write_report sonnet "POST AS IS" "$head"
+  passes && fail "POST AS IS over an open finding cleared the gate: $f"
+done
+findings='1. NIT: nothing blocking. No BLOCKING or SHOULD FIX finding remains.'
+write_report sonnet "POST AS IS" "$head"
+passes || fail "a NIT-only report that names the severities in prose was refused"
+skipped='9, 11 (no AOT toolchain)'
+write_report sonnet "POST AS IS" "$head"
+passes && fail "POST AS IS over skipped items cleared the gate"
+skipped=''
+write_report sonnet "POST AS IS" "$head"
+passes && fail "a report with no skipped: line cleared the gate"
+skipped=none
 
 # the branch moves after the review, then the new head is reviewed
 write_report sonnet "POST AS IS" "$head"
