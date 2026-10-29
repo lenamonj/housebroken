@@ -106,6 +106,7 @@ policy_result=$(grep -m1 '^RESULT: ' "$policy" | awk '{print $2}')
 case "$policy_result" in
   BAN) echo "REFUSED: $repo forbids AI-written contributions ($policy); never file here" >&2; exit 2 ;;
   DISCLOSE|MENTION|CLEAN) ;;
+  UNREAD) echo "REFUSED: $policy reads UNREAD - GitHub did not give every policy file; rerun check-ai-policy.sh --out" >&2; exit 2 ;;
   *) echo "REFUSED: $policy has no RESULT line - rerun check-ai-policy.sh --out" >&2; exit 2 ;;
 esac
 

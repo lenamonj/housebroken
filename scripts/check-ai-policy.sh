@@ -12,21 +12,27 @@
 # repository.
 #
 # Usage:
-#   bash check-ai-policy.sh [--branch <name>] [--out] owner/repo [owner/repo ...]
+#   bash check-ai-policy.sh [--branch <name>] [--out] [--accept-truncated] owner/repo [owner/repo ...]
 #   bash check-ai-policy.sh --help
 #
 #   --branch <name>  read this branch instead of the default; some projects
 #                    keep the policy on a development branch
 #   --out            also save the printout to $HOUSEBROKEN_HOME/policy/
 #                    policy-<owner>-<repo>.md, which file-pr.sh reads
+#   --accept-truncated  read a repository whose tree GitHub truncates (over
+#                    100,000 entries) after its policy was read by hand; the
+#                    printout records that it was
 #
 # Every hit is printed with its file and line so the sentence is read, not a
 # verdict. The RESULT line is the reading: BAN when a sentence forbids or
 # closes AI-written contributions, DISCLOSE when a sentence requires that AI
 # use be disclosed, MENTION when AI is named without either, CLEAN when no
-# policy file names it. Exit 0 for CLEAN or MENTION, 3 for DISCLOSE, 4 for BAN,
-# 1 when the repository cannot be read. With several repositories the exit is
-# the highest.
+# policy file names it, UNREAD when GitHub refused, throttled or truncated any
+# listing or file, so a failure is never read as silence. Every policy-named
+# file is read; READMEs are capped at 40 per repository and the cap is printed.
+# Exit 0 for CLEAN or MENTION, 1 for UNREAD or when the repository cannot be
+# read, 3 for DISCLOSE, 4 for BAN. With several repositories the exit is the
+# highest.
 #
 # Environment:
 #   HOUSEBROKEN_HOME  work directory, default $HOME/.housebroken; --out writes
@@ -41,7 +47,7 @@ usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 # regard to case, so CONTRIBUTING.rst, contributing.md and Contributing.md
 # are all read.
 NAME_RE='(^|/)(contributing([._-][a-z]+)?\.(md|rst|txt|adoc)|contributing|code[_-]?of[_-]?conduct\.(md|rst|txt)|readme\.(md|rst|txt|adoc)|ai([_-]policy)?\.md|policy\.md|agents?\.md|claude\.md|gemini\.md|copilot-instructions\.md|\.cursorrules|\.cursor/rules/[^/]+|pull_request_template(\.md)?|pull_request_template/[^/]+\.md|issue_template/[^/]+\.(md|yml|yaml)|governance\.md|maintainers\.md)$'
-MAX_FILES=40
+MAX_READMES=40
 
 # The word itself, plus its usual spellings and the tools by name.
 PATTERN='\bAI\b|\bA\.I\.|[Aa]rtificial [Ii]ntelligence|\bLLMs?\b|[Ll]arge [Ll]anguage [Mm]odels?|Copilot|ChatGPT|[Cc]laude|[Gg]enerative|[Mm]achine-generated|[Cc]odex\b|[Cc]ursor\b|[Aa]gentic'
@@ -50,6 +56,7 @@ DISCLOSE_RE='disclos|disclaimer|declare|must (state|say|note|indicate|mention)|b
 
 branch_opt=""
 out=0
+accept_truncated=0
 repos=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -58,6 +65,7 @@ while [ "$#" -gt 0 ]; do
               branch_opt="$1" ;;
     --branch=*) branch_opt="${1#--branch=}" ;;
     --out) out=1 ;;
+    --accept-truncated) accept_truncated=1 ;;
     --*) usage >&2; echo "check-ai-policy.sh: unknown option $1" >&2; exit 1 ;;
     */*) repos+=("$1") ;;
     *) usage >&2; echo "check-ai-policy.sh: '$1' is not owner/repo" >&2; exit 1 ;;
@@ -68,20 +76,40 @@ done
 
 command -v gh >/dev/null 2>&1 || { echo "check-ai-policy.sh: gh is not on PATH" >&2; exit 1; }
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
+errfile=$(mktemp)
+trap 'rm -f "$errfile"' EXIT
 
-# List the policy files at one ref of one repository, from its tree listing.
-policy_files() {
-  gh api "repos/$1/git/trees/$2?recursive=1" --jq '.tree[] | select(.type == "blob") | .path' 2>/dev/null \
-    | grep -Ei "$NAME_RE" | head -"$MAX_FILES"
-}
-
-# Print every hit in one repository at one ref; sets found, ban, disclose.
+# Print every hit in one repository at one ref; sets found, ban, disclose,
+# and counts what GitHub would not give us in unread and truncated, so a
+# failed or throttled call is never read as a clean file.
 scan() {
-  local target="$1" ref="$2" label="$3" f body hits
+  local target="$1" ref="$2" label="$3" f body hits tree listed files readmes
+  if ! tree=$(gh api "repos/$target/git/trees/$ref?recursive=1" 2>/dev/null); then
+    echo "  UNREAD: the file listing of $target@$ref"
+    unread=$((unread + 1))
+    return
+  fi
+  if [ "$(printf '%s' "$tree" | jq -r '.truncated')" = "true" ]; then
+    echo "  TRUNCATED: GitHub listed only part of the tree of $target@$ref"
+    truncated=1
+  fi
+  listed=$(printf '%s' "$tree" | jq -r '.tree[] | select(.type == "blob") | .path' | grep -Ei "$NAME_RE")
+  # Every policy-named file is read; only READMEs, which monorepos carry by the
+  # hundred, are capped, and the cap is printed.
+  readmes=$(printf '%s\n' "$listed" | grep -iE '(^|/)readme\.[a-z]+$')
+  files=$( { printf '%s\n' "$listed" | grep -viE '(^|/)readme\.[a-z]+$'
+             printf '%s\n' "$readmes" | head -"$MAX_READMES"; } | grep -v '^$')
+  if [ "$(printf '%s\n' "$readmes" | grep -c .)" -gt "$MAX_READMES" ]; then
+    echo "  (only the first $MAX_READMES of $(printf '%s\n' "$readmes" | grep -c .) READMEs in $label${target} were read)"
+  fi
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    body=$(gh api "repos/$target/contents/$f?ref=$ref" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null)
-    [ -n "$body" ] || continue
+    if ! body=$(gh api "repos/$target/contents/$f?ref=$ref" --jq '.content' 2>/dev/null); then
+      echo "  UNREAD: $label$f"
+      unread=$((unread + 1))
+      continue
+    fi
+    body=$(printf '%s' "$body" | base64 -d 2>/dev/null)
     hits=$(printf '%s' "$body" | grep -nE "$PATTERN" | head -20)
     if [ -n "$hits" ]; then
       found=1
@@ -92,12 +120,12 @@ scan() {
     else
       echo "  (clean) $label$f"
     fi
-  done < <(policy_files "$target" "$ref")
+  done <<< "$files"
 }
 
 status=0
 for repo in "${repos[@]}"; do
-  found=0; ban=0; disclose=0
+  found=0; ban=0; disclose=0; unread=0; truncated=0
   report=$(
     echo "## AI policy: $repo"
     echo "read: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -112,12 +140,22 @@ for repo in "${repos[@]}"; do
     echo "branch: $branch"
     scan "$repo" "$branch" ""
     org="${repo%%/*}"
-    org_branch=$(gh api "repos/$org/.github" --jq .default_branch 2>/dev/null) || org_branch=""
+    # A missing .github repository is a 404; any other failure is a policy we did not read.
+    if ! org_branch=$(gh api "repos/$org/.github" --jq .default_branch 2>"$errfile"); then
+      org_branch=""
+      grep -q "404" "$errfile" || { echo "  UNREAD: $org/.github"; unread=$((unread + 1)); }
+    fi
     if [ -n "$org_branch" ]; then
       echo "org repo: $org/.github ($org_branch)"
       scan "$org/.github" "$org_branch" "$org/.github: "
     fi
+    if [ "$truncated" -eq 1 ] && [ "$accept_truncated" -eq 1 ]; then
+      echo "truncated tree accepted by --accept-truncated: files GitHub did not list were not read"
+      truncated=0
+    fi
     if [ "$ban" -eq 1 ]; then echo "RESULT: BAN (a policy file forbids or closes AI-written contributions; never file here)"
+    elif [ "$unread" -gt 0 ]; then echo "RESULT: UNREAD ($unread policy file(s) or listing(s) could not be fetched; rerun when GitHub answers)"
+    elif [ "$truncated" -eq 1 ]; then echo "RESULT: UNREAD (GitHub truncated the file listing; read the policy by hand, then rerun with --accept-truncated)"
     elif [ "$disclose" -eq 1 ]; then echo "RESULT: DISCLOSE (a policy file requires AI use to be disclosed; say so in the body)"
     elif [ "$found" -eq 1 ]; then echo "RESULT: MENTION (a policy file names AI; read the lines above and decide)"
     else echo "RESULT: CLEAN (no policy file names AI)"
@@ -129,6 +167,7 @@ for repo in "${repos[@]}"; do
   case "$report" in
     *"RESULT: BAN"*) [ "$status" -lt 4 ] && status=4 ;;
     *"RESULT: DISCLOSE"*) [ "$status" -lt 3 ] && status=3 ;;
+    *"RESULT: UNREAD"*) [ "$status" -lt 1 ] && status=1 ;;
   esac
   if [ "$out" -eq 1 ]; then
     mkdir -p "$home/policy"
