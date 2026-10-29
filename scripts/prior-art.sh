@@ -122,7 +122,7 @@ for term in "${terms[@]}"; do
   } >>"$tmp"
 
   gh api -X GET search/issues -f q="repo:$repo type:issue \"$term\"" -F per_page=10 \
-    --jq '(["TOTAL", (.total_count|tostring), (.items|length|tostring)] | @tsv),
+    --jq '(["TOTAL", (.total_count|tostring), (if .incomplete_results then "0" else (.items|length|tostring) end)] | @tsv),
           (.items[] | ["issue", (.number|tostring), .state, ((.closed_at // .created_at)[0:10]),
           .user.login, (.title|gsub("[|]";"/")|gsub("[\n\r\t]";" "))] | @tsv)' >"$row" ||
     { echo "prior-art.sh: issue search failed for $repo term '$term'" >&2; exit 1; }
@@ -130,7 +130,7 @@ for term in "${terms[@]}"; do
   emit issues
 
   gh api -X GET search/issues -f q="repo:$repo type:pr \"$term\"" -F per_page=10 \
-    --jq '(["TOTAL", (.total_count|tostring), (.items|length|tostring)] | @tsv),
+    --jq '(["TOTAL", (.total_count|tostring), (if .incomplete_results then "0" else (.items|length|tostring) end)] | @tsv),
           (.items[] | ["PR", (.number|tostring),
           (if .pull_request.merged_at then "merged" else .state end),
           ((.pull_request.merged_at // .closed_at // .created_at)[0:10]),

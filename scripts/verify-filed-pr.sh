@@ -89,8 +89,8 @@ if [ -f "$kept" ]; then
   if [ "$(view body .body | norm)" = "$(norm < "$kept")" ]; then
     note "body matches what was filed" "yes"
   else
-    note "BODY DIFFERS" "GitHub's body is not $kept"
-    fail=1
+    note "BODY DIFFERS" "from $kept; read the diff, a maintainer may have edited it"
+    diff <(norm < "$kept") <(view body .body | norm) | head -20 | sed 's/^/    /'
   fi
 else
   note "body" "no filed copy for ${head:0:12}; not compared"

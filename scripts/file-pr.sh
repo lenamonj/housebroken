@@ -163,10 +163,12 @@ check_text "--title" "$title"
 # as its unticked line, are left out before the words are counted.
 template="$home/policy/template-${repo%%/*}-${repo##*/}.md"
 [ -f "$template" ] || template=/dev/null
-words=$(perl -0pe 's/<!--.*?-->//gs' "$bodyfile" | awk -v T="$template" '
+words=$(awk -v T="$template" '
   function norm(s) { gsub(/\[[xX]\]/, "[ ]", s); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
   BEGIN { while ((getline l < T) > 0) { l = norm(l); if (l != "") t[l] = 1 } }
-  !(norm($0) in t)' | wc -w | tr -d ' ')
+  { l = norm($0); if (l in t) next
+    for (k in t) if (index(l, k) == 1) { l = substr(l, length(k) + 1); break }
+    print l }' "$bodyfile" | wc -w | tr -d ' ')
 if [ "$words" -gt 120 ]; then
   echo "REFUSED: the body is $words words outside the project's template - say what was wrong, what the change does and how it was verified in 120 or fewer" >&2
   exit 2
@@ -190,12 +192,14 @@ fi
 # tests aside, is a term in the printout, by path or by name. One printout per
 # repository means another branch's run replaces it.
 searched=$(sed -n 's/^### //p' "$art" | tr -d '\r')
+ours=$(sed -n 's/^file: //p' "$home/branch-checks/$head" | tr -d '\r')
+[ -n "$ours" ] || { echo "REFUSED: the branch-check stamp for head ${head:0:12} lists no files - rerun branch-check.sh" >&2; exit 2; }
 unsearched=""
 while IFS= read -r f; do
   case "$f" in ""|*test*|*Test*|*spec*) continue ;; esac
   printf '%s\n' "$searched" | grep -qxF -e "$f" -e "$(basename "$f")" || unsearched="$unsearched $f"
 done <<EOF
-$(sed -n 's/^file: //p' "$home/branch-checks/$head" | tr -d '\r')
+$ours
 EOF
 if [ -n "$unsearched" ]; then
   echo "REFUSED: the prior art at $art never searched files this branch changes:$unsearched - rerun prior-art.sh $repo with them --out" >&2
@@ -224,12 +228,16 @@ stamped=$(sed -n 's/^base: //p' "$home/branch-checks/$head" | tr -d '\r')
 upstream=$(gh api "repos/$repo/branches/$target" --jq .commit.sha 2>/dev/null | tr -d '\r')
 [ -n "$upstream" ] || { echo "REFUSED: cannot read $target of $repo to confirm the base is current" >&2; exit 2; }
 if [ "$stamped" != "$upstream" ]; then
-  if ! moved=$(gh api "repos/$repo/compare/$stamped...$upstream" --jq '.files[].filename' 2>/dev/null); then
+  if ! cmp=$(gh api "repos/$repo/compare/$stamped...$upstream" 2>/dev/null); then
     echo "REFUSED: the checked base ${stamped:0:12} is not on $repo $target - fetch, rebase and rerun branch-check.sh" >&2
     exit 2
   fi
-  ours=$(sed -n 's/^file: //p' "$home/branch-checks/$head" | tr -d '\r')
-  [ -n "$ours" ] || { echo "REFUSED: the branch-check stamp for head ${head:0:12} lists no files - rerun branch-check.sh" >&2; exit 2; }
+  # GitHub lists at most 300 files here; past that the overlap cannot be known.
+  if [ "$(printf '%s' "$cmp" | jq '.files | length')" -ge 300 ]; then
+    echo "REFUSED: $target moved by 300 files or more since branch-check (${stamped:0:12} to ${upstream:0:12}) - fetch, rebase, rerun branch-check.sh and the review" >&2
+    exit 2
+  fi
+  moved=$(printf '%s' "$cmp" | jq -r '.files[].filename')
   overlap=$(printf '%s\n' "$moved" | grep -Fx -f <(printf '%s\n' "$ours"))
   if [ -n "$overlap" ]; then
     echo "REFUSED: $target moved since branch-check (${stamped:0:12} to ${upstream:0:12}) and changed files this branch changes - fetch, rebase, rerun branch-check.sh and the review:" >&2

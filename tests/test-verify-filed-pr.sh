@@ -67,7 +67,9 @@ out=$(vrun) && { echo "FAIL $name: a PR missing an intended file read OK: $out";
 echo "$out" | grep -q "FILES DIFFER FROM STAMP" || { echo "FAIL $name: a file difference was not named: $out"; exit 1; }
 printf 'head: %s\nfile: a.kt\n' "$h" > "$stub/home/branch-checks/$h"
 printf 'c\n' > "$stub/home/filed/o-r-$h.md"
-out=$(vrun) && { echo "FAIL $name: a different body read OK: $out"; exit 1; }
+# a maintainer edits bodies; the difference is shown, and it is not a failure
+out=$(vrun) || { echo "FAIL $name: a body edit failed the verify: $out"; exit 1; }
 echo "$out" | grep -q "BODY DIFFERS" || { echo "FAIL $name: a body difference was not named: $out"; exit 1; }
+echo "$out" | grep -q '^    > b' || { echo "FAIL $name: the body difference was not shown: $out"; exit 1; }
 
 echo "PASS $name"

@@ -219,7 +219,7 @@ EOF
   printf 'skipped: none | <the item numbers you did not attack, each with why>\n'
   printf 'verdict: POST AS IS | POST WITH CHANGES | DO NOT POST\n\n'
   cat <<'EOF'
-POST AS IS means nothing BLOCKING or SHOULD FIX remains and nothing was skipped. POST WITH CHANGES means the author fixes what you found and the fixed version comes back for another review. DO NOT POST means it should not go at all. An item that does not apply to this change is not skipped: say in its place why it does not apply. A skipped item is one you did not do, for time, tools or access, and the gate refuses POST AS IS over it. After the header, number your findings, each on its own line as "N. SEVERITY: title" with SEVERITY one of BLOCKING, SHOULD FIX or NIT, then the evidence, and the exact fix, with replacement text in full for any wording. The gate reads those lines: a BLOCKING or SHOULD FIX line under POST AS IS is refused. A report with no findings says what was checked and how. The blind fix is a unified diff with its hunks.
+POST AS IS means nothing BLOCKING or SHOULD FIX remains and nothing was skipped. POST WITH CHANGES means the author fixes what you found and the fixed version comes back for another review. DO NOT POST means it should not go at all. An item that does not apply to this change is not skipped: say in its place why it does not apply. A skipped item is one you did not do, for time, tools or access, and the gate refuses POST AS IS over it. After the header, number your findings, each on its own line as "N. SEVERITY: title" with SEVERITY one of BLOCKING, SHOULD FIX or NIT, then the evidence, and the exact fix, with replacement text in full for any wording. The gate reads those lines: a BLOCKING or SHOULD FIX line under POST AS IS is refused, so a later round that lists an earlier round's findings as fixed renumbers them as NIT or drops the severity. A report with no findings says what was checked and how. The blind fix is a unified diff with its hunks.
 EOF
 }
 
@@ -274,8 +274,8 @@ cmd_check() {
   skipped=$(field skipped)
   [ -n "$skipped" ] || refuse "$report has no skipped: line in its header - 'none', or the items not attacked"
   printf '%s' "$skipped" | grep -qiE '^none\.?$' ||
-    refuse "the review skipped items ($skipped), so POST AS IS covers less than the brief: attack them or review again"
-  open=$(grep -iE '^[[:space:]#*]*[0-9]+[.)][[:space:]*]*(BLOCKING|SHOULD FIX)\b|^[[:space:]*-]*severity:[[:space:]*]*(BLOCKING|SHOULD FIX)\b' "$report")
+    refuse "the skipped: line must read exactly none for POST AS IS, or list the items not attacked ($skipped): attack them or review again"
+  open=$(grep -iE '^[[:space:]#*]*([0-9]+[.)]|[-*])[[:space:]*[]*(BLOCKING|SHOULD FIX)\b|^[[:space:]*-]*severity:[[:space:]*]*(BLOCKING|SHOULD FIX)\b' "$report")
   [ -z "$open" ] || refuse "the verdict is POST AS IS but the report lists open findings: $(printf '%s' "$open" | head -1 | cut -c1-120)"
 
   if [ -n "$clone" ]; then

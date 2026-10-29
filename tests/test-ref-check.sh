@@ -46,4 +46,11 @@ printf 'The parser drops the last field.\n' > "$body"
 out=$(bash "$script" octocat/Hello-World "$body"); rc=$?
 [ "$rc" -eq 0 ] || fail "a body with no references exited $rc"
 
+# identifiers and versions with a dot are not files; tilde fences and indented
+# code are evidence; a github.com page outside a repository is not looked up
+# shellcheck disable=SC2016  # the backticks are markdown, written literally
+printf 'Use `os.path` and `t.Run` since `v1.2.3`. See https://github.com/features/actions.\n\n    error at #99999997\n\n~~~\n#99999996\n~~~\n' > "$body"
+out=$(bash "$script" octocat/Hello-World "$body" --clone "$clone"); rc=$?
+[ "$rc" -eq 0 ] || fail "identifiers, code blocks or a features page were refused: $out"
+
 echo "PASS $name"

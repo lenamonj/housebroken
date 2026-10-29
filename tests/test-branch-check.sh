@@ -250,21 +250,35 @@ hyg() { # setup expected-refusal ("" for none) [extra branch-check args...]
   else
     printf '%s' "$out" | grep -qE "$hygiene_re" && { echo "FAIL $name: refused: $setup"; echo "$out"; exit 1; }
   fi
-  (cd "$repo" && git reset -q --hard HEAD~1)
+  (cd "$repo" && $G reset -q --hard HEAD~1)
 }
 hyg "printf 'export const h = 16;\n' > src/h16.test.ts" ""
 hyg "printf 'const p = \"C:/Users/lenam/jeffy-prs/x\";\n' > src/p.ts" "personal path"
-hyg "printf 'const p = \"/home/jeff/src/x\";\n' > src/p.ts" "personal path"
+hyg "printf 'const p = \"/home/$(basename "$HOME")/src/x\";\n' > src/p.ts" "personal path"
+hyg "printf 'const p = \"/home/alice/src/x\";\n' > src/p.ts" ""
 hyg "printf 'const t = \"ghp_%s\";\n' abcdefghijklmnopqrstuvwxyz0123 > src/t.ts" "credential"
 hyg "printf '{}\n' > package-lock.json" "lockfile"
 hyg "printf '{}\n' > package-lock.json" "" --allow package-lock.json
 hyg "printf '\000\001\002' > src/blob.bin" "is binary"
 hyg "printf '# notes\n' > CLAUDE.md" "agent's working file"
-hyg "mkdir -p .claude && printf '{}\n' > .claude/settings.json" "working artifact"
-# the base carries a 40-line LF file; the branch rewrites it with CRLF and one real change
+hyg "mkdir -p .claude && printf '{}\n' > .claude/settings.json" "agent's working file"
+# the base carries a 40-line LF file and a .claude/ file the project tracks; the
+# branch rewrites the first with CRLF, re-indents it under a new block, or edits the second
 (cd "$repo" && for i in $(seq 1 40); do printf 'line %s\n' "$i"; done > src/long.txt &&
+  mkdir -p .claude/commands && printf 'run the tests\n' > .claude/commands/t.md &&
   $G add -A && $G commit -q -m "long file" && setbase HEAD) || { echo "FAIL $name: CRLF fixture failed"; exit 1; }
 hyg "sed -i 's/\$/\r/; s/^line 7\r\$/line seven\r/' src/long.txt" "beyond whitespace"
 hyg "sed -i 's/^line 7\$/line seven/' src/long.txt" ""
+hyg "sed -i 's/^line \([0-9]\)/    line \1/; 1i if (x) {' src/long.txt && printf '}\n' >> src/long.txt" ""
+hyg "printf 'run every test\n' > .claude/commands/t.md" ""
+# a suppression that explains itself, and an id with a lowercase prefix
+printf 'errcheck xUnit1004\n' > "$root/lint2.log"
+# shellcheck disable=SC2016  # $(NoWarn) is MSBuild syntax, written literally
+(cd "$repo" && printf 'f() //nolint:errcheck // the callee logs it\n' > src/e.go &&
+  printf '<PropertyGroup><NoWarn>$(NoWarn);xUnit1004</NoWarn></PropertyGroup>\n' > src/X.csproj &&
+  $G add -A && $G commit -q -m "explained suppressions") || exit 1
+bash "$script" "$repo" --base origin/main --warning-log "$root/lint2.log" 2>&1 | grep -q "adds a warning suppression" \
+  && { echo "FAIL $name: an explained nolint or a lowercase-prefixed id was refused with a log showing it"; exit 1; }
+(cd "$repo" && $G reset -q --hard HEAD~1)
 
 echo "PASS $name"

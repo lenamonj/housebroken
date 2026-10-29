@@ -38,7 +38,7 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-text=$(awk '/^```/ {fence = !fence; next} !fence && !/^ *>/ {print}' "$file")
+text=$(awk '/^(```|~~~)/ {fence = !fence; next} !fence && !/^ *>/ && !/^    / {print}' "$file")
 found() { echo "  found      $1"; }
 lost() { echo "  NOT FOUND  $1"; }
 
@@ -71,9 +71,6 @@ out=$(
       */*/blob/*|*/*/tree/*)
         r=$(printf '%s' "$path" | cut -d/ -f1-2); ref=$(printf '%s' "$path" | cut -d/ -f4); p=$(printf '%s' "$path" | cut -d/ -f5- | sed 's/#.*//')
         if gh api "repos/$r/contents/$p?ref=$ref" --jq 'if type == "array" then "dir" else .path end' >/dev/null 2>&1; then found "$url"; else lost "$url"; fi ;;
-      */*)
-        r=$(printf '%s' "$path" | cut -d/ -f1-2)
-        if gh api "repos/$r" --jq .full_name >/dev/null 2>&1; then found "$url"; else lost "$url"; fi ;;
     esac
   done
 )
@@ -86,11 +83,13 @@ if [ -n "$clone" ]; then
     [ -n "$n" ] || continue
     if printf '%s' "$n" | grep -qE '^[0-9a-f]{7,40}$'; then
       if git -C "$clone" cat-file -e "$n^{commit}" 2>/dev/null; then found "commit $n"; else lost "commit $n"; fi
-    elif printf '%s' "$n" | grep -qE '^[A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,6}$' && printf '%s' "$n" | grep -q '/\|\.'; then
+    elif printf '%s' "$n" | grep -qE '^[A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,6}$'; then
+      # A dotted name is a file when the clone has it; without a slash it may
+      # be an identifier (os.path, t.Run, v1.2.3), so only a path is NOT FOUND.
       if git -C "$clone" ls-files --error-unmatch -- "$n" >/dev/null 2>&1 \
         || git -C "$clone" ls-files | grep -qE "(^|/)$(printf '%s' "$n" | sed 's/[.[\*^$]/\\&/g')$"; then
         found "file $n"
-      else
+      elif printf '%s' "$n" | grep -q /; then
         lost "file $n"
       fi
     elif printf '%s' "$n" | grep -qE '^(Test[A-Z][A-Za-z0-9_]*|test_[A-Za-z0-9_]+|[A-Za-z0-9_]+_test|[A-Z][A-Za-z0-9_]*Tests?)$'; then

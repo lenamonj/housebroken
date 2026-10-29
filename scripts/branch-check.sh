@@ -93,6 +93,9 @@ git rev-parse --verify -q "$base" >/dev/null 2>&1 || { echo "REFUSED: base $base
 
 blocked=0
 block() { echo "REFUSED: $*"; blocked=1; }
+# Whether the base already carries a path. "rev:path" is not used because Git
+# for Windows' shell rewrites an argument shaped like "a/b:.c/d" as a path list.
+in_base() { [ -n "$(git ls-tree --name-only "$base" -- "$1" 2>/dev/null)" ]; }
 
 echo "== branch check: $(git rev-parse --abbrev-ref HEAD) against $base =="
 
@@ -112,7 +115,7 @@ case "$full" in
     if [ -z "$live" ]; then
       block "cannot read $rbranch from $remote, so whether $base is current is unknown"
     elif [ "$live" != "$(git rev-parse "$base")" ]; then
-      block "the base moved: $remote has $rbranch at ${live:0:12}, $base is $(git rev-parse --short=12 "$base") - fetch, rebase and rerun"
+      echo "CHECK: the base moved: $remote has $rbranch at ${live:0:12}, $base is $(git rev-parse --short=12 "$base") - file-pr.sh refuses when the new commits touch this branch's files"
     fi
     ;;
   *) block "base $base is not a remote-tracking ref, so whether it is current cannot be checked - pass --base <remote>/<branch>" ;;
@@ -157,21 +160,21 @@ while IFS= read -r f; do
   # forced. NVIDIA/go-nvml ignores "dl" for a built binary, and that pattern also
   # matches the directory pkg/dl, so forcing the check called two upstream source
   # files build output.
-  if ! git cat-file -e "$base:$f" 2>/dev/null; then
+  if ! in_base "$f"; then
     if git check-ignore -q --no-index -- "$f" 2>/dev/null; then
       block "$f is added by this branch and the repository's .gitignore excludes it"
     fi
   fi
 
   case "$f" in
-    .jeffy/*|*/.jeffy/*|.claude/*|*/.claude/*|.cursor/*|*/.cursor/*|PLAN.md|*/PLAN.md|JOURNAL.md|*/JOURNAL.md|*.orig|*.rej|*.bak|*.swp|.DS_Store|*/.DS_Store|Thumbs.db|*/Thumbs.db)
+    .jeffy/*|*/.jeffy/*|PLAN.md|*/PLAN.md|JOURNAL.md|*/JOURNAL.md|*.orig|*.rej|*.bak|*.swp|.DS_Store|*/.DS_Store|Thumbs.db|*/Thumbs.db)
       block "$f is a working artifact and has no place in the diff" ;;
   esac
   # An agent's instruction or scratch file is an artifact when this branch adds
   # it; a project that already keeps one may have it edited.
-  case "$(basename "$f")" in
-    CLAUDE.md|AGENTS.md|GEMINI.md|STATUS.md|NOTES.md|TODO.md)
-      git cat-file -e "$base:$f" 2>/dev/null || block "$f is added by this branch and reads as an agent's working file" ;;
+  case "$f" in
+    .claude/*|*/.claude/*|.cursor/*|*/.cursor/*|CLAUDE.md|*/CLAUDE.md|AGENTS.md|*/AGENTS.md|GEMINI.md|*/GEMINI.md|STATUS.md|*/STATUS.md|NOTES.md|*/NOTES.md|TODO.md|*/TODO.md)
+      in_base "$f" || block "$f is added by this branch and reads as an agent's working file" ;;
   esac
 done <<EOF
 $files
@@ -222,9 +225,9 @@ if [ -n "$suppressions" ]; then
   unshown=""
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    ids=$(printf '%s\n' "$line" | grep -oE '\b([A-Z]{1,4}[0-9]{3,5}|[0-9]{4})\b' | sort -u)
+    ids=$(printf '%s\n' "$line" | grep -oE '\b([A-Za-z]{1,6}[0-9]{3,5}|[0-9]{4})\b' | sort -u)
     if [ -z "$ids" ]; then
-      ids=$(printf '%s\n' "$line" | sed -E 's/ -- .*//; s/.*(nolint|NOLINT|NOSONAR|noqa|eslint-disable(-next-line|-line)?|pylint: *disable|rubocop:disable|swiftlint:disable(:next|:this)?|phpstan-ignore(-next-line|-line)?|psalm-suppress|#!?\[allow|@Suppress(Warnings|Lint)?|SuppressMessage|ts-ignore|ts-expect-error|type: *ignore)//' \
+      ids=$(printf '%s\n' "$line" | sed -E 's/ -- .*//; s/.*(nolint|NOLINT|NOSONAR|noqa|eslint-disable(-next-line|-line)?|pylint: *disable|rubocop:disable|swiftlint:disable(:next|:this)?|phpstan-ignore(-next-line|-line)?|psalm-suppress|#!?\[allow|@Suppress(Warnings|Lint)?|SuppressMessage|ts-ignore|ts-expect-error|type: *ignore)//; s/ *(\/\/|#).*//' \
         | grep -oE '[A-Za-z][A-Za-z0-9_-]{2,}' | grep -vxE 'disable|enable|next|line|this' | sort -u)
     fi
     if [ -z "$ids" ]; then
@@ -248,11 +251,16 @@ aotdecl=$(git grep -lE '<(IsAotCompatible|IsTrimmable|PublishAot|EnableTrimAnaly
 if [ -n "$aotdecl" ]; then
   reflection=$(git diff -U0 "$base..HEAD" -- '*.cs' 2>/dev/null | grep '^+' | grep -v '^+++' | sed 's/^+//' \
     | grep -E '\.Get(Property|Properties|Method|Methods|Field|Fields|Member|Members|Interfaces)\(|Activator\.CreateInstance|MakeGenericType|MakeGenericMethod|Type\.GetType\(|\.InvokeMember\(')
-  # The log has to be a publish of this project: it names a declaring project.
+  # The log has to be a publish of this repository: it names, as a word, a
+  # declaring project, or any project here when the declaration is in a .props.
   published=0
   if [ -n "$aotlog" ] && grep -q "Generating native code" "$aotlog"; then
     for p in $aotdecl; do
-      case "$p" in *.csproj) proj=$(basename "$p" .csproj); grep -qF -- "$proj" "$aotlog" && published=1 ;; *) published=1 ;; esac
+      case "$p" in
+        *.csproj) projs=$(basename "$p" .csproj) ;;
+        *) projs=$(git ls-files '*.csproj' | sed 's#.*/##; s/\.csproj$//') ;;
+      esac
+      for proj in $projs; do grep -qwF -- "$proj" "$aotlog" && published=1; done
     done
   fi
   if [ -n "$reflection" ] && [ "$published" -eq 0 ]; then
@@ -266,7 +274,11 @@ fi
 # rewritten for its line endings or whitespace. --allow PATH names a file the
 # change really is about, such as a dependency bump's lockfile.
 allowed() { local a; for a in ${allows[@]+"${allows[@]}"}; do [ "$1" = "$a" ] && return 0; done; return 1; }
-leak_re='[A-Za-z]:[\\/]Users[\\/][^\\/ ]+|/home/[a-z][a-z0-9_-]*/|/Users/[A-Za-z][^/ ]*/|/mnt/[a-z]/Users/|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}'
+# A credential anywhere is refused, and so is a path under this user's own
+# home; a path under another user's is a fixture or an example, and is noted.
+me=$(basename "${HOME:-/nobody}")
+leak_re="gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|[A-Za-z]:[\\\\/]Users[\\\\/]$me([\\\\/ ]|\$)|/home/$me/|/Users/$me/|/mnt/[a-z]/Users/$me/"
+path_re='[A-Za-z]:[\\/]Users[\\/][^\\/ ]+|/home/[a-z][a-z0-9_-]*/|/Users/[A-Za-z][^/ ]*/|/mnt/[a-z]/Users/'
 nfiles=0; nadded=0
 while IFS= read -r f; do
   [ -n "$f" ] || continue
@@ -274,8 +286,11 @@ while IFS= read -r f; do
   stat=$(git diff --numstat "$base..HEAD" -- "$f" | head -1)
   case "$f" in *test*|*spec*) ;; *) nadded=$((nadded + $(printf '%s' "$stat" | awk '{print ($1 == "-") ? 0 : $1}'))) ;; esac
   allowed "$f" && continue
-  leaks=$(git diff -U0 "$base..HEAD" -- "$f" | grep '^+' | grep -v '^+++' | grep -oE "$leak_re" | sort -u)
+  addedf=$(git diff -U0 "$base..HEAD" -- "$f" | grep '^+' | grep -v '^+++')
+  leaks=$(printf '%s\n' "$addedf" | grep -oE "$leak_re" | sort -u)
   [ -z "$leaks" ] || block "$f adds a personal path or a credential: $(printf '%s' "$leaks" | tr '\n' ' ')"
+  paths=$(printf '%s\n' "$addedf" | grep -oE "$path_re" | sort -u)
+  [ -z "$paths" ] || echo "CHECK: $f adds a user path, a fixture or an example unless it is yours: $(printf '%s' "$paths" | tr '\n' ' ')"
   case "$f" in
     package-lock.json|*/package-lock.json|yarn.lock|*/yarn.lock|pnpm-lock.yaml|*/pnpm-lock.yaml|Cargo.lock|*/Cargo.lock|go.sum|*/go.sum|poetry.lock|*/poetry.lock|uv.lock|*/uv.lock|Gemfile.lock|*/Gemfile.lock|composer.lock|*/composer.lock|packages.lock.json|*/packages.lock.json|vendor/*|*/vendor/*|node_modules/*|*/node_modules/*|*.min.js|*.pb.go|*_generated.*|*.g.cs|*.designer.cs|*.Designer.cs)
       block "$f is a lockfile, vendored or generated file - a build rewrote it, or pass --allow $f if the change is about it" ;;
@@ -284,7 +299,7 @@ while IFS= read -r f; do
     -*) block "$f is binary - pass --allow $f if the change needs it" ;;
     *)
       total=$(printf '%s' "$stat" | awk '{print $1 + $2}')
-      real=$(git diff --numstat -w --ignore-cr-at-eol "$base..HEAD" -- "$f" | awk '{print $1 + $2}')
+      real=$(git diff --numstat --ignore-space-at-eol --ignore-cr-at-eol "$base..HEAD" -- "$f" | awk '{print $1 + $2}')
       if [ "$total" -ge 10 ] && [ $((${real:-0} * 2)) -lt "$total" ]; then
         block "$f changes $total lines, of which ${real:-0} differ beyond whitespace and line endings - restore the file's own endings"
       fi

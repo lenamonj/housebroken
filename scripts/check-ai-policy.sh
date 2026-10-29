@@ -88,7 +88,12 @@ trap 'rm -f "$errfile" "$tmpl_repo" "$tmpl_org"' EXIT
 # failed or throttled call is never read as a clean file.
 scan() {
   local target="$1" ref="$2" label="$3" f body hits tree listed files readmes
-  if ! tree=$(gh api "repos/$target/git/trees/$ref?recursive=1" 2>/dev/null); then
+  if ! tree=$(gh api "repos/$target/git/trees/$ref?recursive=1" 2>"$errfile"); then
+    # An empty repository answers 409: it has no files, so no policy to read.
+    if grep -q "409" "$errfile"; then
+      echo "  (empty) $label$target"
+      return
+    fi
     echo "  UNREAD: the file listing of $target@$ref"
     unread=$((unread + 1))
     return
@@ -115,8 +120,7 @@ scan() {
     fi
     body=$(printf '%s' "$body" | base64 -d 2>/dev/null)
     if printf '%s' "$f" | grep -qiE '(^|/)pull_request_template'; then
-      printf '%s
-' "$body" >> "$tmplout"
+      printf '%s\n' "$body" >> "$tmplout"
     fi
     hits=$(printf '%s' "$body" | grep -nE "$PATTERN" | head -20)
     if [ -n "$hits" ]; then

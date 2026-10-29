@@ -97,7 +97,7 @@ write_report sonnet "POST AS IS" "$head" "$tmp/prose.diff"
 passes && fail "a blind fix that is prose, not a diff, cleared the gate"
 
 # the header says POST AS IS and the body disagrees, or items were skipped
-for f in '1. BLOCKING: the test never runs.' '2) SHOULD FIX: the comparer is lost.' '### 3. BLOCKING: AOT' '**Severity:** SHOULD FIX'; do
+for f in '1. BLOCKING: the test never runs.' '2) SHOULD FIX: the comparer is lost.' '### 3. BLOCKING: AOT' '**Severity:** SHOULD FIX' '1. [BLOCKING] the test never runs' '- BLOCKING: the test never runs'; do
   findings="1. NIT: fine.
 $f"
   write_report sonnet "POST AS IS" "$head"

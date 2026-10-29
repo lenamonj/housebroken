@@ -166,13 +166,15 @@ report it in one line and do not proceed to the next step.
    whose mode disagrees with its own siblings, a file the branch adds that the
    repository ignores, a commit carrying a tool trailer, a session link or a
    tool identity, a sign-off that names a username, a branch that is not on
-   top of its base, a base that is not a remote-tracking ref or that the
-   upstream has moved past (fetch first), any comment added to code
+   top of its base, a base that is not a remote-tracking ref (it notes one the
+   upstream has moved past; the filing refuses it when the move touches your
+   files), any comment added to code
    (`--asked <URL>` when the maintainer asked for it), a warning suppression
    that names no warning or whose warning `--warning-log` does not show
    firing, reflection added to a .NET project that declares AOT or trim
    support until `--aot-log` shows an AOT publish of that project you ran the
-   changed path under, a personal path or credential in an added line, a
+   changed path under, a credential or a path under your own home in an
+   added line, a
    lockfile, vendored, generated or binary file (`--allow <path>` when the
    change is about it), an agent's working file such as an added CLAUDE.md
    or `.claude/`, and a file rewritten for its line endings or whitespace;
