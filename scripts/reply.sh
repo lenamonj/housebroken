@@ -8,20 +8,26 @@
 # reference to something that does not exist; ten minutes between replies to
 # one repository. This holds each rule a script can hold, then posts.
 #
-# Refused: an opening that grades the reviewer or thanks or apologises
-# ("you are right", "good catch", "great point", "thanks", "sorry"); an
-# exclamation mark or bold; more than three sentences unless --long; a
-# closing offer ("let me know", "happy to", "feel free", "hope this
-# helps"); a typographic dash, a tool footer or a session link; a reference
-# ref-check.sh cannot find; and a second reply to the repository within ten
-# minutes. Code spans and quoted lines are left out of the tone checks.
-# With --review REPORT, the review must pass `review.sh check` for this text,
-# which the skill requires for a reply that concedes, disagrees or rides on a
-# code change.
+# Refused: an opening that grades the reviewer ("you are right", "good
+# catch", "great point", "agreed", "fair point"); thanks or an apology
+# anywhere; an exclamation mark or bold; more than three sentences unless
+# --long; a closing offer or summary ("let me know", "happy to", "feel
+# free", "hope this helps", "in summary"); a typographic dash, a tool footer
+# or a session link; a reference ref-check.sh cannot find; and a second
+# reply to the repository within ten minutes. Code spans, fenced blocks and
+# quoted lines are evidence, not our words, and are left out of the tone
+# and dash checks. With --review REPORT, the review must pass `review.sh
+# check` for this text, which the skill requires for a reply that concedes,
+# disagrees or rides on a code change.
 #
 # Usage:
-#   bash reply.sh owner/repo NUMBER --body-file FILE [--review REPORT] [--long] [--clone DIR]
+#   bash reply.sh owner/repo NUMBER --body-file FILE [--review REPORT] [--long]
+#                 [--clone DIR] [--in-reply-to COMMENT_ID]
 #   bash reply.sh --help
+#
+# --in-reply-to answers an inline review comment in its own thread, by the
+# id the inbox prints beside it; without it the reply goes to the
+# conversation.
 #
 # Environment:
 #   HOUSEBROKEN_HOME  work directory, default $HOME/.housebroken; replies are
@@ -38,18 +44,20 @@ repo="${1:-}"; num="${2:-}"
 case "$repo" in */*) ;; *) echo "REFUSED: name the repository as owner/repo" >&2; exit 2 ;; esac
 case "$num" in ''|*[!0-9]*) echo "REFUSED: name the pull request or issue number" >&2; exit 2 ;; esac
 shift 2
-body=""; report=""; long=0; clone=""
+body=""; report=""; long=0; clone=""; thread=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --body-file) body="${2:-}"; shift ;;
     --review) report="${2:-}"; shift ;;
     --clone) clone="${2:-}"; shift ;;
+    --in-reply-to) thread="${2:-}"; shift ;;
     --long) long=1 ;;
     *) echo "REFUSED: unknown argument $1" >&2; exit 2 ;;
   esac
   shift
 done
 [ -f "$body" ] || { echo "REFUSED: --body-file names no file" >&2; exit 2; }
+case "$thread" in ''|[0-9]*) ;; *) echo "REFUSED: --in-reply-to needs the comment id" >&2; exit 2 ;; esac
 here=$(cd "$(dirname "$0")" && pwd)
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 
@@ -61,16 +69,18 @@ refuse() { refused="$refused
 # shellcheck disable=SC2016  # the backticks are markdown, matched literally
 prose=$(awk '/^(```|~~~)/ {f = !f; next} !f && !/^ *>/' "$body" | sed 's/`[^`]*`//g')
 first=$(printf '%s\n' "$prose" | grep -m1 -v '^[[:space:]]*$' | sed 's/^[[:space:]]*//')
-printf '%s' "$first" | grep -qiE "^(you('| a)re (right|correct)|good (catch|point|call)|great (catch|point|question)|nice catch|thanks|thank you|apologies|sorry|i apologi[sz]e)\b" &&
-  refuse "it opens with a verdict, thanks or an apology; lead with the fact: $(printf '%s' "$first" | cut -c1-60)"
-printf '%s' "$prose" | grep -q '!' && refuse "it has an exclamation mark"
+printf '%s' "$first" | grep -qiE "^(yes,?[[:space:]]+)?(you('| a)re (right|correct)|good (catch|point|call)|great (catch|point|question)|nice catch|fair (point|enough)|agreed|makes sense|understood|noted|appreciated?)\b" &&
+  refuse "it opens with a verdict on the reviewer; lead with the fact: $(printf '%s' "$first" | cut -c1-60)"
+printf '%s' "$prose" | grep -qiE '\b(thanks|thank you|apologies|sorry|i apologi[sz]e)\b' && refuse "it thanks or apologises; state the fact and what changed"
+printf '%s' "$prose" | grep -q '!' && refuse "it has an exclamation mark; quoted output belongs in a code span"
 printf '%s' "$prose" | grep -qE '\*\*[^*]+\*\*|__[^_]+__' && refuse "it has bold"
-printf '%s' "$prose" | grep -qiE "\b(let me know|happy to (help|send|open|make|change)|feel free|hope (this|that) helps)\b" &&
-  refuse "it closes with an offer; stop when the content stops"
-sentences=$(printf '%s\n' "$prose" | tr '\n' ' ' | grep -oE '[.?][[:space:]]+[A-Z]|[.?][[:space:]]*$' | grep -c .)
+printf '%s' "$prose" | grep -qiE "\b(let me know|happy to (help|send|open|make|change)|feel free|hope (this|that) helps|in summary|to summari[sz]e)\b" &&
+  refuse "it closes with an offer or a summary; stop when the content stops"
+# A list number is not a sentence.
+sentences=$(printf '%s\n' "$prose" | sed -E 's/(^|[[:space:]])[0-9]+[.)][[:space:]]+/\1/g' | tr '\n' ' ' | grep -oE '[.?][[:space:]]+[A-Z]|[.?][[:space:]]*$' | grep -c .)
 [ "$long" -eq 1 ] || [ "$sentences" -le 3 ] || refuse "it runs $sentences sentences; a reply is one to three (--long when the maintainer asked for detail)"
 em=$(printf '\xe2\x80\x94'); en=$(printf '\xe2\x80\x93')
-grep -qF -e "$em" -e "$en" "$body" && refuse "it has a typographic dash"
+printf '%s' "$prose" | grep -qF -e "$em" -e "$en" && refuse "it has a typographic dash"
 grep -qiE 'generated with|claude\.ai/code|co-authored-by:' "$body" && refuse "it carries a tool footer, a session link or a trailer"
 
 refargs=("$repo" "$body"); [ -n "$clone" ] && refargs+=(--clone "$clone")
@@ -94,10 +104,12 @@ if [ -n "$refused" ]; then
 fi
 claims=$(bash "$here/claim-check.sh" "$body" 2>&1) || printf 'Re-derive before it posts:\n%s\n' "$claims" >&2
 
+endpoint="repos/$repo/issues/$num/comments"
+[ -z "$thread" ] || endpoint="repos/$repo/pulls/$num/comments/$thread/replies"
 if [ "${REPLY_DRY:-0}" = "1" ]; then
-  echo "DRY RUN, not posted: reply to $repo#$num from $body"
+  echo "DRY RUN, not posted: reply to $repo#$num from $body via $endpoint"
   exit 0
 fi
-gh api "repos/$repo/issues/$num/comments" -F "body=@$body" --jq .html_url || exit 2
+gh api "$endpoint" -F "body=@$body" --jq .html_url || exit 2
 mkdir -p "$home/replies"
 printf '%s %s#%s\n' "$(date -u +%s)" "$repo" "$num" >> "$log"

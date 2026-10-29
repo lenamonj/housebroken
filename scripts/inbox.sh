@@ -94,7 +94,7 @@ while IFS= read -r t; do
   fi
   events="$(jq -nc --argjson ic "$ic" --argjson rc "$rc" --argjson rv "$rv" --arg since "$since" '
     [ ($ic[] | {t: .created_at, who: (.user.login // "?"), kind: "comment", where: "", rst: "", body: (.body // "")}),
-      ($rc[] | {t: .created_at, who: (.user.login // "?"), kind: "inline", where: (" on " + .path + ":" + ((.line // .original_line // 0) | tostring)), rst: "", body: (.body // "")}),
+      ($rc[] | {t: .created_at, who: (.user.login // "?"), kind: "inline", where: (" on " + .path + ":" + ((.line // .original_line // 0) | tostring) + " (comment " + (.id | tostring) + ", answer it with reply --in-reply-to)"), rst: "", body: (.body // "")}),
       ($rv[] | select((.submitted_at // "") > $since) | {t: .submitted_at, who: (.user.login // "?"), kind: "review", where: "", rst: (.state // ""), body: (.body // "")}) ]
     | sort_by(.t) | .[]' 2>/dev/null)"
   shown=0

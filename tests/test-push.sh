@@ -40,14 +40,24 @@ ready
 rm "$HOUSEBROKEN_HOME/reviews/"*
 out=$(bash "$script" o/r . 2>&1) && fail "a head with no review was pushed"
 ready
+# a remote that cannot be read, or that has no such branch, is a refusal, not a plain push
+git remote add upstream "$root/upstream.git" && git init -q --bare "$root/upstream.git"
+out=$(bash "$script" o/r . --remote upstream 2>&1) && fail "a push to a remote without the branch went"
+printf '%s' "$out" | grep -q "cannot read fix on upstream" || fail "the unreadable remote was not named: $out"
+[ -z "$(git -C "$root/upstream.git" for-each-ref)" ] || fail "the refused push reached upstream"
+out=$(bash "$script" o/r . --remote nosuch 2>&1) && fail "a push to a remote that does not exist went"
 out=$(bash "$script" o/r . 2>&1) || fail "a reviewed fast-forward was refused: $out"
 [ "$(git -C "$root/fork.git" rev-parse fix)" = "$(git rev-parse HEAD)" ] || fail "the push did not reach the fork"
+log=$(ls "$HOUSEBROKEN_HOME/pushes/"*)
+printf '%s x old\n' "$(( $(date -u +%s) - 2000 ))" > "$log"
+out=$(bash "$script" o/r . 2>&1) && fail "a push of a head already on the fork went"
+printf '%s' "$out" | grep -q "nothing to push" || fail "the empty push was not named: $out"
 
 # a second push inside thirty minutes
 printf 'c\n' >> a.txt && $G commit -q -am three && ready
+printf '%s x recent\n' "$(date -u +%s)" > "$log"
 out=$(bash "$script" o/r . 2>&1) && fail "a second push within thirty minutes went"
-printf '%s' "$out" | grep -q "push once" || fail "the spacing refusal did not say why: $out"
-log=$(ls "$HOUSEBROKEN_HOME/pushes/"*)
+printf '%s' "$out" | grep -q "push once, in 30 min" || fail "the spacing refusal did not say why or how long: $out"
 printf '%s x old\n' "$(( $(date -u +%s) - 2000 ))" > "$log"
 
 # a rewrite of the branch needs a reason

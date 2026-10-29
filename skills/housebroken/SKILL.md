@@ -260,7 +260,8 @@ report it in one line and do not proceed to the next step.
     a code change goes through the adversarial review of step 9 first, with
     the reply as its `--text`. Post it with `housebroken reply owner/repo
     NUMBER --body-file <reply> [--review <report>]`, the only way a reply is
-    posted: it refuses a verdict, thanks or apology as the opening, an
+    posted (`--in-reply-to <id>` for an inline comment, by the id the inbox
+    prints beside it): it refuses a verdict, thanks or apology as the opening, an
     exclamation mark, bold, a closing offer, more than three sentences
     without `--long`, a reference to nothing, a review that does not clear
     the text, and a second reply to the repository inside ten minutes.

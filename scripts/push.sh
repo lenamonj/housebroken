@@ -6,7 +6,9 @@
 # review of that exact head. Two pushes in one sitting read as indecision,
 # and a force push rewrites what the maintainer may already have reviewed,
 # so a second push to the branch within thirty minutes is refused, and a
-# push that is not a fast-forward goes only with --rework naming why.
+# push that is not a fast-forward goes only with --rework naming why. The
+# branch must already be on the remote: a first push is a plain git push,
+# and a remote that cannot be read is a refusal, not a plain push.
 #
 # Usage:
 #   bash push.sh owner/repo [CLONE] [--remote NAME] [--rework 'REASON']
@@ -59,18 +61,24 @@ if [ -f "$log" ]; then
   last=$(tail -1 "$log" | awk '{print $1}')
   since=$(( $(date -u +%s) - ${last:-0} ))
   if [ "$since" -lt 1800 ]; then
-    echo "REFUSED: the last push to $branch was ${since}s ago; settle every refusal and push once" >&2
+    echo "REFUSED: the last push to $branch was ${since}s ago; settle every refusal and push once, in $(( (1800 - since) / 60 + 1 )) min" >&2
     exit 2
   fi
 fi
 
+if ! git fetch -q "$remote" "$branch" 2>/dev/null; then
+  echo "REFUSED: cannot read $branch on $remote: a rework goes to the remote the pull request's branch is on (--remote NAME); a first push is a plain git push" >&2
+  exit 2
+fi
+theirs=$(git rev-parse FETCH_HEAD)
+[ "$theirs" != "$head" ] || { echo "REFUSED: $remote $branch is already at ${head:0:12}; nothing to push" >&2; exit 2; }
 force=()
-if git fetch -q "$remote" "$branch" 2>/dev/null && ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
+if ! git merge-base --is-ancestor "$theirs" HEAD; then
   if [ -z "$rework" ]; then
     echo "REFUSED: this push rewrites $branch on $remote, which the maintainer may have reviewed; pass --rework 'why' if it must" >&2
     exit 2
   fi
-  force=(--force-with-lease="$branch:$(git rev-parse FETCH_HEAD)")
+  force=(--force-with-lease="$branch:$theirs")
 fi
 
 if [ "${PUSH_DRY:-0}" = "1" ]; then

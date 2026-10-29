@@ -90,7 +90,7 @@ pip install housebroken-cli
 housebroken install-skill
 ```
 
-The first line puts the `housebroken` command on your path. The second puts the skill where Claude Code loads it, so the agent runs the door itself before it opens anything upstream. `housebroken install-hook` adds the enforcement the skill cannot: a Claude Code hook that refuses any command writing to GitHub outside the gates (`gh pr create`, `gh pr comment`, a write through `gh api`, a forced push). It prints the settings entry to add; it does not edit your settings. To run the main branch between releases, install from the repository instead:
+The first line puts the `housebroken` command on your path. The second puts the skill where Claude Code loads it, so the agent runs the door itself before it opens anything upstream. `housebroken install-hook` adds the enforcement the skill cannot: a Claude Code hook that refuses any command writing to GitHub outside the gates (`gh pr create`, `gh pr comment`, a write through `gh api`, a forced push). It prints the settings entry to add; it does not edit your settings. It reads the command text, so a write behind `bash -c`, `eval`, a script file or a full path to `gh` passes it: it holds the accident, not the intent. Writes to your own repositories pass once their owners are listed in `~/.housebroken/own`, one per line; a forced push is refused everywhere, since a fork carries your name too. To run the main branch between releases, install from the repository instead:
 
 ```
 uv tool install git+https://github.com/lenamonj/housebroken
