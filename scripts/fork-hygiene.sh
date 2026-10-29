@@ -53,6 +53,17 @@ while read -r repo n; do
   IFS='|' read -r owner fork branch state <<< "$info"
   if [ "$owner" != "$ME" ] || [ -z "$branch" ]; then continue; fi
   gh api "repos/$ME/$fork/git/refs/heads/$branch" >/dev/null 2>&1 || continue
+  # A closed pull request refiled from the same branch still needs it, and
+  # deleting the branch would close the open one.
+  if ! users=$(gh pr list --repo "$repo" --head "$branch" --state open --json number,headRepositoryOwner \
+    --jq "[.[] | select(.headRepositoryOwner.login == \"$ME\") | .number] | join(\" \")" 2>/dev/null); then
+    echo "fork-hygiene.sh: cannot list open pull requests on $repo; $branch kept" >&2
+    continue
+  fi
+  if [ -n "$users" ]; then
+    echo "kept $ME/$fork $branch: open pull request $repo#$users still uses it"
+    continue
+  fi
   if [ "$DRY" = 1 ]; then
     echo "would delete $ME/$fork $branch ($state $repo#$n)"
     continue

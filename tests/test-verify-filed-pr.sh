@@ -38,6 +38,7 @@ case "$1 $2" in
 esac
 STUB
 chmod +x "$stub/gh"
+export HOUSEBROKEN_HOME="$stub/empty"
 printf '%s' '{"state":"OPEN","headRefOid":"23893ddea90057ec3826050eedd360474e484e57","files":[{"path":"a.kt","additions":1,"deletions":0}],"statusCheckRollup":[{"context":"Task List Completed","state":"SUCCESS"}],"body":"b","comments":[]}' > "$stub/pr.json"
 
 printf '%s' '[{"conclusion":"action_required"}]' > "$stub/runs.json"
@@ -51,5 +52,22 @@ echo "$out" | grep -q "^PR-VERIFY: NOT SETTLED (1 workflow run(s) wait for a mai
 printf '%s' '[{"conclusion":"success"}]' > "$stub/runs.json"
 out=$(STUB_DIR="$stub" PATH="$stub:$PATH" bash "$script" o/r 1)
 echo "$out" | grep -q "^PR-VERIFY: OK" || { echo "FAIL $name: a settled green head did not read OK: $out"; exit 1; }
+
+# The files and body on GitHub are compared to the stamp and the filed copy.
+h=23893ddea90057ec3826050eedd360474e484e57
+mkdir -p "$stub/home/branch-checks" "$stub/home/filed"
+vrun() { STUB_DIR="$stub" PATH="$stub:$PATH" HOUSEBROKEN_HOME="$stub/home" bash "$script" o/r 1; }
+printf 'head: %s\nfile: a.kt\n' "$h" > "$stub/home/branch-checks/$h"
+printf 'b\r\n\n' > "$stub/home/filed/o-r-$h.md"
+out=$(vrun) || { echo "FAIL $name: matching files and body were refused: $out"; exit 1; }
+echo "$out" | grep -q "files match the stamp  *yes" || { echo "FAIL $name: files were not compared: $out"; exit 1; }
+echo "$out" | grep -q "body matches what was filed  *yes" || { echo "FAIL $name: the body was not compared: $out"; exit 1; }
+printf 'head: %s\nfile: a.kt\nfile: b.kt\n' "$h" > "$stub/home/branch-checks/$h"
+out=$(vrun) && { echo "FAIL $name: a PR missing an intended file read OK: $out"; exit 1; }
+echo "$out" | grep -q "FILES DIFFER FROM STAMP" || { echo "FAIL $name: a file difference was not named: $out"; exit 1; }
+printf 'head: %s\nfile: a.kt\n' "$h" > "$stub/home/branch-checks/$h"
+printf 'c\n' > "$stub/home/filed/o-r-$h.md"
+out=$(vrun) && { echo "FAIL $name: a different body read OK: $out"; exit 1; }
+echo "$out" | grep -q "BODY DIFFERS" || { echo "FAIL $name: a body difference was not named: $out"; exit 1; }
 
 echo "PASS $name"

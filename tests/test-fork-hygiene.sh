@@ -29,4 +29,30 @@ if ! gh api "repos/$repo/git/refs/heads/$branch" --jq .ref > /dev/null; then
   exit 1
 fi
 echo "still present after dry run: $(gh api "repos/$repo/git/refs/heads/$branch" --jq .ref) in $repo"
+
+# A branch a closed pull request used is kept while an open one still uses it.
+# A stub gh answers each call with what its --jq would have printed.
+stub=$(mktemp -d) || exit 1
+trap 'rm -rf "$stub"' EXIT
+cat > "$stub/gh" <<'STUB'
+#!/bin/bash
+case "$*" in
+  "search prs --author u --state closed"*) echo "o/r 1" ;;
+  "pr view 1 --repo o/r"*) echo "u|r|fix-it|CLOSED" ;;
+  "api repos/u/r/git/refs/heads/fix-it"*) echo '{}' ;;
+  "pr list --repo o/r --head fix-it"*) cat "$STUB_DIR/open" ;;
+  "api -X DELETE"*) echo "DELETED $*" >> "$STUB_DIR/deleted" ;;
+  "repo list"*|"search prs --author u --json"*) ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$stub/gh"
+hyg() { STUB_DIR="$stub" PATH="$stub:$PATH" HOUSEBROKEN_USER=u bash "$script"; }
+printf '2\n' > "$stub/open"
+out=$(hyg)
+echo "$out" | grep -q "^kept u/r fix-it: open pull request o/r#2 still uses it" || { echo "FAIL $name: a branch an open pull request uses was not kept: $out"; exit 1; }
+[ ! -f "$stub/deleted" ] || { echo "FAIL $name: a branch an open pull request uses was deleted"; exit 1; }
+: > "$stub/open"
+out=$(hyg)
+echo "$out" | grep -q "^deleted u/r fix-it" || { echo "FAIL $name: a branch no open pull request uses was not deleted: $out"; exit 1; }
 echo "PASS $name"

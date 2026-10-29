@@ -66,6 +66,36 @@ echo ""
 echo "-- files in the PR (what a reviewer sees)"
 view files '.files[] | "   " + .path + "  +" + (.additions|tostring) + "/-" + (.deletions|tostring)'
 
+# The intended files are the branch-check stamp's, and the intended body is the
+# copy file-pr.sh kept; GitHub's versions are compared to both.
+home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
+stamp="$home/branch-checks/$head"
+intended=""
+[ -f "$stamp" ] && intended=$(sed -n 's/^file: //p' "$stamp" | tr -d '\r' | sort)
+if [ -n "$intended" ]; then
+  filed=$(view files '.files[].path' | sort)
+  if [ "$intended" = "$filed" ]; then
+    note "files match the stamp" "yes"
+  else
+    note "FILES DIFFER FROM STAMP" "$(diff <(printf '%s\n' "$intended") <(printf '%s\n' "$filed") | grep '^[<>]' | tr '\n' ' ')"
+    fail=1
+  fi
+else
+  note "files" "no branch-check stamp listing files for ${head:0:12}; not compared"
+fi
+kept="$home/filed/${repo%%/*}-${repo##*/}-$head.md"
+if [ -f "$kept" ]; then
+  norm() { tr -d '\r' | sed -e 's/[[:space:]]*$//' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'; }
+  if [ "$(view body .body | norm)" = "$(norm < "$kept")" ]; then
+    note "body matches what was filed" "yes"
+  else
+    note "BODY DIFFERS" "GitHub's body is not $kept"
+    fail=1
+  fi
+else
+  note "body" "no filed copy for ${head:0:12}; not compared"
+fi
+
 echo ""
 echo "-- checks (waits until every check has settled)"
 gh pr checks "$pr" --repo "$repo" --watch --interval 20 >/dev/null 2>&1 || true
