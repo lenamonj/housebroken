@@ -151,9 +151,16 @@ if [ "$policy_result" = "DISCLOSE" ] && ! grep -qiE '\bAI\b|LLM|Claude|Copilot|C
   echo "REFUSED: $repo requires AI use to be disclosed ($policy) and the body does not name it" >&2
   exit 2
 fi
+if ! refs=$(bash "$(dirname "$0")/ref-check.sh" "$repo" "$bodyfile" 2>&1); then
+  echo "REFUSED: the body names something that does not exist:" >&2
+  printf '%s\n' "$refs" | grep -E 'NOT FOUND|REFUSED' >&2
+  exit 2
+fi
 
-offer_re='\b(fix|fixed|fixes|patch|patched|patches|pull request|PR)\b'
-link_re='https://github\.com/[^/[:space:]]+/[^/[:space:]]+/(tree|commit|compare|blob)/[^[:space:])]+'
+# An offer is a first-person promise of work, whatever noun it uses; "patch
+# release" in a bug report is not one. The link may be the filed pull request.
+offer_re='\b(I|we) (have|had|can|could|will|would|am|are)( be happy to| be glad to)? (send|open|submit|provide|offer|push|put up|prepare|write)\b|\b(I|we) (have|wrote|made) (a|the) (fix|patch|change)\b|\bsay the word\b|\bif you (want|would like|are interested)\b|\bhappy to (send|open|submit|provide)\b|\b(fix|fixes|patch|pull request|PR|change) (is |are )?(ready|available|done)\b'
+link_re='https://github\.com/[^/[:space:]]+/[^/[:space:]]+/(tree|commit|compare|blob|pull)/[^[:space:])]+'
 offer=$(printf '%s' "$body" | grep -ioE "$offer_re" | head -1) || true
 if [ -n "$offer" ] && ! printf '%s' "$body" | grep -qE "$link_re"; then
   echo "REFUSED: the body says '$offer' and links no branch or commit - push the work to your fork and link it, or take it out of the body" >&2

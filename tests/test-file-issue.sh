@@ -74,12 +74,23 @@ for word in patch "pull request" fixes; do
   run --title t --body-file "$bodyfile" >/dev/null 2>&1
   [ "$?" -eq 2 ] || fail "'$word' offered without a link was not refused"
 done
-printf 'The parser drops the last field. The fix is at https://github.com/octocat/Hello-World/tree/parser-last-field for review.\n' > "$bodyfile"
+printf 'The parser drops the last field. I can send a change if you want one.\n' > "$bodyfile"
+run --title t --body-file "$bodyfile" >/dev/null 2>&1
+[ "$?" -eq 2 ] || fail "an offer worded without fix, patch or PR was not refused"
+printf 'The parser drops the last field since the 2.1.3 patch release.\n' > "$bodyfile"
+run --title t --body-file "$bodyfile" >/dev/null 2>&1 || fail "a bug report naming a patch release was refused as an offer"
+printf 'The parser drops the last field. I have a fix in https://github.com/octocat/Hello-World/pull/1 for review.\n' > "$bodyfile"
+run --title t --body-file "$bodyfile" >/dev/null 2>&1 || fail "a fix linked to its filed pull request was refused"
+printf 'The parser drops the last field, as in #99999999.\n' > "$bodyfile"
+out=$(run --title t --body-file "$bodyfile"); rc=$?
+[ "$rc" -eq 2 ] || fail "a body naming an issue that does not exist exited $rc, expected 2"
+printf '%s' "$out" | grep -q "NOT FOUND  #99999999" || fail "the missing reference was not named: $out"
+printf 'The parser drops the last field. The fix is at https://github.com/octocat/Hello-World/tree/test for review.\n' > "$bodyfile"
 out=$(run --title t --body-file "$bodyfile"); rc=$?
 [ "$rc" -eq 0 ] || fail "a fix with a branch link exited $rc, expected 0: $out"
 printf '%s' "$out" | grep -q "DRY RUN" || fail "a passing body did not reach the dry run"
 printf '%s' "$out" | grep -q -- "gh issue create -R octocat/Hello-World" || fail "the dry run names the wrong command"
-printf 'The parser drops the last field. Commit https://github.com/octocat/Hello-World/commit/0123abcd shows it.\n' > "$bodyfile"
+printf 'The parser drops the last field. Commit https://github.com/octocat/Hello-World/commit/7fd1a60b01f9 shows it.\n' > "$bodyfile"
 run --title t --body-file "$bodyfile" >/dev/null 2>&1 || fail "a commit link was not accepted"
 
 # a body that offers nothing needs no link
