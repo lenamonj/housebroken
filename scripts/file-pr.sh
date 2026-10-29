@@ -175,10 +175,30 @@ if [ "$policy_result" = "DISCLOSE" ] && ! grep -qiE '\bAI\b|LLM|Claude|Copilot|C
   echo "REFUSED: $repo requires AI use to be disclosed ($policy) and the body does not name it" >&2
   exit 2
 fi
+if ! refs=$(bash "$(dirname "$0")/ref-check.sh" "$repo" "$bodyfile" --clone . 2>&1); then
+  echo "REFUSED: the body names something that does not exist:" >&2
+  printf '%s\n' "$refs" | grep -E 'NOT FOUND|REFUSED' >&2
+  exit 2
+fi
 
 head=$(git rev-parse HEAD 2>/dev/null) || { echo "REFUSED: run file-pr.sh from inside the clone being filed" >&2; exit 2; }
 if [ ! -f "$home/branch-checks/$head" ]; then
   echo "REFUSED: branch-check.sh has not passed head ${head:0:12} - run it from this clone first" >&2
+  exit 2
+fi
+# The prior art has to be about this change: every file the branch changes,
+# tests aside, is a term in the printout, by path or by name. One printout per
+# repository means another branch's run replaces it.
+searched=$(sed -n 's/^### //p' "$art" | tr -d '\r')
+unsearched=""
+while IFS= read -r f; do
+  case "$f" in ""|*test*|*Test*|*spec*) continue ;; esac
+  printf '%s\n' "$searched" | grep -qxF -e "$f" -e "$(basename "$f")" || unsearched="$unsearched $f"
+done <<EOF
+$(sed -n 's/^file: //p' "$home/branch-checks/$head" | tr -d '\r')
+EOF
+if [ -n "$unsearched" ]; then
+  echo "REFUSED: the prior art at $art never searched files this branch changes:$unsearched - rerun prior-art.sh $repo with them --out" >&2
   exit 2
 fi
 # Every diff gate read the diff against the stamp's base; it must be the branch this files into.
@@ -218,6 +238,23 @@ if [ "$stamped" != "$upstream" ]; then
   fi
   echo "note: $target moved since branch-check (${stamped:0:12} to ${upstream:0:12}); none of its new commits touch this branch's files" >&2
 fi
+# Three open pull requests per repository, and ten minutes between filings:
+# GitHub lets maintainers cap a non-collaborator's open pull requests, and two
+# stamped the same minute read as a bot.
+if ! mine=$(gh pr list -R "$repo" --author @me --state open --json createdAt --jq '[.[].createdAt] | sort' 2>/dev/null); then
+  echo "REFUSED: cannot read your open pull requests on $repo" >&2
+  exit 2
+fi
+open_count=$(printf '%s' "$mine" | jq 'length')
+if [ "$open_count" -ge 3 ]; then
+  echo "REFUSED: you have $open_count open pull requests on $repo - three is the most a repository gets" >&2
+  exit 2
+fi
+since=$(printf '%s' "$mine" | jq -r --argjson now "$(date -u +%s)" 'if length > 0 then $now - (last | fromdateiso8601) else 99999 end')
+if [ "$since" -lt 600 ]; then
+  echo "REFUSED: your last pull request on $repo was filed ${since}s ago - wait until ten minutes have passed" >&2
+  exit 2
+fi
 review="$home/reviews/review-${repo%%/*}-${repo##*/}-${head:0:12}.md"
 if [ ! -f "$review" ]; then
   echo "REFUSED: no adversarial review at $review - run review.sh brief and have a different model attack this head" >&2
@@ -231,4 +268,7 @@ if [ "${FILE_PR_DRY:-0}" = "1" ]; then
   printf '\n'
   exit 0
 fi
+# What was filed, kept so verify-filed-pr.sh can compare GitHub's copy to it.
+mkdir -p "$home/filed"
+cp "$bodyfile" "$home/filed/${repo%%/*}-${repo##*/}-$head.md"
 gh pr create -R "$repo" "${pass[@]}"

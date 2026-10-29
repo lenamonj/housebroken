@@ -44,4 +44,14 @@ bash "$script" apple/swift-http-types "relative URL" --out >/dev/null || fail "-
 [ -f "$HOUSEBROKEN_HOME/prior-art/prior-art-apple-swift-http-types.md" ] ||
   fail "--out did not write under HOUSEBROKEN_HOME/prior-art"
 
+# a term matching more than one page is partial: --out refuses to save it,
+# --partial saves it marked as such
+saved="$HOUSEBROKEN_HOME/prior-art/prior-art-fastapi-typer.md"
+out=$(bash "$script" fastapi/typer completion --out 2>&1); rc=$?
+[ "$rc" -eq 1 ] || fail "a partial printout saved with --out exited $rc, expected 1"
+printf '%s' "$out" | grep -qE "showing 10 of [0-9]+ issues for 'completion'" || fail "the truncation was not printed: $out"
+[ ! -f "$saved" ] || fail "a partial printout was saved without --partial"
+bash "$script" fastapi/typer completion --out --partial >/dev/null 2>&1 || fail "--partial did not save"
+grep -q "saved with --partial" "$saved" || fail "the saved partial printout is not marked"
+
 echo "PASS $name"

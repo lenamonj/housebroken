@@ -31,7 +31,7 @@ printf '%s' "$out" | grep -q "REFUSED: no prior art" || fail "missing prior art 
 
 # satisfy gate one so the later gates are what is left
 mkdir -p "$HOUSEBROKEN_HOME/prior-art"
-echo "## Prior art: octocat/Hello-World" > "$HOUSEBROKEN_HOME/prior-art/prior-art-octocat-Hello-World.md"
+printf '## Prior art: octocat/Hello-World\n\n### x.c\n\n### README\n' > "$HOUSEBROKEN_HOME/prior-art/prior-art-octocat-Hello-World.md"
 
 # gate two: no policy printout, then a ban, then a disclosure requirement the body ignores
 policyfile="$HOUSEBROKEN_HOME/policy/policy-octocat-Hello-World.md"
@@ -114,6 +114,28 @@ review sonnet "POST AS IS"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 0 ] || fail "a reviewed clean dry run exited $rc, expected 0: $out"
 printf '%s' "$out" | grep -q "DRY RUN, not filed" || fail "clean dry run did not print the command"
+
+# prior art run for another change does not cover this one
+art="$HOUSEBROKEN_HOME/prior-art/prior-art-octocat-Hello-World.md"
+cp "$art" "$art.keep"
+printf '## Prior art: octocat/Hello-World\n\n### foo\n' > "$art"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "never searched files this branch changes: src/x.c" || fail "prior art for other terms cleared the filing: $out"
+mv "$art.keep" "$art"
+
+# three open pull requests on the repository, or one filed under ten minutes
+# ago, stop the filing; gh is wrapped so pr list answers from STUB_PRS
+realgh=$(command -v gh)
+mkdir -p "$HOUSEBROKEN_HOME/bin"
+# shellcheck disable=SC2016  # the stub's own $* and $@, written literally
+printf '#!/bin/bash\ncase "$*" in "pr list"*) printf "%%s\\n" "$STUB_PRS" | jq "[.[].createdAt] | sort" ;; *) exec "%s" "$@" ;; esac\n' "$realgh" > "$HOUSEBROKEN_HOME/bin/gh"
+chmod +x "$HOUSEBROKEN_HOME/bin/gh"
+old='{"createdAt":"2026-01-01T00:00:00Z"}'
+recent="{\"createdAt\":\"$(date -u -d '-3 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-3M +%Y-%m-%dT%H:%M:%SZ)\"}"
+capped() { PATH="$HOUSEBROKEN_HOME/bin:$PATH" STUB_PRS="$1" bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1; }
+capped "[$old,$old,$old]" | grep -q "three is the most" || fail "a fourth open pull request was not refused"
+capped "[$old,$recent]" | grep -q "wait until ten minutes" || fail "a filing three minutes after the last was not refused"
+capped "[$old,$old]" | grep -q "DRY RUN, not filed" || fail "two old open pull requests stopped the filing"
 
 # the branch was checked against a different base from the one it is filed into
 # (Tencent/MMKV takes pull requests on dev; a branch checked against master

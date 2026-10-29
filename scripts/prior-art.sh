@@ -31,14 +31,16 @@ set -u
 
 usage() {
   cat <<'EOF'
-usage: prior-art.sh owner/repo <term>... [--out]
+usage: prior-art.sh owner/repo <term>... [--out [--partial]]
        prior-art.sh --help
 
   owner/repo  the upstream repository to search
   <term>      a symbol, phrase or file path; a term with a slash or a dot is
               also treated as a path: its commit history is scanned and
               every open PR that changes it is listed
-  --out       save the printout under $HOUSEBROKEN_HOME/prior-art/
+  --out       save the printout under $HOUSEBROKEN_HOME/prior-art/; a printout
+              whose searches matched more than they returned is not saved
+  --partial   save a partial printout anyway, marked as such
 
 environment:
   HOUSEBROKEN_HOME  work directory, default $HOME/.housebroken
@@ -54,10 +56,12 @@ command -v jq >/dev/null 2>&1 || { echo "prior-art.sh: jq is not on PATH" >&2; e
 
 repo=""
 out=0
+accept_partial=0
 terms=()
 for arg in "$@"; do
   case "$arg" in
     --out) out=1 ;;
+    --partial) accept_partial=1 ;;
     --*) usage >&2; echo "prior-art.sh: unknown option $arg" >&2; exit 1 ;;
     */*) if [ -z "$repo" ]; then repo="$arg"; else terms+=("$arg"); fi ;;
     *) if [ -z "$repo" ]; then usage >&2; exit 1; fi
@@ -70,6 +74,8 @@ fi
 
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 calls=0
+partial=0
+notes=""
 items=0
 tmp=$(mktemp) || { echo "prior-art.sh: cannot create temp file" >&2; exit 1; }
 row=$(mktemp) || { echo "prior-art.sh: cannot create temp file" >&2; exit 1; }
@@ -84,10 +90,20 @@ last_word() {
   printf '%s' "$body" | tr '\n\r\t|' '    ' | tr -s ' ' | cut -c1-160
 }
 
-emit() {
-  local kind num state date author title word=""
+emit() { # label for the counts: issues or pull requests
+  local label="$1" kind num state date author title word=""
   while IFS=$'\t' read -r kind num state date author title; do
     [ -n "$num" ] || continue
+    # The search's own count against the rows it returned: a term matching more
+    # than one page is a printout that has not read everything.
+    if [ "$kind" = "TOTAL" ]; then
+      if [ "$num" -gt "$state" ]; then
+        notes="${notes}showing $state of $num $label for '$term'; narrow the term
+"
+        partial=1
+      fi
+      continue
+    fi
     word=""
     if [ "$state" = "closed" ]; then word=$(last_word "$num" "$author"); calls=$((calls+1)); fi
     printf '| %s | #%s | %s | %s | %s | %s | %s |\n' \
@@ -106,20 +122,22 @@ for term in "${terms[@]}"; do
   } >>"$tmp"
 
   gh api -X GET search/issues -f q="repo:$repo type:issue \"$term\"" -F per_page=10 \
-    --jq '.items[] | ["issue", (.number|tostring), .state, ((.closed_at // .created_at)[0:10]),
-          .user.login, (.title|gsub("[|]";"/")|gsub("[\n\r\t]";" "))] | @tsv' >"$row" ||
+    --jq '(["TOTAL", (.total_count|tostring), (.items|length|tostring)] | @tsv),
+          (.items[] | ["issue", (.number|tostring), .state, ((.closed_at // .created_at)[0:10]),
+          .user.login, (.title|gsub("[|]";"/")|gsub("[\n\r\t]";" "))] | @tsv)' >"$row" ||
     { echo "prior-art.sh: issue search failed for $repo term '$term'" >&2; exit 1; }
   calls=$((calls+1))
-  emit
+  emit issues
 
   gh api -X GET search/issues -f q="repo:$repo type:pr \"$term\"" -F per_page=10 \
-    --jq '.items[] | ["PR", (.number|tostring),
+    --jq '(["TOTAL", (.total_count|tostring), (.items|length|tostring)] | @tsv),
+          (.items[] | ["PR", (.number|tostring),
           (if .pull_request.merged_at then "merged" else .state end),
           ((.pull_request.merged_at // .closed_at // .created_at)[0:10]),
-          .user.login, (.title|gsub("[|]";"/")|gsub("[\n\r\t]";" "))] | @tsv' >"$row" ||
+          .user.login, (.title|gsub("[|]";"/")|gsub("[\n\r\t]";" "))] | @tsv)' >"$row" ||
     { echo "prior-art.sh: PR search failed for $repo term '$term'" >&2; exit 1; }
   calls=$((calls+1))
-  emit
+  emit "pull requests"
 
   # a path term also gets the PRs whose merge commits touched that path
   case "$term" in
@@ -146,6 +164,13 @@ for term in "${terms[@]}"; do
                  ($p.title|gsub("[|]";"/")|gsub("[\n\r\t]";" ")), .] | @tsv' >"$openfiles" ||
           { echo "prior-art.sh: open PR listing failed for $repo" >&2; exit 1; }
         calls=$((calls+1))
+        open_total=$(gh api -X GET search/issues -f q="repo:$repo is:pr is:open" --jq .total_count 2>/dev/null) || open_total=""
+        calls=$((calls+1))
+        if [ -z "$open_total" ] || [ "$open_total" -gt 200 ]; then
+          notes="${notes}OPEN PR LIST INCOMPLETE: 200 of ${open_total:-an unknown number of} open pull requests read; one changing these paths may be missing
+"
+          partial=1
+        fi
         # GitHub returns at most 100 files per PR here; a larger PR is read in full
         awk -F'\t' '$5 == "MORE"' "$openfiles" | while IFS=$'\t' read -r num date author title _; do
           gh api --paginate "repos/$repo/pulls/$num/files?per_page=100" --jq '.[].filename' |
@@ -167,8 +192,16 @@ done
 printf '\n%d items across %d terms. Read every closed item before filing; this script lists, it does not judge.\n' \
   "$items" "${#terms[@]}" >>"$tmp"
 printf 'gh calls: %d\n' "$calls" >>"$tmp"
+if [ "$partial" -eq 1 ]; then
+  printf '\nPARTIAL: these searches returned less than they matched:\n%s' "$notes" >>"$tmp"
+  [ "$accept_partial" -eq 1 ] && printf 'saved with --partial: the rest was not read\n' >>"$tmp"
+fi
 
 cat "$tmp"
+if [ "$out" -eq 1 ] && [ "$partial" -eq 1 ] && [ "$accept_partial" -eq 0 ]; then
+  echo "prior-art.sh: not saved - the printout is partial; narrow the terms, or pass --partial to save it as read" >&2
+  exit 1
+fi
 if [ "$out" -eq 1 ]; then
   dir="$home/prior-art"
   mkdir -p "$dir" || { echo "prior-art.sh: cannot create $dir" >&2; exit 1; }
