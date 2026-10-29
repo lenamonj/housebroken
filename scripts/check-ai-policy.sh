@@ -18,7 +18,9 @@
 #   --branch <name>  read this branch instead of the default; some projects
 #                    keep the policy on a development branch
 #   --out            also save the printout to $HOUSEBROKEN_HOME/policy/
-#                    policy-<owner>-<repo>.md, which file-pr.sh reads
+#                    policy-<owner>-<repo>.md, which file-pr.sh reads, and
+#                    the pull request template to template-<owner>-<repo>.md,
+#                    whose lines file-pr.sh leaves out of the body's word count
 #   --accept-truncated  read a repository whose tree GitHub truncates (over
 #                    100,000 entries) after its policy was read by hand; the
 #                    printout records that it was
@@ -77,7 +79,9 @@ done
 command -v gh >/dev/null 2>&1 || { echo "check-ai-policy.sh: gh is not on PATH" >&2; exit 1; }
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 errfile=$(mktemp)
-trap 'rm -f "$errfile"' EXIT
+tmpl_repo=$(mktemp)
+tmpl_org=$(mktemp)
+trap 'rm -f "$errfile" "$tmpl_repo" "$tmpl_org"' EXIT
 
 # Print every hit in one repository at one ref; sets found, ban, disclose,
 # and counts what GitHub would not give us in unread and truncated, so a
@@ -110,6 +114,10 @@ scan() {
       continue
     fi
     body=$(printf '%s' "$body" | base64 -d 2>/dev/null)
+    if printf '%s' "$f" | grep -qiE '(^|/)pull_request_template'; then
+      printf '%s
+' "$body" >> "$tmplout"
+    fi
     hits=$(printf '%s' "$body" | grep -nE "$PATTERN" | head -20)
     if [ -n "$hits" ]; then
       found=1
@@ -126,6 +134,7 @@ scan() {
 status=0
 for repo in "${repos[@]}"; do
   found=0; ban=0; disclose=0; unread=0; truncated=0
+  : > "$tmpl_repo"; : > "$tmpl_org"
   report=$(
     echo "## AI policy: $repo"
     echo "read: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -138,6 +147,7 @@ for repo in "${repos[@]}"; do
       exit 1
     fi
     echo "branch: $branch"
+    tmplout="$tmpl_repo"
     scan "$repo" "$branch" ""
     org="${repo%%/*}"
     # A missing .github repository is a 404; any other failure is a policy we did not read.
@@ -147,6 +157,7 @@ for repo in "${repos[@]}"; do
     fi
     if [ -n "$org_branch" ]; then
       echo "org repo: $org/.github ($org_branch)"
+      tmplout="$tmpl_org"
       scan "$org/.github" "$org_branch" "$org/.github: "
     fi
     if [ "$truncated" -eq 1 ] && [ "$accept_truncated" -eq 1 ]; then
@@ -173,6 +184,13 @@ for repo in "${repos[@]}"; do
     mkdir -p "$home/policy"
     printf '%s\n' "$report" > "$home/policy/policy-${repo%%/*}-${repo##*/}.md"
     echo "saved: $home/policy/policy-${repo%%/*}-${repo##*/}.md"
+    # The pull request template, the repository's own or else its
+    # organization's, is what file-pr.sh leaves out of the body's word count.
+    template="$home/policy/template-${repo%%/*}-${repo##*/}.md"
+    if [ -s "$tmpl_repo" ]; then cp "$tmpl_repo" "$template"
+    elif [ -s "$tmpl_org" ]; then cp "$tmpl_org" "$template"
+    else rm -f "$template"
+    fi
   fi
 done
 exit "$status"

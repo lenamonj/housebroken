@@ -158,9 +158,17 @@ if [ "$bodyfile" = "-" ] || [ ! -f "$bodyfile" ]; then
 fi
 check_text "body file $bodyfile" "$(cat "$bodyfile")"
 check_text "--title" "$title"
-words=$(wc -w < "$bodyfile" | tr -d ' ')
+# The project's own template text is kept verbatim and is not ours to count:
+# HTML comments and every line the saved template carries, a ticked box read
+# as its unticked line, are left out before the words are counted.
+template="$home/policy/template-${repo%%/*}-${repo##*/}.md"
+[ -f "$template" ] || template=/dev/null
+words=$(perl -0pe 's/<!--.*?-->//gs' "$bodyfile" | awk -v T="$template" '
+  function norm(s) { gsub(/\[[xX]\]/, "[ ]", s); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+  BEGIN { while ((getline l < T) > 0) { l = norm(l); if (l != "") t[l] = 1 } }
+  !(norm($0) in t)' | wc -w | tr -d ' ')
 if [ "$words" -gt 120 ]; then
-  echo "REFUSED: the body is $words words - say what was wrong, what the change does and how it was verified in 120 or fewer" >&2
+  echo "REFUSED: the body is $words words outside the project's template - say what was wrong, what the change does and how it was verified in 120 or fewer" >&2
   exit 2
 fi
 if [ "$policy_result" = "DISCLOSE" ] && ! grep -qiE '\bAI\b|LLM|Claude|Copilot|ChatGPT|language model|assist' "$bodyfile"; then

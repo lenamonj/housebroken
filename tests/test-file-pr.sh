@@ -130,6 +130,23 @@ out=$(bash "$script" octocat/Hello-World --title t --body-file "$long" 2>&1); rc
 [ "$rc" -eq 2 ] || fail "a 121-word body exited $rc, expected 2"
 printf '%s' "$out" | grep -q "REFUSED: the body is 121 words" || fail "a long body printed no refusal: $out"
 
+# the project's template is not counted: a 300-word template kept verbatim, a
+# ticked box and an HTML comment, plus a 100-word body of ours, files; 121
+# words of ours beside the same template are still refused
+template="$HOUSEBROKEN_HOME/policy/template-octocat-Hello-World.md"
+{ printf '<!-- Licensed to the Apache Software Foundation under one or more\ncontributor license agreements -->\n'
+  for _ in $(seq 1 30); do printf 'Before you push a pull request, review this list of ten words.\n'; done
+  printf -- '- [ ] Read the contributing guidelines.\n'; } > "$template"
+templated="$HOUSEBROKEN_HOME/templated.md"
+{ cat "$template"; printf -- '- [x] Read the contributing guidelines.\n'
+  for _ in $(seq 1 100); do printf 'word '; done; printf '\n'; } > "$templated"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$templated" 2>&1)
+printf '%s' "$out" | grep -q "REFUSED: the body is" && fail "template text was counted against the body: $out"
+{ cat "$template"; cat "$long"; printf '\n'; } > "$templated"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$templated" 2>&1)
+printf '%s' "$out" | grep -q "REFUSED: the body is 121 words outside the project's template" || fail "121 words of ours beside a template were not refused: $out"
+rm -f "$template"
+
 # the body file may be named either way gh reads it
 bash "$script" octocat/Hello-World --title t -F "$clean" >/dev/null 2>&1 || fail "-F FILE was refused"
 bash "$script" octocat/Hello-World --title t "--body-file=$clean" >/dev/null 2>&1 || fail "--body-file=FILE was refused"

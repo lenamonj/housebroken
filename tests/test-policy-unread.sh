@@ -95,4 +95,14 @@ printf 'prior art\n' > "$HOUSEBROKEN_HOME/prior-art/prior-art-o-r.md"
 msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file /dev/null 2>&1)
 printf '%s\n' "$msg" | grep -q "UNREAD" || fail "file-pr.sh did not refuse an UNREAD printout: $msg"
 
+# --out saves the pull request template file-pr.sh leaves out of the word count
+printf 'CONTRIBUTING.md\n.github/PULL_REQUEST_TEMPLATE.md\n' > "$root/tree.txt"
+mkdir -p "$root/files/.github"
+printf -- '- [ ] Read the guide.\n' > "$root/files/.github/PULL_REQUEST_TEMPLATE.md"
+bash "$script" --out o/r >/dev/null
+grep -q 'Read the guide' "$HOUSEBROKEN_HOME/policy/template-o-r.md" || fail "--out did not save the pull request template"
+printf 'CONTRIBUTING.md\n' > "$root/tree.txt"
+bash "$script" --out o/r >/dev/null
+[ ! -f "$HOUSEBROKEN_HOME/policy/template-o-r.md" ] || fail "a template removed upstream was kept"
+
 echo "PASS $name"
