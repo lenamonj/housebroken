@@ -43,7 +43,10 @@ report it in one line and do not proceed to the next step.
    patch is worth. DISCLOSE means the body says, in one truthful sentence
    and in the template's own words where it has them, that AI was used and
    which tool. MENTION means read the lines and decide which of the two it
-   is. The printout is required by step 9. If the project accepts pull
+   is. UNREAD means GitHub did not give every policy file: wait and run it
+   again, never file on it; a repository too large for GitHub to list in
+   full reads UNREAD until you have read its policy by hand and passed
+   `--accept-truncated`. The printout is required by step 9. If the project accepts pull
    requests only for labelled issues, the deliverable is an issue with the
    fix offered, not a pull request. `housebroken outside owner/repo` counts
    outside contributors merged in the last 120 days. Zero means the project
@@ -56,8 +59,11 @@ report it in one line and do not proceed to the next step.
    every closed item. Read every closed item. An open pull request that fixes
    the same thing means you stop and say so. A closed issue that ruled the
    behavior intended means you stop and say so; you never argue with a
-   ruling. The printout is required by step 9; write it before the branch
-   exists.
+   ruling. A term that matches more than one page is printed as "showing N
+   of M" and the printout is not saved: narrow the term, or pass `--partial`
+   when you have read enough to say so. The printout is required by step 9;
+   write it before the branch exists, with every file the patch changes
+   among its terms, because the filing gate checks them against the branch.
 
 3. **Is it a fix or an opinion?**
    A change that rejects an input the project tolerated, changes a default,
@@ -136,7 +142,10 @@ report it in one line and do not proceed to the next step.
    the body and re-measure every line it lists, now, against the exact
    revision that sentence names. A claim that names its revision can still
    be wrong about it, which is why the listing is the whole gate: the
-   re-derivation is yours to do.
+   re-derivation is yours to do. Run `housebroken refs owner/repo <file>
+   --clone <clone>` too: every issue number, link, test name, file and
+   commit the text names is looked up, and one that does not exist stops
+   the filing.
 
 7. **Know the paperwork.**
    Before the first pull request to an organization, find its agreement: CLA,
@@ -157,11 +166,17 @@ report it in one line and do not proceed to the next step.
    whose mode disagrees with its own siblings, a file the branch adds that the
    repository ignores, a commit carrying a tool trailer, a session link or a
    tool identity, a sign-off that names a username, a branch that is not on
-   top of its base, any comment added to code (`--asked <URL>` when the
-   maintainer asked for it), a warning suppression the branch adds until
-   `--warning-log` shows each suppressed warning firing, and reflection added
-   to a .NET project that declares AOT or trim support until `--aot-log`
-   shows an AOT publish you ran the changed path under; it prints every absolute claim your added prose
+   top of its base, a base that is not a remote-tracking ref or that the
+   upstream has moved past (fetch first), any comment added to code
+   (`--asked <URL>` when the maintainer asked for it), a warning suppression
+   that names no warning or whose warning `--warning-log` does not show
+   firing, reflection added to a .NET project that declares AOT or trim
+   support until `--aot-log` shows an AOT publish of that project you ran the
+   changed path under, a personal path or credential in an added line, a
+   lockfile, vendored, generated or binary file (`--allow <path>` when the
+   change is about it), an agent's working file such as an added CLAUDE.md
+   or `.claude/`, and a file rewritten for its line endings or whitespace;
+   it prints every absolute claim your added prose
    makes so you can falsify each one against the code, and it stamps the
    head it passed, which the filing requires. Then the adversarial review:
    `housebroken review brief --author <your model> --repo owner/repo --clone <clone> --text <body file>`
@@ -180,26 +195,34 @@ report it in one line and do not proceed to the next step.
    the changed block the way the strongest engineer in that language would,
    and a smaller or clearer version is a finding you fix before filing. It
    writes its report where the brief says, with its own evidence behind
-   every finding. Every fix it asks for is a new head,
+   every finding, each on its own line as "N. SEVERITY: title", and a
+   `skipped:` header line that reads `none` or lists what it did not attack.
+   The gate refuses a blind fix that is not a diff, a POST AS IS over a
+   BLOCKING or SHOULD FIX line, and a POST AS IS over skipped items.
+   Every fix it asks for is a new head,
    and a new head is reviewed again. When it passes, re-read every claim it
    did not re-derive itself: a passed review is not a proof. Then
    `housebroken file owner/repo --title ... --body-file ...`, the only way a
    pull request is opened. Never run the pull request creation command
    directly. The gate refuses when the prior-art printout for that repository
-   is missing or older than a day, when the policy printout is missing, older
-   than a day or reads BAN, when the policy reads DISCLOSE and the body does
-   not disclose, when the body carries a footer, a trailer or a dash
-   character or runs past 120 words, when `housebroken branch` has not
-   stamped the exact head against the branch it is filed into (`--base`
-   to both when the project takes pull requests on a branch other than its
-   default), or when there is no POST AS IS review of the exact head and
-   body being filed.
+   is missing, older than a day or never searched a file the branch changes,
+   when the policy printout is missing, older than a day or reads BAN or
+   UNREAD, when the policy reads DISCLOSE and the body does not disclose,
+   when the body carries a footer, a trailer or a dash character, runs past
+   120 words of its own beside the project's template, or names an issue,
+   link, test, file or commit that does not exist, when `housebroken branch`
+   has not stamped the exact head against the branch it is filed into
+   (`--base` to both when the project takes pull requests on a branch other
+   than its default), when the upstream has since changed a file the branch
+   changes, when there is no POST AS IS review of the exact head and body
+   being filed, when you already have three open pull requests on the
+   repository, and when your last one there is under ten minutes old.
    A refusal is a result; fix the cause.
 
 10. **Watch it land.**
     `housebroken verify owner/repo PR` re-derives from GitHub that the head is
-    the intended commit, the diff is exactly the intended files, and CI
-    settled. `housebroken sweep` lists every open pull request where the ball
+    the intended commit, the files are the ones the branch stamp lists, the
+    body is the one that was filed, and CI settled. `housebroken sweep` lists every open pull request where the ball
     is in your court, and prints a `TIDY` line for every merged or closed
     pull request whose fork branch still exists, on every run until
     `housebroken hygiene` has deleted it. `housebroken inbox` is the first thing a session does
@@ -237,7 +260,8 @@ report it in one line and do not proceed to the next step.
 
 11. **Clean up.**
     `housebroken hygiene` deletes the fork branch of every merged or closed
-    pull request and lists forks with no pull request left; delete those when
+    pull request, unless an open one still uses it, and lists forks with no
+    pull request left; delete those when
     the work is over. No planning file, agent directory, journal or build
     output ever enters a diff.
 
