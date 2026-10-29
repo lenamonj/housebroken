@@ -197,6 +197,27 @@ case "$checked" in
   *) echo "REFUSED: branch-check.sh measured this head against $checked, but it is filed into $target - rerun branch-check.sh --base <remote>/$target" >&2
      exit 2 ;;
 esac
+# The upstream may have moved since the check. A move that touches none of the
+# branch's files is reported; one that touches them means the branch and its
+# review were measured against code that is no longer there.
+stamped=$(sed -n 's/^base: //p' "$home/branch-checks/$head" | tr -d '\r')
+upstream=$(gh api "repos/$repo/branches/$target" --jq .commit.sha 2>/dev/null | tr -d '\r')
+[ -n "$upstream" ] || { echo "REFUSED: cannot read $target of $repo to confirm the base is current" >&2; exit 2; }
+if [ "$stamped" != "$upstream" ]; then
+  if ! moved=$(gh api "repos/$repo/compare/$stamped...$upstream" --jq '.files[].filename' 2>/dev/null); then
+    echo "REFUSED: the checked base ${stamped:0:12} is not on $repo $target - fetch, rebase and rerun branch-check.sh" >&2
+    exit 2
+  fi
+  ours=$(sed -n 's/^file: //p' "$home/branch-checks/$head" | tr -d '\r')
+  [ -n "$ours" ] || { echo "REFUSED: the branch-check stamp for head ${head:0:12} lists no files - rerun branch-check.sh" >&2; exit 2; }
+  overlap=$(printf '%s\n' "$moved" | grep -Fx -f <(printf '%s\n' "$ours"))
+  if [ -n "$overlap" ]; then
+    echo "REFUSED: $target moved since branch-check (${stamped:0:12} to ${upstream:0:12}) and changed files this branch changes - fetch, rebase, rerun branch-check.sh and the review:" >&2
+    printf '%s\n' "$overlap" | sed 's/^/    /' >&2
+    exit 2
+  fi
+  echo "note: $target moved since branch-check (${stamped:0:12} to ${upstream:0:12}); none of its new commits touch this branch's files" >&2
+fi
 review="$home/reviews/review-${repo%%/*}-${repo##*/}-${head:0:12}.md"
 if [ ! -f "$review" ]; then
   echo "REFUSED: no adversarial review at $review - run review.sh brief and have a different model attack this head" >&2

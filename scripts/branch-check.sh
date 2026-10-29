@@ -97,6 +97,21 @@ if [ -n "$dirty" ]; then
   printf '%s\n' "$dirty" | sed 's/^/    /'
 fi
 
+# A base nobody fetched is the upstream as it was, not as it is: ask the remote.
+full=$(git rev-parse --symbolic-full-name "$base" 2>/dev/null)
+case "$full" in
+  refs/remotes/*/*)
+    rest="${full#refs/remotes/}"; remote="${rest%%/*}"; rbranch="${rest#*/}"
+    live=$(git ls-remote "$remote" "refs/heads/$rbranch" 2>/dev/null | awk '{print $1}')
+    if [ -z "$live" ]; then
+      block "cannot read $rbranch from $remote, so whether $base is current is unknown"
+    elif [ "$live" != "$(git rev-parse "$base")" ]; then
+      block "the base moved: $remote has $rbranch at ${live:0:12}, $base is $(git rev-parse --short=12 "$base") - fetch, rebase and rerun"
+    fi
+    ;;
+  *) block "base $base is not a remote-tracking ref, so whether it is current cannot be checked - pass --base <remote>/<branch>" ;;
+esac
+
 if ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
   block "HEAD is not on top of $base - rebase before filing"
 fi
@@ -235,9 +250,11 @@ if [ "$blocked" -ne 0 ]; then
   echo "branch-check: refused. Fix the causes above; a refusal is a result."
   exit 1
 fi
-# The stamp file-pr.sh reads: this head passed, against this base, at this time.
+# The stamp file-pr.sh reads: this head passed, against this base, at this
+# time, changing these files.
 head=$(git rev-parse HEAD)
 mkdir -p "$home/branch-checks"
 printf 'head: %s\nbase: %s\nbase-ref: %s\nchecked: %s\n' "$head" "$(git rev-parse "$base")" "$base" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$home/branch-checks/$head"
+printf '%s\n' "$files" | sed '/^$/d; s/^/file: /' >> "$home/branch-checks/$head"
 echo
 echo "branch-check: nothing mechanical blocks this branch."

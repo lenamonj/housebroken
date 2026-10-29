@@ -77,7 +77,11 @@ policy "CLEAN (no policy file names AI)"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "no branch stamp exited $rc, expected 2"
 printf '%s' "$out" | grep -q "REFUSED: branch-check.sh has not passed head" || fail "a missing branch stamp printed no refusal"
-stamp() { mkdir -p "$HOUSEBROKEN_HOME/branch-checks"; printf 'head: %s\nbase-ref: %s\n' "$1" "${2:-origin/master}" > "$HOUSEBROKEN_HOME/branch-checks/$1"; }
+# octocat/Hello-World's branches stand still: master and test are the live upstream
+master_sha=7fd1a60b01f91b314f59955a4e4d4e80d8edf11d
+test_sha=b3cbd5bbd7e81436d2eee04537ea2b4c0cad4cdf
+stamp() { mkdir -p "$HOUSEBROKEN_HOME/branch-checks"
+  printf 'head: %s\nbase: %s\nbase-ref: %s\nfile: %s\n' "$1" "${3:-$master_sha}" "${2:-origin/master}" "${4:-src/x.c}" > "$HOUSEBROKEN_HOME/branch-checks/$1"; }
 stamp "$head"
 
 # gate five: no adversarial review
@@ -114,13 +118,28 @@ printf '%s' "$out" | grep -q "DRY RUN, not filed" || fail "clean dry run did not
 # the branch was checked against a different base from the one it is filed into
 # (Tencent/MMKV takes pull requests on dev; a branch checked against master
 # would have had every diff gate read the wrong diff)
-out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" --base dev 2>&1); rc=$?
-[ "$rc" -eq 2 ] || fail "a branch checked against master and filed into dev exited $rc, expected 2"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" --base test 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a branch checked against master and filed into test exited $rc, expected 2"
 printf '%s' "$out" | grep -q "REFUSED: branch-check.sh measured this head against origin/master" || fail "a base mismatch printed no refusal: $out"
-stamp "$head" origin/dev
-bash "$script" octocat/Hello-World --title t --body-file "$clean" --base dev >/dev/null 2>&1 || fail "a branch checked against dev and filed into dev was refused"
+stamp "$head" origin/test "$test_sha"
+bash "$script" octocat/Hello-World --title t --body-file "$clean" --base test >/dev/null 2>&1 || fail "a branch checked against test and filed into test was refused"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
-[ "$rc" -eq 2 ] || fail "a branch checked against dev and filed into the default branch exited $rc, expected 2"
+[ "$rc" -eq 2 ] || fail "a branch checked against test and filed into the default branch exited $rc, expected 2"
+
+# the upstream moved since the check: two commits on master after 553c207
+# changed README, so a branch changing README is refused and one changing
+# src/x.c is only told; a checked base that is not upstream at all is refused
+stamp "$head" origin/master 553c2077f0edc3d5dc5d17262f6aa498e69d6f8e README
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a base moved under the branch's own file exited $rc, expected 2"
+printf '%s' "$out" | grep -q "changed files this branch changes" || fail "a moved base printed no refusal: $out"
+stamp "$head" origin/master 553c2077f0edc3d5dc5d17262f6aa498e69d6f8e src/x.c
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "none of its new commits touch" || fail "a base moved elsewhere was not reported: $out"
+printf '%s' "$out" | grep -q "REFUSED" && fail "a base moved elsewhere was refused: $out"
+stamp "$head" origin/master 0000000000000000000000000000000000000001
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "is not on octocat/Hello-World master" || fail "a base unknown upstream was not refused: $out"
 stamp "$head"
 
 # a body over 120 words is refused

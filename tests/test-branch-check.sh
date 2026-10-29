@@ -17,6 +17,15 @@ HOUSEBROKEN_HOME="$root/hbhome"
 export HOUSEBROKEN_HOME
 G="git -c user.email=t@example.com -c user.name=t -c core.filemode=true -c core.autocrlf=false"
 
+# The base is a real remote-tracking ref, moved by pushing to a bare upstream
+# beside the clone and fetching, so the live-base check has a remote to ask.
+setbase() {
+  local up; up="$(pwd).up.git"
+  [ -d "$up" ] || git init -q --bare "$up"
+  git remote get-url origin >/dev/null 2>&1 || git remote add origin "$up"
+  git push -q -f origin "$1:refs/heads/main" && git fetch -q origin
+}
+
 mkdir -p "$repo/src" || exit 1
 (
   cd "$repo" || exit 1
@@ -26,7 +35,7 @@ mkdir -p "$repo/src" || exit 1
   printf 'export const b = 2;\n' > src/b.test.ts
   printf '# readme\n' > README.md
   $G add -A && $G commit -q -m base
-  $G branch -f origin/main main
+  setbase main
   $G checkout -q -b feature
   printf 'export const c = 3;\n' > src/c.test.ts
   $G add -A && $G commit -q -m "add c"
@@ -68,7 +77,7 @@ mkdir -p "$legacy/src" || exit 1
   printf 'export const b = 2;\n' > src/b.test.ts
   printf 'export const x = 1;\n' > src/x.test.ts
   $G add -A && $G update-index --chmod=+x src/x.test.ts && $G commit -q -m base
-  $G branch -f origin/main main
+  setbase main
   $G checkout -q -b feature
   printf 'export const x = 2;\n' > src/x.test.ts
   $G add -A && $G update-index --chmod=+x src/x.test.ts && $G commit -q -m "edit x"
@@ -99,7 +108,7 @@ fires "absolute claims" || { echo "FAIL $name: absolute claim not reported"; exi
 run >/dev/null 2>&1 || { echo "FAIL $name: an absolute claim must warn, not block"; exit 1; }
 
 # 6. a branch that is not on top of its base
-(cd "$repo" && $G checkout -q main && printf 'moved\n' >> README.md && $G add -A && $G commit -q -m "base moves" && $G branch -f origin/main main && $G checkout -q feature)
+(cd "$repo" && $G checkout -q main && printf 'moved\n' >> README.md && $G add -A && $G commit -q -m "base moves" && setbase main && $G checkout -q feature)
 fires "not on top of" || { echo "FAIL $name: stale base not refused"; exit 1; }
 
 # 7. a tool trailer nobody asked for, and its sabotage
@@ -158,7 +167,7 @@ fires "adds comments" && { echo "FAIL $name: comment refusal survived removing t
 
 # 12. the go-nvml shape: a file the project already tracks under an ignored name is not build output
 (cd "$repo" && printf 'dl\n' >> .gitignore && mkdir -p pkg/dl && printf 'package dl\n' > pkg/dl/dl.go &&
-  $G add .gitignore && $G add -f pkg/dl/dl.go && $G commit -q -m "tracked under an ignored name" && $G branch -f origin/main HEAD &&
+  $G add .gitignore && $G add -f pkg/dl/dl.go && $G commit -q -m "tracked under an ignored name" && setbase HEAD &&
   printf 'package dl // edited\n' > pkg/dl/dl.go && $G add -f pkg/dl/dl.go && $G commit -q -m "edit it")
 fires "gitignore excludes it" && { echo "FAIL $name: a tracked file under an ignored name was refused"; exit 1; }
 
@@ -192,5 +201,18 @@ bash "$script" "$repo" --base origin/main --aot-log "$root/quiet.log" 2>&1 | gre
 printf 'Generating native code\n  R -> /tmp/publish/R\n' > "$root/aot.log"
 bash "$script" "$repo" --base origin/main --aot-log "$root/aot.log" 2>&1 | grep -q "adds reflection" \
   && { echo "FAIL $name: an AOT publish log did not lift the reflection refusal"; exit 1; }
+
+# 15. The upstream moved and the clone never fetched: the local base is stale.
+fires "the base moved" && { echo "FAIL $name: a current base was called stale"; exit 1; }
+basesha=$(cd "$repo" && git rev-parse origin/main)
+(cd "$repo" && moved=$(git commit-tree "$basesha^{tree}" -p "$basesha" -m "upstream moves") &&
+  git push -q -f "$(git remote get-url origin)" "$moved:refs/heads/main") || { echo "FAIL $name: could not move the upstream"; exit 1; }
+fires "the base moved" || { echo "FAIL $name: a base the upstream moved past was not refused"; exit 1; }
+(cd "$repo" && git push -q -f "$(git remote get-url origin)" "$basesha:refs/heads/main")
+fires "the base moved" && { echo "FAIL $name: restoring the upstream did not lift the stale-base refusal"; exit 1; }
+# A local branch or a SHA cannot be checked against anything, so it is refused.
+(cd "$repo" && git branch -q -f localbase origin/main)
+bash "$script" "$repo" --base localbase 2>&1 | grep -q "is not a remote-tracking ref" \
+  || { echo "FAIL $name: a local-branch base was not refused"; exit 1; }
 
 echo "PASS $name"
