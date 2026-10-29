@@ -198,7 +198,7 @@ EOF
 5. Scope: every changed line is needed for what was asked, nothing is unrequested, no comment appears where the surrounding code has none, and documentation, README and CHANGELOG that describe the changed behaviour change with it.
 6. Prior art: nothing duplicates an open pull request or argues with a ruling in a closed issue.
 7. The text: it leads with the fact; no verdict on the reviewer, no thanks, apology or offer of help; a reply runs one to three sentences and a body stays under 120 words; no footer, trailer or typographic dash; every sentence is true as literally worded.
-8. Anything else that would embarrass the author in front of this maintainer.
+8. Anything else that would embarrass the author in front of this maintainer. When a text is the author's declaration (not-tested and assumptions), rerun every "checked by", and test the assumptions marked unchecked yourself: a false assumption is a finding, and so is one the change rests on that the declaration leaves out.
 EOF
   if [ -n "$clone" ]; then
     cat <<'EOF'

@@ -92,9 +92,13 @@ printf '%s' "$out" | grep -q "REFUSED: no adversarial review" || fail "a missing
 report="$HOUSEBROKEN_HOME/reviews/review-octocat-Hello-World-${head:0:12}.md"
 mkdir -p "$HOUSEBROKEN_HOME/reviews"
 blind="$HOUSEBROKEN_HOME/reviews/blind.diff"
+decl="$HOUSEBROKEN_HOME/declarations/$head.md"
+mkdir -p "$HOUSEBROKEN_HOME/declarations" "$HOUSEBROKEN_HOME/proofs"
+printf 'head: %s\n\nnot-tested:\n- the Windows leg\n\nassumptions:\n- callers pass one byte | if wrong: a split rune | checked by: grep, one call site\n' "$head" > "$decl"
+printf 'head: %s\nproof: red-green\n' "$head" > "$HOUSEBROKEN_HOME/proofs/$head"
 review() { # reviewer verdict
-  printf 'review-of: octocat/Hello-World\nhead: %s\ntext: sha256:%s clean.md\nauthor-model: opus\nreviewer-model: %s\nblind-fix: %s\nskipped: none\nverdict: %s\n' \
-    "$head" "$(sha "$clean")" "$1" "$blind" "$2" > "$report"
+  printf 'review-of: octocat/Hello-World\nhead: %s\ntext: sha256:%s clean.md\ntext: sha256:%s decl.md\nauthor-model: opus\nreviewer-model: %s\nblind-fix: %s\nskipped: none\nverdict: %s\n' \
+    "$head" "$(sha "$clean")" "$(sha "$decl")" "$1" "$blind" "$2" > "$report"
 }
 
 review sonnet "POST AS IS"
@@ -114,6 +118,26 @@ review sonnet "POST AS IS"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 0 ] || fail "a reviewed clean dry run exited $rc, expected 0: $out"
 printf '%s' "$out" | grep -q "DRY RUN, not filed" || fail "clean dry run did not print the command"
+
+# no proof, a declaration that does not pass, or a review that never read the
+# declaration each stop the filing
+mv "$HOUSEBROKEN_HOME/proofs/$head" "$HOUSEBROKEN_HOME/proof.keep"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "REFUSED: no proof for head" || fail "a filing without a proof was not refused: $out"
+mv "$HOUSEBROKEN_HOME/proof.keep" "$HOUSEBROKEN_HOME/proofs/$head"
+cp "$decl" "$decl.keep"
+printf 'head: %s\n\nnot-tested:\n- none\n\nassumptions:\n- x | if wrong: y | checked by: z\n' "$head" > "$decl"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "not-tested: says none" || fail "a declaration saying none was not refused: $out"
+mv "$decl.keep" "$decl"
+printf '\n' >> "$decl"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "DRY RUN" && fail "a declaration edited after the review cleared the filing"
+review sonnet "POST AS IS"
+printf 'head: %s\nproof: none\nreason: docs only\n' "$head" > "$HOUSEBROKEN_HOME/proofs/$head"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "no red-green proof for .*docs only" || fail "a --none proof was not printed: $out"
+printf 'head: %s\nproof: red-green\n' "$head" > "$HOUSEBROKEN_HOME/proofs/$head"
 
 # prior art run for another change does not cover this one
 art="$HOUSEBROKEN_HOME/prior-art/prior-art-octocat-Hello-World.md"

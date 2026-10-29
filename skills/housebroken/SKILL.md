@@ -110,6 +110,13 @@ report it in one line and do not proceed to the next step.
    invariant instead of resetting it, and its grid has a row for every
    order the two are called in, the same value twice and null included. A
    reviewer lists the empty cells otherwise.
+   Then run it through the gate: `housebroken proof <clone> --test '<the
+   command that runs the new test>'` runs the test on the head and again with
+   every changed file that is not a test swapped back to the base, restores
+   the head by hash, and stamps it only when the base arm fails and the head
+   arm passes. `--keep <path>` keeps a fixture the test reads. A change with
+   nothing that can fail first, documentation or a pinned refactor, records
+   `--none '<reason>'`. The filing requires the stamp.
 
 5. **Run their CI, not yours.**
    Run the project's own test target on the fresh clone, and every gate its
@@ -182,7 +189,12 @@ report it in one line and do not proceed to the next step.
    makes so you can falsify each one against the code, and it stamps the
    head it passed, which the filing requires. Then the adversarial review:
    `housebroken review brief --author <your model> --repo owner/repo --clone <clone> --text <body file>`
-   names the reviewer and prints its brief. The reviewer is never the model
+   names the reviewer and prints its brief; first run `housebroken declare
+   <clone>`, fill in what the change was not tested against and every
+   assumption it rests on ("- <assumption> | if wrong: <what breaks> |
+   checked by: <command and result, or unchecked>"), and pass that file to
+   the brief as a second `--text`, so the reviewer attacks it and the review
+   is bound to it. The reviewer is never the model
    that wrote the change: one tier down, Fable to Opus and Opus to Sonnet,
    and never below Sonnet, so Sonnet's work goes to Opus. Hand the brief to a
    fresh agent running that model; anything of yours it reads is for it to
@@ -216,8 +228,9 @@ report it in one line and do not proceed to the next step.
    has not stamped the exact head against the branch it is filed into
    (`--base` to both when the project takes pull requests on a branch other
    than its default), when the upstream has since changed a file the branch
-   changes, when there is no POST AS IS review of the exact head and body
-   being filed, when you already have three open pull requests on the
+   changes, when there is no proof stamp for the head, when the declaration
+   does not pass, when there is no POST AS IS review of the exact head, body
+   and declaration being filed, when you already have three open pull requests on the
    repository, and when your last one there is under ten minutes old.
    A refusal is a result; fix the cause.
 

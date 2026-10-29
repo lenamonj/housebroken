@@ -47,11 +47,13 @@ usage: housebroken <subcommand> [args...]
   1  policy      read the repository's AI-contribution policy where it lives
   1  outside     count outside contributors merged in the last 120 days
   2  prior-art   issues and pull requests on the touched files, rulings quoted
+  4  proof       run the test on the base and the head, and stamp red then green
   6  census      added code lines against added comment lines, per branch
   6  comments    refuse a comment added to code nobody asked for
   6  claims      every falsifiable claim in outbound text, listed to re-derive
   6  refs        every issue, link, test, file and commit the text names, looked up
   9  branch      the mechanical facts about the branch: tree, modes, artifacts, claims
+  9  declare     what was not tested and what was assumed, for the review to attack
   9  review      a different model attacks the change before it is filed
   9  file        the only way a pull request gets filed
   9  issue       the only way an issue gets filed
@@ -98,6 +100,8 @@ case "$cmd" in
   comments)  script=comment-check.sh ;;
   claims)    script=claim-check.sh ;;
   refs)      script=ref-check.sh ;;
+  proof)     script=proof.sh ;;
+  declare)   script=declare.sh ;;
   branch)    script=branch-check.sh ;;
   review)    script=review.sh ;;
   file)      script=file-pr.sh ;;

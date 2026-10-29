@@ -268,7 +268,22 @@ if [ ! -f "$review" ]; then
   echo "REFUSED: no adversarial review at $review - run review.sh brief and have a different model attack this head" >&2
   exit 2
 fi
-bash "$(dirname "$0")/review.sh" check "$review" --clone . --text "$bodyfile" >/dev/null || exit 2
+# The experiment the body describes was run by proof.sh, not recounted; and
+# the author's declaration of what was not tested passes and was reviewed.
+proof="$home/proofs/$head"
+if [ ! -f "$proof" ]; then
+  echo "REFUSED: no proof for head ${head:0:12} - run proof.sh --test 'COMMAND', or --none 'REASON' when nothing can fail first" >&2
+  exit 2
+fi
+if grep -q '^proof: none' "$proof"; then
+  echo "note: no red-green proof for ${head:0:12}: $(sed -n 's/^reason: //p' "$proof")" >&2
+fi
+decl="$home/declarations/$head.md"
+if ! declared=$(bash "$(dirname "$0")/declare.sh" . 2>&1); then
+  echo "$declared" >&2
+  exit 2
+fi
+bash "$(dirname "$0")/review.sh" check "$review" --clone . --text "$bodyfile" --text "$decl" >/dev/null || exit 2
 
 if [ "${FILE_PR_DRY:-0}" = "1" ]; then
   printf 'DRY RUN, not filed:\ngh pr create -R %s' "$repo"
