@@ -186,6 +186,26 @@ bash "$script" "$repo" --base origin/main --warning-log "$root/fires.log" 2>&1 |
 fires "adds a warning suppression" && { echo "FAIL $name: suppression refusal survived removing the suppression"; exit 1; }
 (cd "$repo" && printf 'class S {\n#pragma warning disable CS8602\n    void M() { }\n}\n' > src/S.cs && $G add -A && $G commit -q --amend -m "add S")
 fires "adds a warning suppression" || { echo "FAIL $name: a #pragma warning disable not refused"; exit 1; }
+# A suppression that names no warning hides all of them, whatever log is given;
+# one that names its rule is lifted by a log showing that rule; config-file and
+# MSVC forms are suppressions too.
+printf 'x.go:3: Error return value is not checked (errcheck)\nIL2075 C4996 CS8602\n' > "$root/lint.log"
+supp() { # file content expect(refused|lifted)
+  (cd "$repo" && mkdir -p "$(dirname "$1")" && printf '%s\n' "$2" > "$1" && $G add -A && $G commit -q --amend -m "add S") || exit 1
+  if bash "$script" "$repo" --base origin/main --warning-log "$root/lint.log" 2>&1 | grep -q "adds a warning suppression"; then got=refused; else got=lifted; fi
+  [ "$got" = "$3" ] || { echo "FAIL $name: $2 was $got, expected $3"; exit 1; }
+  (cd "$repo" && git rm -q "$1" && $G commit -q --amend -m "add S") || exit 1
+}
+supp src/x.go 'f() //nolint' refused
+supp src/x.go 'f() //nolint:errcheck' lifted
+supp src/x.go 'f() //nolint:gosec' refused
+supp src/a.ts '// @ts-ignore' refused
+# shellcheck disable=SC2016  # $(NoWarn) is MSBuild syntax, written literally
+supp src/N.csproj '<PropertyGroup><NoWarn>$(NoWarn);IL2026</NoWarn></PropertyGroup>' refused
+# shellcheck disable=SC2016
+supp src/N.csproj '<PropertyGroup><NoWarn>$(NoWarn);IL2075</NoWarn></PropertyGroup>' lifted
+supp src/m.cpp '#pragma warning(disable : 4996)' lifted
+supp src/m.cpp '#pragma warning(disable : 4244)' refused
 (cd "$repo" && printf 'class S {\n    void M() { }\n}\n' > src/S.cs && $G add -A && $G commit -q --amend -m "add S")
 
 # 14. reflection added to a project that declares itself AOT compatible is refused until an AOT publish log is given
@@ -198,7 +218,10 @@ fires "adds reflection" && { echo "FAIL $name: reflection refused in a project t
 fires "adds reflection to a project that declares AOT" || { echo "FAIL $name: reflection in an AOT-compatible project not refused"; exit 1; }
 bash "$script" "$repo" --base origin/main --aot-log "$root/quiet.log" 2>&1 | grep -q "adds reflection" \
   || { echo "FAIL $name: a log that is not an AOT publish lifted the reflection refusal"; exit 1; }
-printf 'Generating native code\n  R -> /tmp/publish/R\n' > "$root/aot.log"
+printf 'Generating native code\n  Other -> /tmp/publish/Other\n' > "$root/other.log"
+bash "$script" "$repo" --base origin/main --aot-log "$root/other.log" 2>&1 | grep -q "adds reflection" \
+  || { echo "FAIL $name: an AOT publish of another project lifted the reflection refusal"; exit 1; }
+printf 'Generating native code\n  Lib -> /tmp/publish/Lib\n' > "$root/aot.log"
 bash "$script" "$repo" --base origin/main --aot-log "$root/aot.log" 2>&1 | grep -q "adds reflection" \
   && { echo "FAIL $name: an AOT publish log did not lift the reflection refusal"; exit 1; }
 

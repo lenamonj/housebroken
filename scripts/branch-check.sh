@@ -202,15 +202,27 @@ printf '%s\n' "$comments" | grep -E '^CHECK: ' | sed 's/^/    /'
 # that is wrong in a way the analyzer cannot see.
 added=$(git diff -U0 "$base..HEAD" -- . ':(exclude)*.md' ':(exclude)*.rst' ':(exclude)*.txt' 2>/dev/null \
   | grep '^+' | grep -v '^+++' | sed 's/^+//')
-suppressions=$(printf '%s\n' "$added" | grep -E 'UnconditionalSuppressMessage|SuppressMessage\(|#pragma warning disable|@SuppressWarnings|@Suppress\(|#!?\[allow\(|nolint|NOLINT|noqa|eslint-disable|@ts-ignore|@ts-expect-error|type: *ignore|pylint: *disable|rubocop:disable|swiftlint:disable')
+suppressions=$(printf '%s\n' "$added" | grep -E 'UnconditionalSuppressMessage|SuppressMessage\(|#pragma warning disable|pragma warning *\( *disable|<NoWarn>|@SuppressWarnings|@SuppressLint|@Suppress\(|#!?\[allow\(|nolint|NOLINT|NOSONAR|noqa|eslint-disable|@ts-ignore|@ts-expect-error|type: *ignore|pylint: *disable|rubocop:disable|swiftlint:disable|phpstan-ignore|psalm-suppress')
 if [ -n "$suppressions" ]; then
-  ids=$(printf '%s\n' "$suppressions" | grep -oE '\b[A-Z]{1,4}[0-9]{3,5}\b' | sort -u)
+  # Each suppression names what it hides: a code such as IL2075 or C4996, else
+  # the rule names after its keyword (errcheck, no-unused-vars). One that names
+  # nothing hides every warning on its line, and no log can show what it covers.
   unshown=""
-  if [ -z "$warnlog" ]; then
-    unshown="no --warning-log given"
-  else
-    for id in $ids; do grep -q "$id" "$warnlog" || unshown="$unshown $id"; done
-  fi
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    ids=$(printf '%s\n' "$line" | grep -oE '\b([A-Z]{1,4}[0-9]{3,5}|[0-9]{4})\b' | sort -u)
+    if [ -z "$ids" ]; then
+      ids=$(printf '%s\n' "$line" | sed -E 's/ -- .*//; s/.*(nolint|NOLINT|NOSONAR|noqa|eslint-disable(-next-line|-line)?|pylint: *disable|rubocop:disable|swiftlint:disable(:next|:this)?|phpstan-ignore(-next-line|-line)?|psalm-suppress|#!?\[allow|@Suppress(Warnings|Lint)?|SuppressMessage|ts-ignore|ts-expect-error|type: *ignore)//' \
+        | grep -oE '[A-Za-z][A-Za-z0-9_-]{2,}' | grep -vxE 'disable|enable|next|line|this' | sort -u)
+    fi
+    if [ -z "$ids" ]; then
+      unshown="$unshown [names no warning: $(printf '%s' "$line" | sed 's/^[[:space:]]*//' | cut -c1-60)]"
+    elif [ -z "$warnlog" ]; then
+      unshown="$unshown $(printf '%s' "$ids" | tr '\n' ' ')(no --warning-log given)"
+    else
+      for id in $ids; do grep -qF -- "$id" "$warnlog" || unshown="$unshown $id"; done
+    fi
+  done <<< "$suppressions"
   if [ -n "$unshown" ]; then
     block "the branch adds a warning suppression, and no build log shows the warning firing ($unshown)"
     printf '%s\n' "$suppressions" | sed 's/^/    /'
@@ -224,8 +236,15 @@ aotdecl=$(git grep -lE '<(IsAotCompatible|IsTrimmable|PublishAot|EnableTrimAnaly
 if [ -n "$aotdecl" ]; then
   reflection=$(git diff -U0 "$base..HEAD" -- '*.cs' 2>/dev/null | grep '^+' | grep -v '^+++' | sed 's/^+//' \
     | grep -E '\.Get(Property|Properties|Method|Methods|Field|Fields|Member|Members|Interfaces)\(|Activator\.CreateInstance|MakeGenericType|MakeGenericMethod|Type\.GetType\(|\.InvokeMember\(')
-  if [ -n "$reflection" ] && ! { [ -n "$aotlog" ] && grep -q "Generating native code" "$aotlog"; }; then
-    block "the branch adds reflection to a project that declares AOT or trim support (${aotdecl% }), and no --aot-log shows an AOT publish"
+  # The log has to be a publish of this project: it names a declaring project.
+  published=0
+  if [ -n "$aotlog" ] && grep -q "Generating native code" "$aotlog"; then
+    for p in $aotdecl; do
+      case "$p" in *.csproj) proj=$(basename "$p" .csproj); grep -qF -- "$proj" "$aotlog" && published=1 ;; *) published=1 ;; esac
+    done
+  fi
+  if [ -n "$reflection" ] && [ "$published" -eq 0 ]; then
+    block "the branch adds reflection to a project that declares AOT or trim support (${aotdecl% }), and no --aot-log shows an AOT publish of it"
     printf '%s\n' "$reflection" | sed 's/^/    /'
   fi
 fi
