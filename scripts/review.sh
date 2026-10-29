@@ -193,12 +193,22 @@ EOF
   done
   cat <<'EOF'
 2. The proof: the new test fails on the base and passes with the change. Swap file content with git show <base>:<path> rather than switching branches, compare hashes, and make sure the two arms differ. Ask what each step would print if it did nothing.
+EOF
+  if [ -n "$clone" ]; then
+    if [ -f "$home/proofs/$head" ]; then
+      printf '   The author'"'"'s run, stamped by proof.sh; rerun it. A base arm that never ran the test (nothing collected, a file missing, a build that did not happen), or a swapped file the test needed for a reason other than the fix, is a finding:\n'
+      sed 's/^/     /' "$home/proofs/$head"
+    else
+      printf '   No proof stamp exists for this head: the author has not run proof.sh. Say so.\n'
+    fi
+  fi
+  cat <<'EOF'
 3. The project's own CI, read from its workflow files: tests, lint, format, API and mutation checks, run on the change.
 4. The form: write the changed block the way the best engineer in this language would, in this repository's own idioms and at the language version its manifest names, then measure the diff against it. Fewer moving parts, no state the loop already carries, no extra pass, no extra allocation, no counter beside a cursor that could be bounded itself. When yours is smaller or clearer, the finding is SHOULD FIX with your version in full; when the diff is already that form, say which alternatives you tried and why each is worse. A maintainer who asks for a rework is a review round you could have spent on the merge.
 5. Scope: every changed line is needed for what was asked, nothing is unrequested, no comment appears where the surrounding code has none, and documentation, README and CHANGELOG that describe the changed behaviour change with it.
 6. Prior art: nothing duplicates an open pull request or argues with a ruling in a closed issue.
 7. The text: it leads with the fact; no verdict on the reviewer, no thanks, apology or offer of help; a reply runs one to three sentences and a body stays under 120 words; no footer, trailer or typographic dash; every sentence is true as literally worded.
-8. Anything else that would embarrass the author in front of this maintainer. When a text is the author's declaration (not-tested and assumptions), rerun every "checked by", and test the assumptions marked unchecked yourself: a false assumption is a finding, and so is one the change rests on that the declaration leaves out.
+8. Anything else that would embarrass the author in front of this maintainer. When a text is the author's declaration (not-tested and assumptions), rerun every "checked by", and test the assumptions marked unchecked yourself: a false assumption is a finding, and so is one the change rests on that the declaration leaves out. A "checked by" that cannot be rerun as written, because it names no command or no result, is a finding too.
 EOF
   if [ -n "$clone" ]; then
     cat <<'EOF'

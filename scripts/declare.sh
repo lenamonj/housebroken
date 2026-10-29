@@ -56,13 +56,13 @@ EOF
 fi
 
 bad=""
-grep -q "^head: $head\$" "$decl" || bad="$bad
+tr -d '\r' < "$decl" | grep -q "^head: $head\$" || bad="$bad
     the head line is not $head"
-section() { awk -v s="$1:" '$0 == s {on = 1; next} /^[a-z-]+:/ {on = 0} on && /^- */ {sub(/^- */, ""); print}' "$decl" | sed 's/[[:space:]]*$//' | grep -v '^$'; }
+section() { tr -d '\r' < "$decl" | awk -v s="$1:" '$0 == s {on = 1; next} /^[a-z-]+:/ {on = 0} on && /^- */ {sub(/^- */, ""); print}' | sed 's/[[:space:]]*$//' | grep -v '^$'; }
 nt=$(section not-tested)
 if [ -z "$nt" ]; then
   bad="$bad
-    not-tested: names nothing"
+    not-tested: names nothing; one line per item, each starting with '- '"
 elif printf '%s\n' "$nt" | grep -qixE 'none\.?|n/a|nothing\.?'; then
   bad="$bad
     not-tested: says none; something always was not tested"

@@ -114,7 +114,11 @@ report it in one line and do not proceed to the next step.
    command that runs the new test>'` runs the test on the head and again with
    every changed file that is not a test swapped back to the base, restores
    the head by hash, and stamps it only when the base arm fails and the head
-   arm passes. `--keep <path>` keeps a fixture the test reads. A change with
+   arm passes. `--keep <path>` keeps a fixture the test reads; `--fix <path>`
+   takes a file away although its path says test; `--base-file
+   <path>=<file>` gives the base arm a file that carries both the test and
+   the fix, a Rust module with its `#[cfg(test)]` block, as the base plus
+   the test. A change with
    nothing that can fail first, documentation or a pinned refactor, records
    `--none '<reason>'`. The filing requires the stamp.
 

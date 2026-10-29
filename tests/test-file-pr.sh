@@ -82,12 +82,13 @@ master_sha=7fd1a60b01f91b314f59955a4e4d4e80d8edf11d
 test_sha=b3cbd5bbd7e81436d2eee04537ea2b4c0cad4cdf
 stamp() { mkdir -p "$HOUSEBROKEN_HOME/branch-checks"
   printf 'head: %s\nbase: %s\nbase-ref: %s\nfile: %s\n' "$1" "${3:-$master_sha}" "${2:-origin/master}" "${4:-src/x.c}" > "$HOUSEBROKEN_HOME/branch-checks/$1"; }
+proof() { mkdir -p "$HOUSEBROKEN_HOME/proofs"; printf 'head: %s\nbase: %s\nproof: red-green\n' "$head" "${1:-$master_sha}" > "$HOUSEBROKEN_HOME/proofs/$head"; }
 stamp "$head"
 
-# gate five: no adversarial review
+# gate five: no proof, then no adversarial review; the proof and the declaration come first
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
-[ "$rc" -eq 2 ] || fail "no review exited $rc, expected 2"
-printf '%s' "$out" | grep -q "REFUSED: no adversarial review" || fail "a missing review printed no refusal"
+[ "$rc" -eq 2 ] || fail "no proof exited $rc, expected 2"
+printf '%s' "$out" | grep -q "REFUSED: no proof for head" || fail "a missing proof printed no refusal: $out"
 
 report="$HOUSEBROKEN_HOME/reviews/review-octocat-Hello-World-${head:0:12}.md"
 mkdir -p "$HOUSEBROKEN_HOME/reviews"
@@ -95,7 +96,10 @@ blind="$HOUSEBROKEN_HOME/reviews/blind.diff"
 decl="$HOUSEBROKEN_HOME/declarations/$head.md"
 mkdir -p "$HOUSEBROKEN_HOME/declarations" "$HOUSEBROKEN_HOME/proofs"
 printf 'head: %s\n\nnot-tested:\n- the Windows leg\n\nassumptions:\n- callers pass one byte | if wrong: a split rune | checked by: grep, one call site\n' "$head" > "$decl"
-printf 'head: %s\nproof: red-green\n' "$head" > "$HOUSEBROKEN_HOME/proofs/$head"
+printf 'head: %s\nbase: %s\nproof: red-green\n' "$head" "$master_sha" > "$HOUSEBROKEN_HOME/proofs/$head"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "no review exited $rc, expected 2"
+printf '%s' "$out" | grep -q "REFUSED: no adversarial review" || fail "a missing review printed no refusal: $out"
 review() { # reviewer verdict
   printf 'review-of: octocat/Hello-World\nhead: %s\ntext: sha256:%s clean.md\ntext: sha256:%s decl.md\nauthor-model: opus\nreviewer-model: %s\nblind-fix: %s\nskipped: none\nverdict: %s\n' \
     "$head" "$(sha "$clean")" "$(sha "$decl")" "$1" "$blind" "$2" > "$report"
@@ -136,8 +140,18 @@ printf '%s' "$out" | grep -q "DRY RUN" && fail "a declaration edited after the r
 review sonnet "POST AS IS"
 printf 'head: %s\nproof: none\nreason: docs only\n' "$head" > "$HOUSEBROKEN_HOME/proofs/$head"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
-printf '%s' "$out" | grep -q "no red-green proof for .*docs only" || fail "a --none proof was not printed: $out"
-printf 'head: %s\nproof: red-green\n' "$head" > "$HOUSEBROKEN_HOME/proofs/$head"
+printf '%s' "$out" | grep -q "REFUSED: the proof for .* is none (docs only) and the declaration does not say so" || fail "a --none proof the declaration never mentions passed: $out"
+cp "$decl" "$decl.orig"
+printf 'head: %s\n\nnot-tested:\n- the Windows leg\n- no red-green proof: docs only\n\nassumptions:\n- callers pass one byte | if wrong: a split rune | checked by: grep, one call site\n' "$head" > "$decl"
+review sonnet "POST AS IS"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "no red-green proof for .*docs only" || fail "a declared --none proof was not printed: $out"
+printf 'head: %s\nbase: 0000000000000000000000000000000000000000\nproof: red-green\n' "$head" > "$HOUSEBROKEN_HOME/proofs/$head"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "REFUSED: the proof for .* ran against base 000000000000, branch-check measured" || fail "a proof against another base passed: $out"
+mv "$decl.orig" "$decl"
+review sonnet "POST AS IS"
+printf 'head: %s\nbase: %s\nproof: red-green\n' "$head" "$master_sha" > "$HOUSEBROKEN_HOME/proofs/$head"
 
 # prior art run for another change does not cover this one
 art="$HOUSEBROKEN_HOME/prior-art/prior-art-octocat-Hello-World.md"
@@ -167,7 +181,7 @@ capped "[$old,$old]" | grep -q "DRY RUN, not filed" || fail "two old open pull r
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" --base test 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "a branch checked against master and filed into test exited $rc, expected 2"
 printf '%s' "$out" | grep -q "REFUSED: branch-check.sh measured this head against origin/master" || fail "a base mismatch printed no refusal: $out"
-stamp "$head" origin/test "$test_sha"
+stamp "$head" origin/test "$test_sha"; proof "$test_sha"
 bash "$script" octocat/Hello-World --title t --body-file "$clean" --base test >/dev/null 2>&1 || fail "a branch checked against test and filed into test was refused"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "a branch checked against test and filed into the default branch exited $rc, expected 2"
@@ -179,14 +193,14 @@ stamp "$head" origin/master 553c2077f0edc3d5dc5d17262f6aa498e69d6f8e README
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "a base moved under the branch's own file exited $rc, expected 2"
 printf '%s' "$out" | grep -q "changed files this branch changes" || fail "a moved base printed no refusal: $out"
-stamp "$head" origin/master 553c2077f0edc3d5dc5d17262f6aa498e69d6f8e src/x.c
+stamp "$head" origin/master 553c2077f0edc3d5dc5d17262f6aa498e69d6f8e src/x.c; proof 553c2077f0edc3d5dc5d17262f6aa498e69d6f8e
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
 printf '%s' "$out" | grep -q "none of its new commits touch" || fail "a base moved elsewhere was not reported: $out"
 printf '%s' "$out" | grep -q "REFUSED" && fail "a base moved elsewhere was refused: $out"
 stamp "$head" origin/master 0000000000000000000000000000000000000001
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
 printf '%s' "$out" | grep -q "is not on octocat/Hello-World master" || fail "a base unknown upstream was not refused: $out"
-stamp "$head"
+stamp "$head"; proof
 
 # a body over 120 words is refused
 long="$HOUSEBROKEN_HOME/long.md"
@@ -252,6 +266,6 @@ printf '%s' "$out" | grep -q "REFUSED: branch-check.sh has not passed head" || f
 stamp "$(git rev-parse HEAD)"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "a commit made after the review, stamped, exited $rc, expected 2"
-printf '%s' "$out" | grep -q "REFUSED: no adversarial review" || fail "a moved branch printed no review refusal"
+printf '%s' "$out" | grep -q "REFUSED: no proof for head" || fail "a moved branch printed no proof refusal"
 
 echo "PASS $name"

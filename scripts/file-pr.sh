@@ -263,24 +263,38 @@ if [ "$since" -lt 600 ]; then
   echo "REFUSED: your last pull request on $repo was filed ${since}s ago - wait until ten minutes have passed" >&2
   exit 2
 fi
-review="$home/reviews/review-${repo%%/*}-${repo##*/}-${head:0:12}.md"
-if [ ! -f "$review" ]; then
-  echo "REFUSED: no adversarial review at $review - run review.sh brief and have a different model attack this head" >&2
-  exit 2
-fi
-# The experiment the body describes was run by proof.sh, not recounted; and
-# the author's declaration of what was not tested passes and was reviewed.
+# The experiment the body describes was run by proof.sh, not recounted, and
+# against the base branch-check measured; the author's declaration of what
+# was not tested passes and names a proof that was waived; and the review
+# read the declaration. Proof and declaration come before the review because
+# the review is bound to the declaration.
 proof="$home/proofs/$head"
 if [ ! -f "$proof" ]; then
   echo "REFUSED: no proof for head ${head:0:12} - run proof.sh --test 'COMMAND', or --none 'REASON' when nothing can fail first" >&2
   exit 2
 fi
-if grep -q '^proof: none' "$proof"; then
-  echo "note: no red-green proof for ${head:0:12}: $(sed -n 's/^reason: //p' "$proof")" >&2
-fi
 decl="$home/declarations/$head.md"
 if ! declared=$(bash "$(dirname "$0")/declare.sh" . 2>&1); then
   echo "$declared" >&2
+  exit 2
+fi
+if grep -q '^proof: none' "$proof"; then
+  reason=$(sed -n 's/^reason: //p' "$proof" | tr -d '\r')
+  if ! grep -qF -- "$reason" "$decl"; then
+    echo "REFUSED: the proof for ${head:0:12} is none ($reason) and the declaration does not say so - add it under not-tested, so the reviewer attacks it" >&2
+    exit 2
+  fi
+  echo "note: no red-green proof for ${head:0:12}: $reason" >&2
+else
+  proved=$(sed -n 's/^base: //p' "$proof" | tr -d '\r')
+  if [ "$proved" != "$stamped" ]; then
+    echo "REFUSED: the proof for ${head:0:12} ran against base ${proved:0:12}, branch-check measured ${stamped:0:12} - rerun proof.sh --base $checked" >&2
+    exit 2
+  fi
+fi
+review="$home/reviews/review-${repo%%/*}-${repo##*/}-${head:0:12}.md"
+if [ ! -f "$review" ]; then
+  echo "REFUSED: no adversarial review at $review - run review.sh brief with --text $decl and have a different model attack this head" >&2
   exit 2
 fi
 bash "$(dirname "$0")/review.sh" check "$review" --clone . --text "$bodyfile" --text "$decl" >/dev/null || exit 2

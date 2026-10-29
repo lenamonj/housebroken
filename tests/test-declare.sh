@@ -41,4 +41,7 @@ bash "$script" "$root/repo" >/dev/null && fail "a declaration with no assumption
 printf 'head: 0000\n\nnot-tested:\n%s\n\nassumptions:\n%s\n' "$good_nt" "$good_as" > "$decl"
 bash "$script" "$root/repo" >/dev/null && fail "a declaration for another head passed"
 
+printf 'head: %s\r\n\r\nnot-tested:\r\n%s\r\n\r\nassumptions:\r\n%s\r\n' "$head" "$good_nt" "$good_as" > "$decl"
+bash "$script" "$root/repo" >/dev/null || fail "a declaration saved with CRLF endings was refused"
+
 echo "PASS $name"
