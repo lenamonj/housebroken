@@ -1,9 +1,8 @@
 #!/bin/bash
 # test-comment-census.sh - census counts 3 code lines and 2 comment lines on a
-# branch of a real clone (read-only against GitHub, one shallow clone), then
-# two local clones for the neighbourhood rule: a comment added into a
-# comment-free body under a licence header is flagged, a comment added beside
-# an existing comment is not.
+# branch of a local clone, then two more for the neighbourhood rule: a comment
+# added into a comment-free body under a licence header is flagged, a comment
+# added beside an existing comment is not.
 set -u
 name=test-comment-census
 script="$(cd "$(dirname "$0")/../scripts" && pwd)/comment-census.sh"
@@ -13,7 +12,16 @@ bash "$script" /definitely/not/a/directory 2>/dev/null && { echo "FAIL $name: ba
 
 root=$(mktemp -d) || exit 1
 trap 'rm -rf "$root"' EXIT
-git clone --depth 50 -q https://github.com/spf13/pflag "$root/pflag" || { echo "FAIL $name: clone failed"; exit 1; }
+mkdir -p "$root/up/src" || exit 1
+(
+  cd "$root/up/src" || exit 1
+  git init -q .
+  printf 'package pflag\n' > flag.go
+  git -c user.email=t@example.com -c user.name=t add flag.go
+  git -c user.email=t@example.com -c user.name=t commit -q -m base
+) || { echo "FAIL $name: source repo failed"; exit 1; }
+git clone -q "$root/up/src" "$root/pflag" || { echo "FAIL $name: clone failed"; exit 1; }
+rm -rf "$root/up"
 (
   cd "$root/pflag" || exit 1
   git checkout -q -b census-fixture

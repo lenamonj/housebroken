@@ -5,6 +5,7 @@
 set -u
 name="file-issue.sh"
 here=$(cd "$(dirname "$0")" && pwd)
+export PATH="$here/stubs:$PATH"
 script="$here/../scripts/file-issue.sh"
 HOUSEBROKEN_HOME=$(mktemp -d)
 export HOUSEBROKEN_HOME FILE_ISSUE_DRY=1

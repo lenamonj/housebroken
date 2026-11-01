@@ -1,8 +1,9 @@
 #!/bin/bash
-# test-pr-sweep.sh - --all lists at least one open PR for the authenticated
-# user and exits 0, the first run records its open set in the state file given
-# by --state, and a PR that has left the open set is reported as merged or
-# closed on the next run. Read-only; the real state file is never touched.
+# test-pr-sweep.sh - scripts/pr-sweep.sh over a stub gh: --all lists the open
+# pull requests and exits 0, the first run records its open set in the state
+# file, a pull request that left the open set is reported on the next run, one
+# filed and merged between runs is reported once, and a merged one whose fork
+# branch still exists prints TIDY on every run until the branch is gone.
 set -u
 name=test-pr-sweep
 script="$(cd "$(dirname "$0")/../scripts" && pwd)/pr-sweep.sh"
@@ -15,70 +16,58 @@ grep -qi 'lenamonj' "$script" && { echo "FAIL $name: literal username still pres
 tmp=$(mktemp -d) || { echo "FAIL $name: mktemp failed"; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 state="$tmp/sweep-state.json"
+mkdir -p "$tmp/bin"
+cat > "$tmp/bin/gh" <<'STUB'
+#!/bin/bash
+case "$*" in
+  "search prs --author me --state open"*)
+    printf 'o/r\t1\t2026-11-01T10:00:00Z\tOpen one\n' ;;
+  "search prs --author me --state closed"*) cat "$STUB_DIR/closed" 2>/dev/null || true ;;
+  "pr view 2 --repo o/r"*)
+    echo '{"state":"MERGED","mergedAt":"2026-10-30T10:00:00Z","mergedBy":{"login":"maint"},"headRefName":"fix-2","headRepository":{"name":"r"},"headRepositoryOwner":{"login":"me"}}' ;;
+  "pr view 1 --repo o/r"*)
+    echo '{"mergeable":"MERGEABLE","reviewDecision":"","statusCheckRollup":[{"conclusion":"SUCCESS"}],"comments":[],"reviews":[],"latestReviews":[]}' ;;
+  "api repos/me/r/git/refs/heads/fix-2"*) [ -f "$STUB_DIR/branch-gone" ] && exit 1; echo '{}' ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$tmp/bin/gh"
+sweep() { STUB_DIR="$tmp" PATH="$tmp/bin:$PATH" HOUSEBROKEN_USER=me bash "$script" "$@"; }
 
-out=$(bash "$script" --all --state "$state")
-rc=$?
-echo "$out" | head -20
-[ "$rc" -eq 0 ] || { echo "FAIL $name: --all exited $rc"; exit 1; }
-echo "$out" | grep -qE '^(ok|ACT) ' || { echo "FAIL $name: no PR rows"; exit 1; }
+out=$(sweep --all --state "$state"); rc=$?
+[ "$rc" -eq 0 ] || { echo "FAIL $name: --all exited $rc: $out"; exit 1; }
+echo "$out" | grep -qE '^ok +o/r +#1 ' || { echo "FAIL $name: no PR rows: $out"; exit 1; }
 echo "$out" | grep -qx -- '--- no previous sweep recorded' ||
   { echo "FAIL $name: first run did not say there was no previous sweep"; exit 1; }
-open=$(echo "$out" | sed -n 's/^open PRs: \([0-9]*\);.*/\1/p')
-if [ -z "$open" ] || [ "$open" -lt 1 ]; then echo "FAIL $name: open PR count is $open"; exit 1; fi
+echo "$out" | grep -q '^open PRs: 1; needing action: 0' || { echo "FAIL $name: wrong totals: $out"; exit 1; }
 
 [ -f "$state" ] || { echo "FAIL $name: no state file at $state"; exit 1; }
 jq -e -r '.lastRun | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")' "$state" >/dev/null ||
   { echo "FAIL $name: lastRun is not an ISO time"; exit 1; }
-jq -e '(.open | length) > 0' "$state" >/dev/null ||
-  { echo "FAIL $name: open set in the state file is empty"; exit 1; }
+jq -e '.open == ["o/r#1"]' "$state" >/dev/null || { echo "FAIL $name: wrong open set in the state file"; exit 1; }
 
-# a PR merged long ago stands in for one that left the open set between runs
-jq '.open += ["google/snappy#257"]' "$state" > "$state.new" ||
-  { echo "FAIL $name: cannot edit the state file"; exit 1; }
-mv "$state.new" "$state"
-
-out=$(bash "$script" --state "$state")
-rc=$?
+# a pull request that left the open set between runs
+jq '.open += ["o/r#2"]' "$state" > "$state.new" && mv "$state.new" "$state"
+out=$(sweep --state "$state"); rc=$?
 [ "$rc" -eq 0 ] || { echo "FAIL $name: second run exited $rc"; exit 1; }
-echo "$out" | grep -qE '^--- merged or closed since [0-9]{4}-' ||
-  { echo "FAIL $name: no since-last-run section"; exit 1; }
-echo "$out" | grep -q '^MERGED google/snappy#257 by danilak-G at 2026-09-07' ||
-  { echo "FAIL $name: merged PR not reported"; echo "$out" | head -5; exit 1; }
-jq -e '.open | index("google/snappy#257") == null' "$state" >/dev/null ||
-  { echo "FAIL $name: the merged PR survived in the rewritten state"; exit 1; }
+echo "$out" | grep -qE '^--- merged or closed since [0-9]{4}-' || { echo "FAIL $name: no since-last-run section"; exit 1; }
+echo "$out" | grep -q '^MERGED o/r#2 by maint at 2026-10-30' || { echo "FAIL $name: merged PR not reported: $out"; exit 1; }
+jq -e '.open | index("o/r#2") == null' "$state" >/dev/null || { echo "FAIL $name: the merged PR survived in the state"; exit 1; }
 
-# a PR filed and merged between two runs was never in the stored open set
-# (Tencent/MMKV#1700, filed 11:32Z and merged 12:46Z on 2026-10-26)
-jq '.lastRun = "2026-10-26T11:00:00Z"' "$state" > "$state.new" && mv "$state.new" "$state"
-out=$(bash "$script" --state "$state") || { echo "FAIL $name: between-runs run exited non-zero"; exit 1; }
-echo "$out" | grep -q '^MERGED Tencent/MMKV#1700 by lingol at 2026-10-26' ||
-  { echo "FAIL $name: a PR filed and merged between runs was not reported"; echo "$out" | head -5; exit 1; }
-[ "$(echo "$out" | grep -c '^MERGED Tencent/MMKV#1700 ')" = "1" ] || { echo "FAIL $name: between-runs merge reported twice"; exit 1; }
+# its fork branch prints TIDY on every run, the merge only once
+echo "$out" | grep -q '^TIDY   o/r#2 ' || { echo "FAIL $name: no TIDY line: $out"; exit 1; }
+echo "$out" | grep -q '^fork branches to tidy: 1' || { echo "FAIL $name: tidy count missing: $out"; exit 1; }
+out=$(sweep --state "$state") || { echo "FAIL $name: third run exited non-zero"; exit 1; }
+echo "$out" | grep -q '^TIDY   o/r#2 ' || { echo "FAIL $name: TIDY line did not persist: $out"; exit 1; }
+echo "$out" | grep -q '^MERGED o/r#2 ' && { echo "FAIL $name: merge reported twice"; exit 1; }
+touch "$tmp/branch-gone"
+out=$(sweep --state "$state")
+echo "$out" | grep -q '^TIDY' && { echo "FAIL $name: a deleted branch still printed TIDY: $out"; exit 1; }
 
-# a merged PR whose fork branch still exists is reported as TIDY on every run
-# until the branch is gone. Runs as a public account whose branches are live
-# (the operator's own are already clean); read-only, nothing is deleted.
-user="${TEST_FORK_USER:-AkariH}"
-pr="${TEST_FORK_PR:-ivanfioravanti/kubernetes-the-hard-way-on-azure#87}"
-state2="$tmp/sweep-state-tidy.json"
-HOUSEBROKEN_USER="$user" bash "$script" --all --state "$state2" >/dev/null ||
-  { echo "FAIL $name: first run as $user failed"; exit 1; }
-jq --arg pr "$pr" '.open += [$pr]' "$state2" > "$state2.new" && mv "$state2.new" "$state2"
-out=$(HOUSEBROKEN_USER="$user" bash "$script" --state "$state2") ||
-  { echo "FAIL $name: tidy run exited non-zero"; exit 1; }
-echo "$out" | grep -q "^MERGED $pr " || { echo "FAIL $name: $pr not reported merged"; echo "$out" | head -5; exit 1; }
-echo "$out" | grep -q "^TIDY   $pr " || { echo "FAIL $name: no TIDY line for $pr"; echo "$out" | head -5; exit 1; }
-echo "$out" | grep -q '^fork branches to tidy: 1' || { echo "FAIL $name: tidy count missing"; exit 1; }
-jq -e --arg pr "$pr" '.tidy | map(endswith($pr)) | any' "$state2" >/dev/null ||
-  { echo "FAIL $name: branch not recorded in the state"; exit 1; }
-# the obligation survives a run where the PR is no longer new
-out=$(HOUSEBROKEN_USER="$user" bash "$script" --state "$state2") ||
-  { echo "FAIL $name: third run exited non-zero"; exit 1; }
-echo "$out" | grep -q "^TIDY   $pr " || { echo "FAIL $name: TIDY line did not persist"; exit 1; }
-echo "$out" | grep -q "^MERGED $pr " && { echo "FAIL $name: merge reported twice"; exit 1; }
-branch=$(jq -r --arg pr "$pr" '.tidy[] | select(endswith($pr))' "$state2" | awk '{print $1 "/git/refs/heads/" $2}')
-gh api "repos/$branch" --jq .ref >/dev/null || { echo "FAIL $name: test branch was deleted"; exit 1; }
+# a pull request filed and merged between two runs was never in the stored open set
+rm -f "$tmp/branch-gone"
+printf 'o/r#2\n' > "$tmp/closed"
+out=$(sweep --state "$state") || { echo "FAIL $name: between-runs run exited non-zero"; exit 1; }
+[ "$(echo "$out" | grep -c '^MERGED o/r#2 ')" = "1" ] || { echo "FAIL $name: a merge between runs was not reported once: $out"; exit 1; }
 
-rm -rf "$tmp"
-trap - EXIT
 echo "PASS $name"

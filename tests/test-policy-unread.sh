@@ -16,30 +16,7 @@ mkdir -p "$root/bin" "$root/files"
 
 fail() { echo "FAIL $name: $1" >&2; exit 1; }
 
-cat > "$root/bin/gh" <<'STUB'
-#!/bin/bash
-args="$*"
-case "$args" in
-  *"git/trees/"*)
-    [ "${STUB_TREE_FAIL:-0}" = 1 ] && exit 1
-    json=$(jq -Rn --argjson t "${STUB_TRUNCATED:-false}" \
-      '{truncated: $t, tree: [inputs | {path: ., type: "blob"}]}' < "$STUB_DIR/tree.txt")
-    case "$args" in
-      *--jq*) printf '%s' "$json" | jq -r '.tree[] | select(.type == "blob") | .path' ;;
-      *) printf '%s' "$json" ;;
-    esac ;;
-  *"/contents/"*)
-    [ "${STUB_CONTENTS_FAIL:-0}" = 1 ] && exit 1
-    f=$(printf '%s' "$args" | sed -n 's/.*contents\/\([^?]*\)?.*/\1/p')
-    base64 < "$STUB_DIR/files/$f" | tr -d '\n' ;;
-  *"repos/o/.github"*)
-    if [ "${STUB_ORG_FAIL:-0}" = 1 ]; then echo "gh: API rate limit exceeded (HTTP 403)" >&2
-    else echo "gh: Not Found (HTTP 404)" >&2; fi
-    exit 1 ;;
-  *"repos/o/r"*) echo main ;;
-  *) exit 1 ;;
-esac
-STUB
+cp "$here/stubs/policy-gh" "$root/bin/gh"
 chmod +x "$root/bin/gh"
 export PATH="$root/bin:$PATH"
 

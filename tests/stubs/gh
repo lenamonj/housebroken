@@ -1,0 +1,21 @@
+#!/bin/bash
+# stubs/gh - the fixed octocat/Hello-World reads the gate tests rely on, and a
+# refusal for everything else, so no test can reach a real account. Answers
+# are what the real call prints after its --jq. Tests that need more put their
+# own gh in front of this one.
+case "$*" in
+  "auth status"*) exit 1 ;;
+  "api repos/octocat/Hello-World/issues/1 "*) echo "pull request closed: Edited README via GitHub" ;;
+  "api repos/octocat/Hello-World/contents/README?ref=master"*) echo README ;;
+  "api repos/octocat/Hello-World/contents/?ref=test"*) echo dir ;;
+  "api repos/me/Hello-World/contents/?ref=fix"*) echo dir ;;
+  "api repos/octocat/Hello-World/commits/7fd1a60b01f9"*|"api repos/me/Hello-World/commits/7fd1a60b01f9"*)
+    echo 7fd1a60b01f91b314f59955a4e4d4e80d8edf11d ;;
+  "repo view octocat/Hello-World"*) echo master ;;
+  "api repos/octocat/Hello-World/branches/master"*) echo 7fd1a60b01f91b314f59955a4e4d4e80d8edf11d ;;
+  "api repos/octocat/Hello-World/branches/test"*) echo b3cbd5bbd7e81436d2eee04537ea2b4c0cad4cdf ;;
+  "api repos/octocat/Hello-World/compare/553c2077f0edc3d5dc5d17262f6aa498e69d6f8e...7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"*)
+    printf '{"status":"ahead","files":[{"filename":"README"}]}\n' ;;
+  "pr list -R octocat/Hello-World --author @me"*) echo "[]" ;;
+  *) echo "stub gh: no answer for: gh $*" >&2; exit 1 ;;
+esac

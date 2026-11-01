@@ -1,6 +1,8 @@
 #!/bin/bash
-# test-verify-filed-pr.sh - the verifier runs to completion on a merged public
-# PR (spf13/pflag #507) and reports the head sha and the files. Read-only.
+# test-verify-filed-pr.sh - scripts/verify-filed-pr.sh over a stub gh: the head,
+# the files and the verdict are reported, a workflow waiting for approval reads
+# NOT SETTLED, and GitHub's files and body are compared to the stamp and the
+# filed copy.
 set -u
 name=test-verify-filed-pr
 script="$(cd "$(dirname "$0")/../scripts" && pwd)/verify-filed-pr.sh"
@@ -8,16 +10,6 @@ script="$(cd "$(dirname "$0")/../scripts" && pwd)/verify-filed-pr.sh"
 bash "$script" --help | grep -q "Usage:" || { echo "FAIL $name: --help has no usage"; exit 1; }
 bash "$script" 2>/dev/null && { echo "FAIL $name: missing arguments exited 0"; exit 1; }
 
-out=$(bash "$script" spf13/pflag 507)
-echo "$out"
-echo "$out" | grep -q "^state  *MERGED" || { echo "FAIL $name: state not reported"; exit 1; }
-echo "$out" | grep -qE "^head  *[0-9a-f]{12}" || { echo "FAIL $name: head sha not reported"; exit 1; }
-echo "$out" | grep -q "files in the PR" || { echo "FAIL $name: no files section"; exit 1; }
-echo "$out" | grep -qE "^   .+  \+[0-9]+/-[0-9]+" || { echo "FAIL $name: no file rows"; exit 1; }
-echo "$out" | grep -q "^PR-VERIFY:" || { echo "FAIL $name: no verdict line"; exit 1; }
-# A fork's workflow waiting for a maintainer's approval is not in the rollup;
-# a commit status reports .state, not .conclusion. A stub gh serves both.
-command -v jq >/dev/null 2>&1 || { echo "SKIP $name: stub cases need jq"; echo "PASS $name"; exit 0; }
 stub=$(mktemp -d) || exit 1
 trap 'rm -rf "$stub"' EXIT
 cat > "$stub/gh" <<'STUB'
@@ -44,8 +36,10 @@ printf '%s' '{"state":"OPEN","headRefOid":"23893ddea90057ec3826050eedd360474e484
 printf '%s' '[{"conclusion":"action_required"}]' > "$stub/runs.json"
 out=$(STUB_DIR="$stub" PATH="$stub:$PATH" bash "$script" o/r 1); rc=$?
 [ "$rc" = "3" ] || { echo "FAIL $name: a run awaiting approval exited $rc, expected 3"; exit 1; }
+echo "$out" | grep -q "^state  *OPEN" || { echo "FAIL $name: state not reported: $out"; exit 1; }
+echo "$out" | grep -qE "^head  *[0-9a-f]{12}" || { echo "FAIL $name: head sha not reported"; exit 1; }
+echo "$out" | grep -qE "^   a\.kt  \+1/-0" || { echo "FAIL $name: no file rows: $out"; exit 1; }
 echo "$out" | grep -q "^   SUCCESS=1" || { echo "FAIL $name: a commit status's state was not read: $out"; exit 1; }
-echo "$out" | grep -q "^PR-VERIFY: NOT SETTLED" || { echo "FAIL $name: a run awaiting approval did not read NOT SETTLED: $out"; exit 1; }
 echo "$out" | grep -q "^PR-VERIFY: NOT SETTLED (1 workflow run(s) wait for a maintainer to approve them; nothing settles until one does, so move on)$" ||
   { echo "FAIL $name: a run awaiting approval did not say who it waits on: $out"; exit 1; }
 

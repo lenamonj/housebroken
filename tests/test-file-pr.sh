@@ -5,6 +5,7 @@
 set -u
 name="file-pr.sh"
 here=$(cd "$(dirname "$0")" && pwd)
+export PATH="$here/stubs:$PATH"
 script="$here/../scripts/file-pr.sh"
 HOUSEBROKEN_HOME=$(mktemp -d)
 export HOUSEBROKEN_HOME FILE_PR_DRY=1
@@ -77,7 +78,7 @@ policy "CLEAN (no policy file names AI)"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "no branch stamp exited $rc, expected 2"
 printf '%s' "$out" | grep -q "REFUSED: branch-check.sh has not passed head" || fail "a missing branch stamp printed no refusal"
-# octocat/Hello-World's branches stand still: master and test are the live upstream
+# the stub gh serves master and test as the live upstream
 master_sha=7fd1a60b01f91b314f59955a4e4d4e80d8edf11d
 test_sha=b3cbd5bbd7e81436d2eee04537ea2b4c0cad4cdf
 stamp() { mkdir -p "$HOUSEBROKEN_HOME/branch-checks"

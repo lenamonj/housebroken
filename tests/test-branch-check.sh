@@ -228,7 +228,7 @@ bash "$script" "$repo" --base origin/main --aot-log "$root/aot.log" 2>&1 | grep 
 # 15. The upstream moved and the clone never fetched: the local base is stale.
 fires "the base moved" && { echo "FAIL $name: a current base was called stale"; exit 1; }
 basesha=$(cd "$repo" && git rev-parse origin/main)
-(cd "$repo" && moved=$(git commit-tree "$basesha^{tree}" -p "$basesha" -m "upstream moves") &&
+(cd "$repo" && moved=$($G commit-tree "$basesha^{tree}" -p "$basesha" -m "upstream moves") &&
   git push -q -f "$(git remote get-url origin)" "$moved:refs/heads/main") || { echo "FAIL $name: could not move the upstream"; exit 1; }
 fires "the base moved" || { echo "FAIL $name: a base the upstream moved past was not refused"; exit 1; }
 (cd "$repo" && git push -q -f "$(git remote get-url origin)" "$basesha:refs/heads/main")
@@ -253,7 +253,7 @@ hyg() { # setup expected-refusal ("" for none) [extra branch-check args...]
   (cd "$repo" && $G reset -q --hard HEAD~1)
 }
 hyg "printf 'export const h = 16;\n' > src/h16.test.ts" ""
-hyg "printf 'const p = \"C:/Users/lenam/jeffy-prs/x\";\n' > src/p.ts" "personal path"
+hyg "printf 'const p = \"C:/Users/$(basename "$HOME")/work/x\";\n' > src/p.ts" "personal path"
 hyg "printf 'const p = \"/home/$(basename "$HOME")/src/x\";\n' > src/p.ts" "personal path"
 hyg "printf 'const p = \"/home/alice/src/x\";\n' > src/p.ts" ""
 hyg "printf 'const t = \"ghp_%s\";\n' abcdefghijklmnopqrstuvwxyz0123 > src/t.ts" "credential"

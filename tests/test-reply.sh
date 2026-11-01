@@ -3,11 +3,12 @@
 # or an apology, carries an exclamation mark, bold, a closing offer, a dash,
 # a footer, more than three sentences, or a reference to nothing, and one
 # sent within ten minutes of the last to the repository; code spans are not
-# read for tone. Every case is a dry run against octocat/Hello-World, whose
-# history stands still: nothing is posted.
+# read for tone. Every case is a dry run through the stub gh: nothing is
+# posted.
 set -u
 name=test-reply
 here=$(cd "$(dirname "$0")" && pwd)
+export PATH="$here/stubs:$PATH"
 script="$here/../scripts/reply.sh"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

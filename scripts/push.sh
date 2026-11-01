@@ -61,7 +61,7 @@ if [ -f "$log" ]; then
   last=$(tail -1 "$log" | awk '{print $1}')
   since=$(( $(date -u +%s) - ${last:-0} ))
   if [ "$since" -lt 1800 ]; then
-    echo "REFUSED: the last push to $branch was ${since}s ago; settle every refusal and push once, in $(( (1800 - since) / 60 + 1 )) min" >&2
+    echo "REFUSED: the last push to $branch was ${since}s ago; settle every refusal and push once, in $(( (1800 - since + 59) / 60 )) min" >&2
     exit 2
   fi
 fi

@@ -1,11 +1,12 @@
 #!/bin/bash
 # test-ref-check.sh - every reference in a body is looked up on GitHub and, with
 # a clone, in the clone: what exists is found, what does not is NOT FOUND with
-# exit 1, and fenced or quoted evidence is not read as a reference. Reads
-# octocat/Hello-World, whose history stands still.
+# exit 1, and fenced or quoted evidence is not read as a reference, all through
+# the stub gh.
 set -u
 name=test-ref-check
 here=$(cd "$(dirname "$0")" && pwd)
+export PATH="$here/stubs:$PATH"
 script="$here/../scripts/ref-check.sh"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
