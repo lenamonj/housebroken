@@ -80,7 +80,7 @@ EOF
 version() {
   vpaths=("$self_dir/../VERSION" "$self_dir/VERSION")
   if [ -n "$scripts_dir" ]; then
-    vpaths=("$scripts_dir/../VERSION" "$scripts_dir/VERSION" "${vpaths[@]}")
+    vpaths=("$scripts_dir/VERSION" "$scripts_dir/../VERSION" "${vpaths[@]}")
   fi
   for v in "${vpaths[@]}"; do
     if [ -f "$v" ]; then
@@ -146,7 +146,7 @@ stale() { # installed-copy packaged-copy command
 for packaged in "$scripts_dir/../skill/SKILL.md" "$scripts_dir/../skills/housebroken/SKILL.md"; do
   stale "$HOME/.claude/skills/housebroken/SKILL.md" "$packaged" "housebroken install-skill"
 done
-stale "$HOME/.claude/hooks/housebroken-gate.sh" "$scripts_dir/gate-hook.sh" "housebroken install-hook"
+[ "$cmd" = "install-hook" ] || stale "$HOME/.claude/hooks/housebroken-gate.sh" "$scripts_dir/gate-hook.sh" "housebroken install-hook"
 
 export HOUSEBROKEN_HOME
 exec bash "$scripts_dir/$script" "$@"

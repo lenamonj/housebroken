@@ -92,22 +92,40 @@ text=$(printf '%s\n' "$cmd" | awk -v q="'" '
 
 # One command per line: split at the separators a shell would run them at, and
 # never inside quotes, so text that only mentions a write is not one. A $(...)
-# inside double quotes does run. Comments go, and a { in a path is not a brace.
+# inside double quotes does run, with quotes of its own, and when it closes the
+# string goes on: a stack holds where to come back to, or the first quote after
+# it would swallow the rest of the line. Comments go, and a { in a path is not a
+# brace.
 commands=$(printf '%s\n' "$text" | LC_ALL=C awk '
   { src = src $0 "\n" }
   END {
-    n = length(src); quote = ""; seg = ""; sq = "\047"; dq = "\042"; bt = "\140"
+    n = length(src); quote = ""; seg = ""; sq = "\047"; dq = "\042"; bt = "\140"; sp = 0
     for (i = 1; i <= n; i++) {
       c = substr(src, i, 1); d = substr(src, i + 1, 1); p = (i > 1) ? substr(src, i - 1, 1) : "\n"
       if (quote == sq) { seg = seg (c == "\n" ? " " : c); if (c == sq) quote = ""; continue }
+      if (quote == "ansi") {
+        if (c == "\\") { seg = seg c d; i++; continue }
+        seg = seg (c == "\n" ? " " : c); if (c == sq) quote = ""; continue
+      }
       if (quote == dq) {
         if (c == "\\") { seg = seg c d; i++; continue }
         if (c == dq) { quote = ""; seg = seg c; continue }
-        if ((c == "$" && d == "(") || c == bt) { quote = ""; print seg; seg = ""; if (c == "$") i++; continue }
+        if ((c == "$" && d == "(") || c == bt) {
+          sp++; kind[sp] = (c == bt) ? bt : "("; depth[sp] = 0
+          quote = ""; print seg; seg = ""; if (c == "$") i++; continue
+        }
         seg = seg (c == "\n" ? " " : c); continue
       }
       if (c == "\\") { seg = seg ((d == "\n") ? " " : c d); i++; continue }
+      if (c == "$" && d == sq) { quote = "ansi"; seg = seg c d; i++; continue }
       if (c == sq || c == dq) { quote = c; seg = seg c; continue }
+      if (sp > 0) {
+        if (c == "(") depth[sp]++
+        else if (c == ")" && kind[sp] == "(") {
+          if (depth[sp] == 0) { sp--; quote = dq; print seg; seg = ""; continue }
+          depth[sp]--
+        } else if (c == bt && kind[sp] == bt) { sp--; quote = dq; print seg; seg = ""; continue }
+      }
       space = (p == " " || p == "\t" || p == "\n" || p == ";")
       if (c == "#" && space) { while (i < n && substr(src, i + 1, 1) != "\n") i++; continue }
       if (c == "\n" || c == ";" || c == "|" || c == "(" || c == ")" || c == bt) { print seg; seg = ""; continue }

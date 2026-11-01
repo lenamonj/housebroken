@@ -70,6 +70,11 @@ want="housebroken $(sed -n 's/^version = "\(.*\)"/\1/p' "$repo/pyproject.toml" |
 got=$(HOME="$tmp/home" HOUSEBROKEN_HOME="$tmp/hbhome" bash "$bindir/housebroken" version) ||
   fail "installed dispatcher version exited non-zero"
 [ "$got" = "$want" ] || fail "installed dispatcher says '$got', expected '$want'"
+# one left beside the install by an older one does not speak for it
+printf 'housebroken 0.0.1\n' > "$tmp/hbhome/VERSION"
+got=$(HOME="$tmp/home" HOUSEBROKEN_HOME="$tmp/hbhome" bash "$bindir/housebroken" version)
+[ "$got" = "$want" ] || fail "a stale VERSION beside the install won: '$got'"
+rm -f "$tmp/hbhome/VERSION"
 
 # a copy of the hook or the skill left behind by an upgrade is noted, and an
 # up to date one is not
@@ -77,7 +82,9 @@ mkdir -p "$tmp/home/.claude/hooks"
 printf 'old hook\n' > "$tmp/home/.claude/hooks/housebroken-gate.sh"
 out=$(HOME="$tmp/home" bash "$hb" notes --list 2>&1)
 printf '%s\n' "$out" | grep -q "housebroken-gate.sh is not this version's; run housebroken install-hook" || fail "a stale hook was not noted: $out"
-cp "$repo/scripts/gate-hook.sh" "$tmp/home/.claude/hooks/housebroken-gate.sh"
+out=$(HOME="$tmp/home" bash "$hb" install-hook 2>&1)
+printf '%s\n' "$out" | grep -q "is not this version's" && fail "install-hook warned about the copy it was replacing: $out"
+cmp -s "$repo/scripts/gate-hook.sh" "$tmp/home/.claude/hooks/housebroken-gate.sh" || fail "install-hook did not replace the stale hook"
 printf 'old skill\n' > "$skilldir/SKILL.md"
 out=$(HOME="$tmp/home" bash "$hb" notes --list 2>&1)
 printf '%s\n' "$out" | grep -q "SKILL.md is not this version's; run housebroken install-skill" || fail "a stale skill was not noted: $out"

@@ -77,6 +77,25 @@ hook 2 $'cat <<-EOF > b.md\n\ttext\n\tEOF\ngh pr create -R a/b --title x --body-
 hook 2 $'grep x <<<hello\ngh pr create -R a/b --title x --body y'
 hook 2 $'gh pr create -R a/b \\\n  --title x --body y'
 
+# a substitution inside double quotes opens its own quotes and closes back into
+# the string, and the line goes on after it
+# shellcheck disable=SC2016  # the commands are text for the hook, never run
+hook 2 'echo "$(date)" && gh pr create -R a/b --title x'
+# shellcheck disable=SC2016
+hook 2 'echo "$(ls "x")" && gh pr create -R a/b --title x'
+# shellcheck disable=SC2016
+hook 2 'echo "`date`" && gh pr create -R a/b --title x'
+# shellcheck disable=SC2016
+hook 2 'echo "a $(date) b" ; git push --force origin fix'
+# shellcheck disable=SC2016
+hook 2 'x="$(echo "$(gh pr create -R a/b --title x)")"'
+# shellcheck disable=SC2016
+hook 2 "echo \$'it\\'s' && gh pr create -R a/b --title x"
+# shellcheck disable=SC2016
+hook 0 'echo "n: $(ls "x" | wc -l)"; check '"'"'git push --force origin fix'"'"
+# shellcheck disable=SC2016
+hook 0 'echo "$(printf "%s" "(")"; echo "a"; check '"'"'gh pr create -R a/b'"'"
+
 # text that only mentions a write is not one, and a push is read for its own flags
 hook 0 "grep -n -E 'unset X|gh pr create|gh issue create' tests/x.sh"
 hook 0 "git commit -m 'file: refuse (gh pr create without a body)'"
