@@ -27,13 +27,17 @@
 #                     says otherwise.
 #
 # Assumes: gh is installed and authenticated, and that the PRs of interest are
-# the ones authored by that login. Exits non-zero when gh fails or the search
-# returns nothing.
+# the ones authored by that login. Exits non-zero when gh fails or a pull request
+# could not be read; no open pull requests left is a result, not a failure.
 set -u
+set -o pipefail
 
 usage() {
   sed -n '2,/^set -u$/p' "$0" | sed 's/^# \{0,1\}//; /^set -u$/d'
 }
+# shellcheck source=scripts/common.sh
+. "$(cd "$(dirname "$0")" && pwd)/common.sh"
+MAX=1000
 
 ALL=0
 STATE=""
@@ -65,14 +69,16 @@ if [ -z "$ME" ]; then
   exit 1
 fi
 
-if ! list="$(gh search prs --author "$ME" --state open --limit 100 --json repository,number,title,updatedAt \
-  --jq '.[] | "\(.repository.nameWithOwner)\t\(.number)\t\(.updatedAt)\t\(.title)"' | sort)"; then
+if ! list="$(gh search prs --author "$ME" --state open --limit "$MAX" --json repository,number,title,updatedAt \
+  --jq '.[] | [.repository.nameWithOwner, (.number | tostring), .updatedAt, .title] | @tsv' | sort)"; then
   echo "pr-sweep.sh: gh search prs failed for author $ME" >&2
   exit 1
 fi
-[ -n "$list" ] || { echo "pr-sweep.sh: no open PRs found for $ME" >&2; exit 1; }
+[ "$(printf '%s\n' "$list" | grep -c .)" -lt "$MAX" ] || echo "SWEEP INCOMPLETE: the search stopped at $MAX open pull requests"
 
 open_ids="$(printf '%s\n' "$list" | tr -d '\r' | awk -F'\t' 'NF > 1 { print $1 "#" $2 }' | sort)"
+retry=""
+unreadable=0
 if [ -f "$STATE" ]; then
   # jq on Windows writes CRLF; a stray CR would make every stored id look new
   if ! last="$(jq -r '.lastRun // "an unknown time"' "$STATE" | tr -d '\r')"; then
@@ -84,7 +90,7 @@ if [ -f "$STATE" ]; then
   gone="$(comm -23 <(jq -r '.open[]?' "$STATE" | tr -d '\r' | sort) <(printf '%s\n' "$open_ids"))"
   # A PR filed and merged between two runs was never in the stored open set.
   if printf '%s' "$last" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'; then
-    if ! closed="$(gh search prs --author "$ME" --state closed --closed ">=$last" --limit 100 --json repository,number \
+    if ! closed="$(gh search prs --author "$ME" --state closed --closed ">=$last" --limit "$MAX" --json repository,number \
       --jq '.[] | "\(.repository.nameWithOwner)#\(.number)"')"; then
       echo "pr-sweep.sh: gh search prs failed for PRs of $ME closed since $last" >&2
       exit 1
@@ -94,17 +100,23 @@ if [ -f "$STATE" ]; then
   while read -r id; do
     [ -n "$id" ] || continue
     gone_repo="${id%#*}"; gone_num="${id##*#}"
+    # A pull request we could not read stays in the stored set, so the next run
+    # reports it: the search below only looks forward from this run.
     if ! v="$(gh pr view "$gone_num" --repo "$gone_repo" --json state,mergedAt,closedAt,mergedBy,headRefName,headRepository,headRepositoryOwner)"; then
-      echo "pr-sweep.sh: gh pr view $id failed" >&2
+      echo "pr-sweep.sh: gh pr view $id failed; it is read again next run" >&2
+      retry="$retry
+$id"
+      unreadable=$((unreadable + 1))
       continue
     fi
     head_owner="$(printf '%s' "$v" | jq -r '.headRepositoryOwner.login // "-"' | tr -d '\r')"
     head_fork="$(printf '%s' "$v" | jq -r '.headRepository.name // "-"' | tr -d '\r')"
     head_branch="$(printf '%s' "$v" | jq -r '.headRefName // "-"' | tr -d '\r')"
-    if [ "$head_owner" = "$ME" ] && [ "$gone_repo" != "$ME/$head_fork" ] && [ "$head_branch" != "-" ]; then
+    gone_state="$(printf '%s' "$v" | jq -r '.state // "-"' | tr -d '\r')"
+    if [ "$gone_state" != OPEN ] && [ "$head_owner" = "$ME" ] && [ "$gone_repo" != "$ME/$head_fork" ] && [ "$head_branch" != "-" ]; then
       tidy="$(printf '%s\n%s\n' "$tidy" "$ME/$head_fork $head_branch $id")"
     fi
-    case "$(printf '%s' "$v" | jq -r '.state // "-"' | tr -d '\r')" in
+    case "$gone_state" in
       MERGED)
         printf 'MERGED %s by %s at %s\n' "$id" \
           "$(printf '%s' "$v" | jq -r '.mergedBy.login // "-"' | tr -d '\r')" \
@@ -121,18 +133,25 @@ else
   tidy=""
 fi
 
-# every recorded fork branch is checked again; it leaves the list only once GitHub says it is gone
+# every recorded fork branch is checked again; it leaves the list only once GitHub
+# says it is gone, which is a 404 and not any failure. The singular ref endpoint:
+# the plural one answers 200 for any branch the name is a prefix of.
 keep=""; ntidy=0
 while read -r fork branch id; do
   [ -n "$fork" ] || continue
-  gh api "repos/$fork/git/refs/heads/$branch" >/dev/null 2>&1 || continue
+  if ! err="$(gh api "repos/$fork/git/ref/heads/$(uri_path "$branch")" 2>&1 >/dev/null)"; then
+    case "$err" in *"(HTTP 404)"*) continue ;; esac
+    keep="$(printf '%s\n%s\n' "$keep" "$fork $branch $id")"
+    echo "pr-sweep.sh: cannot read $fork $branch; asked again next run" >&2
+    continue
+  fi
   ntidy=$((ntidy + 1))
   keep="$(printf '%s\n%s\n' "$keep" "$fork $branch $id")"
   printf 'TIDY   %-38s fork branch %s %s still exists: run housebroken hygiene\n' "$id" "$fork" "$branch"
 done <<< "$(printf '%s\n' "$tidy" | awk 'NF == 3 && !seen[$0]++')"
 
 if ! jq -n --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --arg open "$(printf '%s\n' "$open_ids")" --arg tidy "$(printf '%s\n' "$keep")" \
+  --arg open "$(printf '%s\n%s\n' "$open_ids" "$retry")" --arg tidy "$(printf '%s\n' "$keep")" \
   '{lastRun: $t, open: ($open | split("\n") | map(select(length > 0))), tidy: ($tidy | split("\n") | map(select(length > 0)))}' > "$STATE"; then
   echo "pr-sweep.sh: cannot write $STATE" >&2
   exit 1
@@ -142,16 +161,20 @@ n=0; act=0
 while IFS=$'\t' read -r repo num updated title; do
   [ -n "$repo" ] || continue
   n=$((n + 1))
+  title="$(printf '%s' "$title" | clean_line)"
   if ! j="$(gh pr view "$num" --repo "$repo" --json mergeable,reviewDecision,statusCheckRollup,comments,reviews,latestReviews)"; then
     printf '%-40s #%-5s (gh pr view failed)\n' "$repo" "$num" >&2
+    unreadable=$((unreadable + 1))
     continue
   fi
+  # Whole names only: gh gives no bot flag here, and a substring also matches
+  # the humans talbot and devinrsmith.
   last_actor="$(printf '%s' "$j" | jq -r '
     [ (.comments[]? | {a: .author.login, t: .createdAt}), (.reviews[]? | {a: .author.login, t: .submittedAt}) ]
-    | map(select(.a != null and (.a | test("bot|\\[bot\\]|github-actions|codecov|dependabot|cla-|-cla|claassistant|coderabbit|devin|coveralls|vercel|asf-|apache-"; "i") | not)))
+    | map(select(.a != null and (.a | test("(\\[bot\\]|^app/.*|^github-actions|^dependabot|^codecov(-commenter)?|^coveralls|^claassistant|^cla-assistant|^coderabbitai|^devin-ai-integration|^vercel|^netlify|^sonarcloud|^copilot|^asf-ci|^apache-ci)$"; "i") | not)))
     | sort_by(.t) | last | "\(.a // "-") \(.t // "-")"')"
   la_user="${last_actor%% *}"; la_time="${last_actor#* }"
-  ci="$(printf '%s' "$j" | jq -r '[.statusCheckRollup[]? | (.conclusion // .state // "PENDING")] | if length == 0 then "none" elif any(. == "FAILURE" or . == "ERROR") then "FAILING" elif any(. == "PENDING" or . == "IN_PROGRESS" or . == "QUEUED" or . == "EXPECTED") then "pending" else "green" end')"
+  ci="$(printf '%s' "$j" | jq -r "$ci_jq"'[.statusCheckRollup[]?] | if length == 0 then "none" elif any(.[]; ci == "red" and check_state != "ACTION_REQUIRED") then "FAILING" elif any(.[]; check_state == "ACTION_REQUIRED") then "needs-approval" elif any(.[]; ci == "running") then "pending" else "green" end')"
   mergeable="$(printf '%s' "$j" | jq -r '.mergeable // "-"')"
   decision="$(printf '%s' "$j" | jq -r '.reviewDecision // "-"')"
   why=""
@@ -168,4 +191,8 @@ while IFS=$'\t' read -r repo num updated title; do
 done <<< "$list"
 echo "open PRs: $n; needing action: $act"
 [ "$ntidy" -gt 0 ] && echo "fork branches to tidy: $ntidy (housebroken hygiene)"
+if [ "$unreadable" -gt 0 ]; then
+  echo "SWEEP UNREADABLE: $unreadable pull request(s) could not be read, so their state is unknown, not clean" >&2
+  exit 1
+fi
 exit 0

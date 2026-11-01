@@ -158,3 +158,7 @@ fence() { # who indent
   tr -d '\r' | clean_lines | sed "s/^/$2| /"
   echo "$2--- end of $1's text ---"
 }
+
+# A path for a URL, each segment encoded: a # in a branch name would otherwise end
+# the path, and DELETE would reach the branch whose name is what came before it.
+uri_path() { jq -rn --arg p "$1" '$p | split("/") | map(@uri) | join("/")' | tr -d '\r'; }

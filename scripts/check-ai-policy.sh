@@ -163,7 +163,7 @@ scan() {
   fi
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    enc=$(jq -rn --arg p "$f" '$p | split("/") | map(@uri) | join("/")')
+    enc=$(uri_path "$f")
     # The raw form: the JSON one carries no content for a file over 1 MB.
     if ! body=$(gh api -H 'Accept: application/vnd.github.raw+json' "repos/$target/contents/$enc?ref=$ref" 2>/dev/null); then
       echo "  UNREAD: $label$f"
