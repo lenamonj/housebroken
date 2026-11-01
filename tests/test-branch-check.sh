@@ -98,7 +98,7 @@ fires "gitignore excludes it" && { echo "FAIL $name: ignore refusal survived rem
 printf 'plan\n' > "$repo/PLAN.md"
 (cd "$repo" && $G add PLAN.md && $G commit -q -m "plan")
 fires "working artifact" || { echo "FAIL $name: artifact not refused"; exit 1; }
-(cd "$repo" && $G rm -q PLAN.md && $G commit -q -m "drop plan")
+(cd "$repo" && $G reset -q --hard HEAD~1)
 fires "working artifact" && { echo "FAIL $name: artifact refusal survived removing it"; exit 1; }
 
 # 5. absolute claims in added prose warn without blocking
@@ -279,6 +279,59 @@ printf 'errcheck xUnit1004\n' > "$root/lint2.log"
   $G add -A && $G commit -q -m "explained suppressions") || exit 1
 bash "$script" "$repo" --base origin/main --warning-log "$root/lint2.log" 2>&1 | grep -q "adds a warning suppression" \
   && { echo "FAIL $name: an explained nolint or a lowercase-prefixed id was refused with a log showing it"; exit 1; }
+(cd "$repo" && $G reset -q --hard HEAD~1)
+
+# 17. What a blind scan looked like: the same credential, refused from
+# everywhere. A subdirectory, a colour setting and a non-ASCII name each once
+# made the scan read nothing, exit 0 and stamp.
+tok="ghp_abcdefghijklmnopqrstuvwxyz0123"
+(cd "$repo" && printf 'const t = "%s";\n' "$tok" > src/t.ts && $G add -A && $G commit -q -m token) || exit 1
+out=$(cd "$repo/src" && bash "$script" --base origin/main 2>&1); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: from a subdirectory exited $rc: $out"; exit 1; }
+printf '%s' "$out" | grep -q "credential" || { echo "FAIL $name: the credential was not seen from a subdirectory: $out"; exit 1; }
+for setting in "color.ui always" "diff.external true"; do
+  # shellcheck disable=SC2086  # the setting is two words on purpose
+  (cd "$repo" && git config --local $setting)
+  out=$(run); rc=$?
+  (cd "$repo" && git config --local --unset "${setting%% *}")
+  [ "$rc" = "1" ] || { echo "FAIL $name: under $setting exited $rc: $out"; exit 1; }
+  printf '%s' "$out" | grep -q "credential" || { echo "FAIL $name: the credential was not seen under $setting: $out"; exit 1; }
+done
+(cd "$repo" && printf 'y = 1\n' > "a-$(printf '\303\251').py" && $G add -A && $G commit -q -m "non-ascii name") || exit 1
+out=$(run); rc=$?
+printf '%s' "$out" | grep -q "syntax error" && { echo "FAIL $name: a non-ASCII name broke the scan: $out"; exit 1; }
+printf '%s' "$out" | grep -q "credential" || { echo "FAIL $name: the credential was not seen past a non-ASCII name: $out"; exit 1; }
+(cd "$repo" && $G reset -q --hard HEAD~2)
+(cd "$repo" && printf 'y = 1\n' > "a-$(printf '\303\251').py" && $G add -A && $G commit -q -m "non-ascii name") || exit 1
+out=$(run); rc=$?
+[ "$rc" = "0" ] || { echo "FAIL $name: a clean non-ASCII name exited $rc: $out"; exit 1; }
+grep -qx "file: a-$(printf '\303\251').py" "$HOUSEBROKEN_HOME/branch-checks/$(cd "$repo" && git rev-parse HEAD)" ||
+  { echo "FAIL $name: the stamp does not hold the real name"; exit 1; }
+(cd "$repo" && $G reset -q --hard HEAD~1)
+
+# 18. The commits go up, not the net diff: a later commit that removes a secret
+# or an artifact leaves it in the history.
+(cd "$repo" && printf 'const t = "%s";\n' "$tok" > src/t.ts && printf '# plan\n' > PLAN.md && $G add -A && $G commit -q -m wip &&
+  $G rm -q src/t.ts PLAN.md && $G commit -q -m "clean up") || exit 1
+out=$(run); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: a secret removed by a later commit exited $rc: $out"; exit 1; }
+printf '%s' "$out" | grep -q "history carries a personal path or a credential: $tok" || { echo "FAIL $name: the secret in the history was not named: $out"; exit 1; }
+printf '%s' "$out" | grep -q "PLAN.md is in this branch's history" || { echo "FAIL $name: the artifact in the history was not named: $out"; exit 1; }
+(cd "$repo" && $G reset -q --hard HEAD~2)
+# --allow still lifts it, and one commit is not reported twice
+(cd "$repo" && printf 'const t = "%s";\n' "$tok" > src/t.ts && $G add -A && $G commit -q -m one) || exit 1
+out=$(run)
+[ "$(printf '%s' "$out" | grep -c "credential")" = "1" ] || { echo "FAIL $name: one secret in one commit was reported twice: $out"; exit 1; }
+(cd "$repo" && $G reset -q --hard HEAD~1)
+
+# 19. A rename is one file with its own history: the stamp names both sides, and
+# what the old path already carried is not read as added.
+(cd "$repo" && printf 'const home = "/home/%s/x";\n' "$(basename "$HOME")" > src/keep.ts && $G add -A && $G commit -q -m base2 && setbase HEAD) || exit 1
+(cd "$repo" && $G mv src/keep.ts src/moved.ts && $G commit -q -m rename) || exit 1
+out=$(run); rc=$?
+[ "$rc" = "0" ] || { echo "FAIL $name: a pure rename exited $rc: $out"; exit 1; }
+stamp="$HOUSEBROKEN_HOME/branch-checks/$(cd "$repo" && git rev-parse HEAD)"
+grep -qx 'file: src/moved.ts' "$stamp" && grep -qx 'from: src/keep.ts' "$stamp" || { echo "FAIL $name: the stamp does not name both sides of a rename"; cat "$stamp"; exit 1; }
 (cd "$repo" && $G reset -q --hard HEAD~1)
 
 echo "PASS $name"

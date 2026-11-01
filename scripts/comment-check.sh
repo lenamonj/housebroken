@@ -30,6 +30,8 @@
 set -u
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
+# shellcheck source=scripts/common.sh
+. "$(cd "$(dirname "$0")" && pwd)/common.sh"
 
 clone="."
 base=""
@@ -56,6 +58,7 @@ while [ "$#" -gt 0 ]; do
 done
 [ -n "$base" ] || { echo "comment-check.sh: --base REF is required" >&2; exit 2; }
 cd "$clone" 2>/dev/null || { echo "comment-check.sh: $clone is not a directory" >&2; exit 2; }
+cd "$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "comment-check.sh: $clone is not a git clone" >&2; exit 2; }
 mb=$(git merge-base "$base" HEAD 2>/dev/null) || { echo "comment-check.sh: no merge base between $base and HEAD" >&2; exit 2; }
 
 comment_re() {
@@ -96,19 +99,26 @@ report() {
   fi
 }
 
+namestat=$(gdiff --name-status -M --diff-filter=d "$mb" HEAD)
+renames=$(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $2 "\t" $3}')
+
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   name="${f##*/}"
   case "$name" in *.*) ext=$(printf '%s' "${name##*.}" | tr '[:upper:]' '[:lower:]') ;; *) continue ;; esac
   re=$(comment_re "$ext") || continue
   measured=$((measured + 1))
+  # Both sides of a rename, or git reads every existing comment as added.
+  spec=("$f")
+  old=$(renamed_from "$f")
+  [ -z "$old" ] || spec=("$old" "$f")
   existed=0
-  git cat-file -e "$mb:$f" 2>/dev/null && existed=1
+  git cat-file -e "$mb:${old:-$f}" 2>/dev/null && existed=1
   header_ok=0
   if [ "$existed" -eq 0 ] && siblings_open_with_comment "$f" "$ext" "$re"; then header_ok=1; fi
 
   # One row per changed line: sign, hunk number, new line number, text.
-  git diff -U0 "$mb" HEAD -- "$f" | awk '
+  gdiff -U0 -M "$mb" HEAD -- "${spec[@]}" | awk '
     /^@@ /                 { h++; split($3, a, ","); ln = substr(a[1], 2) + 0; next }
     h == 0                 { next }
     /^\+/                  { print "+\t" h "\t" ln "\t" substr($0, 2); ln++; next }
@@ -119,31 +129,33 @@ while IFS= read -r f; do
   # An added comment line is refused unless a removed comment line in the same
   # hunk pays for it, or it is in the leading comment block of a new file whose
   # neighbours open with one. Every added line between an added /* and its */
-  # is a comment, whatever it starts with.
+  # is a comment, whatever it starts with. The text is everything after the
+  # third tab, not a field: a tab-indented line would split there.
   blk=0
   case "$re" in *'/[*]'*) blk=1 ;; esac
   awk -F'\t' -v re="$re" -v hdr="$header_ok" -v file="$f" -v blk="$blk" '
-    $1 == "-" { if ($4 ~ re) rem[$2]++; next }
+    { line = $0; for (i = 0; i < 3; i++) line = substr(line, index(line, "\t") + 1) }
+    $1 == "-" { if (line ~ re) rem[$2]++; next }
     $1 == "+" {
-      iscom = ($4 ~ re)
+      iscom = (line ~ re)
       if (blk == 1) {
         if ($3 != prev + 1) inblock = 0
         prev = $3
-        if (inblock) { iscom = 1; if ($4 ~ /[*]\//) inblock = 0 }
-        else if ($4 ~ /^[[:space:]]*\/[*]/ && $4 !~ /[*]\//) inblock = 1
+        if (inblock) { iscom = 1; if (line ~ /[*]\//) inblock = 0 }
+        else if (line ~ /^[[:space:]]*\/[*]/ && line !~ /[*]\//) inblock = 1
       }
       if (iscom) {
         if (rem[$2] > 0) { rem[$2]--; next }
         if (hdr == 1 && !code_seen) next
-        text = $4; sub(/^[[:space:]]+/, "", text)
+        text = line; sub(/^[[:space:]]+/, "", text)
         print file ":" $3 " adds a comment: " text
-      } else if ($4 !~ /^[[:space:]]*$/) code_seen = 1
+      } else if (line !~ /^[[:space:]]*$/) code_seen = 1
     }
   ' "$work/rows" > "$work/hits"
   while IFS= read -r hit; do
     [ -n "$hit" ] && report "$hit"
   done < "$work/hits"
-done < <(git diff --name-only --diff-filter=d "$mb" HEAD)
+done < <(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $3} NF == 2 {print $2}')
 
 if [ "$refused" -ne 0 ]; then
   echo "comment-check: refused. A comment goes into someone else's code only when its maintainer asks for it."

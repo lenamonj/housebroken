@@ -37,6 +37,8 @@ set -u
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 
 here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 clone="."
 base=""
@@ -82,6 +84,9 @@ done
 
 cd "$clone" 2>/dev/null || { echo "REFUSED: $clone is not a directory" >&2; exit 2; }
 git rev-parse --git-dir >/dev/null 2>&1 || { echo "REFUSED: $clone is not a git clone" >&2; exit 2; }
+# Git prints paths from the top and reads pathspecs from here, so anywhere else
+# every scan below would match nothing.
+cd "$(git rev-parse --show-toplevel)" || { echo "REFUSED: cannot reach the top of $clone" >&2; exit 2; }
 
 if [ -z "$base" ]; then
   for candidate in upstream/main upstream/master origin/main origin/master; do
@@ -125,10 +130,26 @@ if ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
   block "HEAD is not on top of $base - rebase before filing"
 fi
 
-files=$(git diff --name-only "$base..HEAD" 2>/dev/null)
+namestat=$(gdiff --name-status -M "$base..HEAD" 2>/dev/null)
+files=$(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $3} NF == 2 {print $2}')
+renames=$(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $2 "\t" $3}')
 if [ -z "$files" ]; then
   block "no files differ from $base - there is nothing to file"
 fi
+
+# Prints why a path is a working artifact, or nothing when it is not one.
+artifact_why() {
+  case "$1" in
+    .jeffy/*|*/.jeffy/*|PLAN.md|*/PLAN.md|JOURNAL.md|*/JOURNAL.md|*.orig|*.rej|*.bak|*.swp|.DS_Store|*/.DS_Store|Thumbs.db|*/Thumbs.db)
+      echo "is a working artifact and has no place in the diff"; return ;;
+  esac
+  # An agent's instruction or scratch file is an artifact when this branch adds
+  # it; a project that already keeps one may have it edited.
+  case "$1" in
+    .claude/*|*/.claude/*|.cursor/*|*/.cursor/*|CLAUDE.md|*/CLAUDE.md|AGENTS.md|*/AGENTS.md|GEMINI.md|*/GEMINI.md|STATUS.md|*/STATUS.md|NOTES.md|*/NOTES.md|TODO.md|*/TODO.md)
+      in_base "$1" || echo "is added by this branch and reads as an agent's working file" ;;
+  esac
+}
 
 while IFS= read -r f; do
   [ -n "$f" ] || continue
@@ -166,16 +187,8 @@ while IFS= read -r f; do
     fi
   fi
 
-  case "$f" in
-    .jeffy/*|*/.jeffy/*|PLAN.md|*/PLAN.md|JOURNAL.md|*/JOURNAL.md|*.orig|*.rej|*.bak|*.swp|.DS_Store|*/.DS_Store|Thumbs.db|*/Thumbs.db)
-      block "$f is a working artifact and has no place in the diff" ;;
-  esac
-  # An agent's instruction or scratch file is an artifact when this branch adds
-  # it; a project that already keeps one may have it edited.
-  case "$f" in
-    .claude/*|*/.claude/*|.cursor/*|*/.cursor/*|CLAUDE.md|*/CLAUDE.md|AGENTS.md|*/AGENTS.md|GEMINI.md|*/GEMINI.md|STATUS.md|*/STATUS.md|NOTES.md|*/NOTES.md|TODO.md|*/TODO.md)
-      in_base "$f" || block "$f is added by this branch and reads as an agent's working file" ;;
-  esac
+  why=$(artifact_why "$f")
+  [ -z "$why" ] || block "$f $why"
 done <<EOF
 $files
 EOF
@@ -215,8 +228,8 @@ printf '%s\n' "$comments" | grep -E '^CHECK: ' | sed 's/^/    /'
 # A suppression hides a warning from the maintainer too, so it has to be shown
 # that the warning exists. A suppression covering nothing usually covers code
 # that is wrong in a way the analyzer cannot see.
-added=$(git diff -U0 "$base..HEAD" -- . ':(exclude)*.md' ':(exclude)*.rst' ':(exclude)*.txt' 2>/dev/null \
-  | grep '^+' | grep -v '^+++' | sed 's/^+//')
+added=$(gdiff -U0 "$base..HEAD" -- . ':(exclude)*.md' ':(exclude)*.rst' ':(exclude)*.txt' 2>/dev/null \
+  | added_lines | cut -f2-)
 suppressions=$(printf '%s\n' "$added" | grep -E 'UnconditionalSuppressMessage|SuppressMessage\(|#pragma warning disable|pragma warning *\( *disable|<NoWarn>|@SuppressWarnings|@SuppressLint|@Suppress\(|#!?\[allow\(|nolint|NOLINT|NOSONAR|noqa|eslint-disable|@ts-ignore|@ts-expect-error|type: *ignore|pylint: *disable|rubocop:disable|swiftlint:disable|phpstan-ignore|psalm-suppress')
 if [ -n "$suppressions" ]; then
   # Each suppression names what it hides: a code such as IL2075 or C4996, else
@@ -249,7 +262,7 @@ fi
 aotdecl=$(git grep -lE '<(IsAotCompatible|IsTrimmable|PublishAot|EnableTrimAnalyzer|EnableAotAnalyzer)( [^>]*)?>[[:space:]]*true' HEAD -- '*.csproj' '*.props' '*.targets' 2>/dev/null \
   | sed 's/^HEAD://' | tr '\n' ' ')
 if [ -n "$aotdecl" ]; then
-  reflection=$(git diff -U0 "$base..HEAD" -- '*.cs' 2>/dev/null | grep '^+' | grep -v '^+++' | sed 's/^+//' \
+  reflection=$(gdiff -U0 "$base..HEAD" -- '*.cs' 2>/dev/null | added_lines | cut -f2- \
     | grep -E '\.Get(Property|Properties|Method|Methods|Field|Fields|Member|Members|Interfaces)\(|Activator\.CreateInstance|MakeGenericType|MakeGenericMethod|Type\.GetType\(|\.InvokeMember\(')
   # The log has to be a publish of this repository: it names, as a word, a
   # declaring project, or any project here when the declaration is in a .props.
@@ -279,15 +292,26 @@ allowed() { local a; for a in ${allows[@]+"${allows[@]}"}; do [ "$1" = "$a" ] &&
 me=$(basename "${HOME:-/nobody}")
 leak_re="gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|[A-Za-z]:[\\\\/]Users[\\\\/]$me([\\\\/ ]|\$)|/home/$me/|/Users/$me/|/mnt/[a-z]/Users/$me/"
 path_re='[A-Za-z]:[\\/]Users[\\/][^\\/ ]+|/home/[a-z][a-z0-9_-]*/|/Users/[A-Za-z][^/ ]*/|/mnt/[a-z]/Users/'
-nfiles=0; nadded=0
+nfiles=0; nadded=0; netleaks=""
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   nfiles=$((nfiles + 1))
-  stat=$(git diff --numstat "$base..HEAD" -- "$f" | head -1)
-  case "$f" in *test*|*spec*) ;; *) nadded=$((nadded + $(printf '%s' "$stat" | awk '{print ($1 == "-") ? 0 : $1}'))) ;; esac
+  # Both sides of a rename, or git reads the new path as a whole new file.
+  spec=("$f")
+  old=$(renamed_from "$f")
+  [ -z "$old" ] || spec=("$old" "$f")
+  stat=$(gdiff --numstat -M "$base..HEAD" -- "${spec[@]}" | head -1)
+  # A file with no diff was not scanned, and that is never the same as clean.
+  if [ -z "$stat" ]; then
+    block "git gave no diff for $f, so nothing in it was scanned"
+    continue
+  fi
+  is_test_path "$f" || nadded=$((nadded + $(printf '%s' "$stat" | awk '{print ($1 == "-") ? 0 : $1}')))
   allowed "$f" && continue
-  addedf=$(git diff -U0 "$base..HEAD" -- "$f" | grep '^+' | grep -v '^+++')
+  addedf=$(gdiff -U0 -M "$base..HEAD" -- "${spec[@]}" | added_lines | cut -f2-)
   leaks=$(printf '%s\n' "$addedf" | grep -oE "$leak_re" | sort -u)
+  netleaks="$netleaks
+$leaks"
   [ -z "$leaks" ] || block "$f adds a personal path or a credential: $(printf '%s' "$leaks" | tr '\n' ' ')"
   paths=$(printf '%s\n' "$addedf" | grep -oE "$path_re" | sort -u)
   [ -z "$paths" ] || echo "CHECK: $f adds a user path, a fixture or an example unless it is yours: $(printf '%s' "$paths" | tr '\n' ' ')"
@@ -299,7 +323,7 @@ while IFS= read -r f; do
     -*) block "$f is binary - pass --allow $f if the change needs it" ;;
     *)
       total=$(printf '%s' "$stat" | awk '{print $1 + $2}')
-      real=$(git diff --numstat --ignore-space-at-eol --ignore-cr-at-eol "$base..HEAD" -- "$f" | awk '{print $1 + $2}')
+      real=$(gdiff --numstat -M --ignore-space-at-eol --ignore-cr-at-eol "$base..HEAD" -- "${spec[@]}" | awk '{print $1 + $2}')
       if [ "$total" -ge 10 ] && [ $((${real:-0} * 2)) -lt "$total" ]; then
         block "$f changes $total lines, of which ${real:-0} differ beyond whitespace and line endings - restore the file's own endings"
       fi
@@ -312,9 +336,24 @@ if [ "$nfiles" -gt 4 ] || [ "$nadded" -gt 150 ]; then
   echo "CHECK: $nfiles files and $nadded added lines outside tests - one finding, the smallest diff that fixes it"
 fi
 
+# The commits go up, not the net diff: a secret or an artifact a later commit
+# removes is still in the history a push publishes.
+if [ "$(git rev-list --count "$base..HEAD")" -gt 1 ]; then
+  history=$(gitq log -p -U0 -M --no-ext-diff --no-textconv --no-color --format= "$base..HEAD" | added_lines)
+  gone=$(printf '%s\n' "$history" | while IFS=$'\t' read -r f line; do allowed "$f" || printf '%s\n' "$line"; done \
+    | grep -oE "$leak_re" | sort -u | grep -vxF -e "" -f <(printf '%s\n' "$netleaks"))
+  [ -z "$gone" ] || block "the branch's history carries a personal path or a credential: $(printf '%s' "$gone" | tr '\n' ' ')- a later commit does not remove it from what is pushed; rewrite the commits"
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    printf '%s\n' "$files" | grep -qxF -- "$f" && continue
+    why=$(artifact_why "$f")
+    [ -z "$why" ] || block "$f is in this branch's history: it $why, and a later commit does not remove it from what is pushed; rewrite the commits"
+  done <<< "$(gitq log --name-only --format= "$base..HEAD" | sort -u)"
+fi
+
 # Absolutes in added prose are the claims a maintainer can falsify in one grep.
-claims=$(git diff -U0 "$base..HEAD" -- '*.md' '*.mdx' '*.rst' '*.txt' 2>/dev/null \
-  | grep '^+' | grep -v '^+++' | sed 's/^+//' \
+claims=$(gdiff -U0 "$base..HEAD" -- '*.md' '*.mdx' '*.rst' '*.txt' 2>/dev/null \
+  | added_lines | cut -f2- \
   | grep -nEi '\b(only|exactly|always|never|guaranteed|nothing|everything)\b')
 if [ -n "$claims" ]; then
   echo "CHECK: added prose makes absolute claims - falsify each one against the code:"
@@ -338,5 +377,6 @@ head=$(git rev-parse HEAD)
 mkdir -p "$home/branch-checks"
 printf 'head: %s\nbase: %s\nbase-ref: %s\nchecked: %s\n' "$head" "$(git rev-parse "$base")" "$base" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$home/branch-checks/$head"
 printf '%s\n' "$files" | sed '/^$/d; s/^/file: /' >> "$home/branch-checks/$head"
+printf '%s\n' "$renames" | awk -F'\t' 'NF == 2 {print "from: " $1}' >> "$home/branch-checks/$head"
 echo
 echo "branch-check: nothing mechanical blocks this branch."

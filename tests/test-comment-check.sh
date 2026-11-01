@@ -109,4 +109,43 @@ out=$(run); rc=$?
 echo "$out" | grep -q "src/d.go:8 adds a comment: D returns four." || { echo "FAIL $name: the inner line of a body block comment was not refused: $out"; exit 1; }
 echo "$out" | grep -q "src/d.go:[1-3] " && { echo "FAIL $name: the header was refused: $out"; exit 1; }
 
+# 10. a tab-indented comment is seen: gofmt indents every comment inside a function
+$G reset -q --hard main
+printf 'package b\n\n// B returns two.\nfunc B() int {\n\t// two is the answer\n\treturn 2\n}\n' > src/b.go
+commit "tabbed comment"
+out=$(run); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: a tab-indented comment exited $rc, expected 1: $out"; exit 1; }
+echo "$out" | grep -q "src/b.go:5 adds a comment: // two is the answer" || { echo "FAIL $name: the tabbed comment was not named: $out"; exit 1; }
+
+# 11. the same branch reads the same from a subdirectory
+out=$(cd src && bash "$script" --base main 2>&1); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: from a subdirectory exited $rc, expected 1: $out"; exit 1; }
+
+# 12. and under a user's colour or external diff settings
+for setting in "color.ui always" "diff.external true" "diff.noprefix true"; do
+  # shellcheck disable=SC2086  # the setting is two words on purpose
+  git config --local $setting
+  out=$(run); rc=$?
+  git config --local --unset "${setting%% *}"
+  [ "$rc" = "1" ] || { echo "FAIL $name: under $setting exited $rc, expected 1: $out"; exit 1; }
+done
+
+# 13. a comment in a file with a non-ASCII name is measured
+$G reset -q --hard main
+printf 'x = 1\n# a comment\n' > "src/caf$(printf '\303\251').py"
+commit "non-ascii name"
+out=$(run); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: a comment in a non-ASCII file exited $rc, expected 1: $out"; exit 1; }
+
+# 14. a pure rename adds no comment, and a comment added in the same commit is still seen
+$G reset -q --hard main
+$G mv src/b.go src/b2.go
+commit "rename only"
+out=$(run); rc=$?
+[ "$rc" = "0" ] || { echo "FAIL $name: a pure rename exited $rc, expected 0: $out"; exit 1; }
+printf 'package b\n\n// B returns two.\n// A new line of comment.\nfunc B() int { return 2 }\n' > src/b2.go
+commit "comment in the renamed file"
+out=$(run); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: a comment in a renamed file exited $rc, expected 1: $out"; exit 1; }
+
 echo "PASS $name"
