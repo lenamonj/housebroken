@@ -80,7 +80,7 @@ echo "$out" | grep -q '^IMPORTANT' && fail "a newline in a path reached column o
 echo '[]' > "$tmp/rc.json"
 
 # a thread too long for a command line is still read
-jq -n --arg b "$(head -c 40000 /dev/zero | tr '\0' 'x')" '[{created_at: "2026-11-01T10:10:00Z", user: {login: "big", type: "User"}, body: $b}]' > "$tmp/ic.json"
+printf '[{"created_at": "2026-11-01T10:10:00Z", "user": {"login": "big", "type": "User"}, "body": "%s"}]\n' "$(head -c 40000 /dev/zero | tr '\0' 'x')" > "$tmp/ic.json"
 jq -n '[{submitted_at: "2026-11-01T10:12:00Z", user: {login: "maint", type: "User"}, state: "CHANGES_REQUESTED", body: "no"}]' > "$tmp/rv.json"
 out=$(run --since 2026-11-01T09:00:00Z --no-ci); rc=$?
 [ "$rc" -eq 0 ] || fail "a long thread exited $rc"
