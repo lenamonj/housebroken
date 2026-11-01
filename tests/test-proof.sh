@@ -52,6 +52,15 @@ rm -f "$marker"
 printf '%s' "$out" | grep -q "ran the same files" || fail "identical arms were not named: $out"
 [ ! -f "$stamp" ] || fail "identical arms were stamped"
 
+# a head that does not come back is said loudly: the command leaves a lock in the
+# base arm, so the restore cannot write
+out=$(bash "$script" . --base upstream-main --test 'grep -q fixed src/lib.txt || { touch .git/index.lock; exit 1; }' 2>&1); rc=$?
+rm -f .git/index.lock
+[ "$rc" -eq 2 ] || fail "a head that did not come back exited $rc: $out"
+printf '%s' "$out" | grep -q "did not come back byte for byte" || fail "the failed restore was not named: $out"
+[ ! -f "$stamp" ] || fail "a run that could not restore the head was stamped"
+git checkout -q -- . || fail "could not put the head back"
+
 # a relative --base-file is read from where it was given, not from the clone
 printf 'broken\n' > "$root/base.txt"
 clone=$PWD

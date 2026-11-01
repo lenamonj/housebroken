@@ -283,6 +283,15 @@ bash "$script" "$repo" --base origin/main --warning-log "$root/lint2.log" 2>&1 |
   && { echo "FAIL $name: an explained nolint or a lowercase-prefixed id was refused with a log showing it"; exit 1; }
 (cd "$repo" && $G reset -q --hard HEAD~1)
 
+# 16b. A base whose remote cannot be read, and a branch with nothing on it.
+url=$(cd "$repo" && git remote get-url origin)
+(cd "$repo" && git remote set-url origin "$root/nowhere.git")
+fires "cannot read main from origin" || { echo "FAIL $name: an unreadable remote base was not refused"; exit 1; }
+(cd "$repo" && git remote set-url origin "$url")
+(cd "$repo" && $G checkout -q -b nothing-here origin/main)
+fires "there is nothing to file" || { echo "FAIL $name: a branch with no changes was not refused"; exit 1; }
+(cd "$repo" && $G checkout -q feature && $G branch -q -D nothing-here)
+
 # 17. What a blind scan looked like: the same credential, refused from
 # everywhere. A subdirectory, a colour setting and a non-ASCII name each once
 # made the scan read nothing, exit 0 and stamp.

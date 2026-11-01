@@ -248,6 +248,7 @@ compared() { PATH="$HOUSEBROKEN_HOME/bin:$PATH" STUB_COMPARE="$1" bash "$script"
 compared '{"status":"diverged","files":[]}' | grep -q "is not on octocat/Hello-World master (compare reads diverged)" || fail "a diverged base was not refused"
 compared '{"status":"behind","files":[]}' | grep -q "compare reads behind" || fail "a rewound upstream was not refused"
 compared '{"status":"ahead"}' | grep -q "listed no files" || fail "a compare with no file list was not refused"
+compared "$(jq -n '{status: "ahead", files: [range(0; 300) | {filename: "f\(.)"}]}')" | grep -q "moved by 300 files or more" || fail "a move past GitHub's file limit was not refused"
 compared '{"status":"ahead","files":[{"filename":"README"}]}' | grep -q "none of its new commits touch" || fail "a move elsewhere was refused"
 compared '{"status":"ahead","files":[{"filename":"src/new.c","previous_filename":"src/x.c"}]}' | grep -q "changed files this branch changes" || fail "an upstream rename of our file was not refused"
 printf 'from: src/old.c\n' >> "$HOUSEBROKEN_HOME/branch-checks/$head"
@@ -330,6 +331,12 @@ out=$(bash "$script" octocat/Hello-World --title t --body-file "$lc" 2>&1)
 printf '%s' "$out" | grep -qi "contains 'co-authored-by" || fail "a body with Co-authored-by passed the prose gate: $out"
 out=$(bash "$script" octocat/Hello-World --title "fix $(printf '\xe2\x80\x94') parser" --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "a title with an em dash exited $rc, expected 2"
+
+# a body that names something that does not exist
+printf 'Fixes #99999999.\n' > "$HOUSEBROKEN_HOME/nothing.md"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$HOUSEBROKEN_HOME/nothing.md" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a body naming nothing exited $rc, expected 2"
+printf '%s' "$out" | grep -q "NOT FOUND  #99999999" || fail "the missing reference was not named: $out"
 
 # an inline body cannot be bound to the review
 out=$(bash "$script" octocat/Hello-World --title t --body "one finding, one test" 2>&1); rc=$?

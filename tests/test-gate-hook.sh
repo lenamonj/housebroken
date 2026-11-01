@@ -113,6 +113,8 @@ hook 2 'cd ~/repos/acme/widgets && gh pr create --title x --body y'
 hook 2 'gh api repos/acme/widgets/pulls/1 --jq .title && gh pr create -R upstream/thing --title t --body b'
 hook 0 'gh api repos/acme/widgets/pulls/1 --jq .title && gh pr create -R acme/widgets --title t --body b'
 hook 2 'gh pr create --body-file repos/acme/b.md --title t'
+# a forced push is refused on your own too, however it names the repository
+hook 2 'git push --force --repo=acme/widgets origin fix'
 # a fork's clone names you as origin while gh writes to the upstream parent,
 # so only a repository the command names counts
 git init -q "$tmp/own-clone" && git -C "$tmp/own-clone" remote add origin https://github.com/acme/widgets.git
