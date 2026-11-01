@@ -22,11 +22,12 @@
 #
 # Exits 0 when nothing is refused, 1 on a refusal, 2 on a usage error.
 # Comment syntax is recognised by extension: // /* * for the C family, Go,
-# Rust, Java, Kotlin, Swift, C#, Scala, Dart, PHP, JavaScript and TypeScript;
-# # for Python, Ruby, shell, YAML, TOML, CMake, Perl, R and Elixir; -- for SQL,
-# Lua and Haskell; ; for assembly and Lisps. Docstrings and comments that share
-# a line with code are not measured, and files with any other extension are
-# not measured.
+# Rust, Java, Kotlin, Swift, C#, Scala, Dart, PHP, JavaScript, TypeScript, CSS,
+# Objective-C and protobuf; # for Python, Ruby, shell, YAML, TOML, CMake, Perl,
+# R, Elixir, Terraform, Makefile and Dockerfile; -- for SQL, Lua and Haskell; ;
+# for assembly and Lisps. A shebang on line one is not a comment, and a leading
+# * is one only when a space follows, so *out = 0; is code. Docstrings, comments
+# that share a line with code, and files of any other kind are not measured.
 set -u
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
@@ -63,9 +64,9 @@ mb=$(git merge-base "$base" HEAD 2>/dev/null) || { echo "comment-check.sh: no me
 
 comment_re() {
   case "$1" in
-    c|cc|cpp|cxx|h|hh|hpp|go|rs|java|kt|kts|swift|cs|scala|groovy|gradle|dart|php|js|jsx|mjs|cjs|ts|tsx)
-      printf '%s' '^[[:space:]]*(//|/[*]|[*]|[*]/)' ;;
-    py|rb|sh|bash|zsh|yaml|yml|toml|cmake|pl|r|ex|exs|tf) printf '%s' '^[[:space:]]*#' ;;
+    c|cc|cpp|cxx|h|hh|hpp|m|mm|go|rs|java|kt|kts|swift|cs|scala|groovy|gradle|dart|php|js|jsx|mjs|cjs|ts|tsx|mts|cts|css|scss|less|proto)
+      printf '%s' '^[[:space:]]*(//|/[*]|[*]/|[*]([[:space:]]|$))' ;;
+    py|pyi|rb|sh|bash|zsh|yaml|yml|toml|cmake|pl|r|ex|exs|tf) printf '%s' '^[[:space:]]*#' ;;
     sql|lua|hs) printf '%s' '^[[:space:]]*--' ;;
     asm|s|lisp|el|clj) printf '%s' '^[[:space:]]*;' ;;
     *) return 1 ;;
@@ -105,7 +106,11 @@ renames=$(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $2 "\t" $3}')
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   name="${f##*/}"
-  case "$name" in *.*) ext=$(printf '%s' "${name##*.}" | tr '[:upper:]' '[:lower:]') ;; *) continue ;; esac
+  case "$name" in
+    Makefile|GNUmakefile|Dockerfile|CMakeLists.txt) ext="sh" ;;
+    *.*) ext=$(printf '%s' "${name##*.}" | tr '[:upper:]' '[:lower:]') ;;
+    *) continue ;;
+  esac
   re=$(comment_re "$ext") || continue
   measured=$((measured + 1))
   # Both sides of a rename, or git reads every existing comment as added.
@@ -137,7 +142,7 @@ while IFS= read -r f; do
     { line = $0; for (i = 0; i < 3; i++) line = substr(line, index(line, "\t") + 1) }
     $1 == "-" { if (line ~ re) rem[$2]++; next }
     $1 == "+" {
-      iscom = (line ~ re)
+      iscom = (line ~ re) && !($3 == 1 && line ~ /^#!/)
       if (blk == 1) {
         if ($3 != prev + 1) inblock = 0
         prev = $3

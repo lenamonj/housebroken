@@ -26,12 +26,13 @@ esac
 file="$1"
 [ -f "$file" ] || { echo "REFUSED: $file does not exist" >&2; exit 2; }
 
-# Strip fenced code and quoted logs: a number inside pasted output is evidence,
-# not a claim being made.
-body=$(awk '/^```/ {fence = !fence; next} !fence && !/^ *[|>]/ {print NR": "$0}' "$file")
+# Strip fenced code and quoted lines: a number inside pasted output is evidence,
+# not a claim being made. A table row is ours, and so is what it counts.
+body=$(awk '/^(```|~~~)/ {fence = !fence; next} !fence && !/^ *>/ {print NR": "$0}' "$file")
 
+# shellcheck disable=SC2016  # the backticks are markdown, matched literally
 quantified=$(printf '%s
-' "$body" | grep -nEi '[0-9]+ *(of|/) *[0-9]+|\b([0-9]+|one|two|three|four|five|six|seven|eight|nine|ten|no) +([a-z_-]+ +){0,3}(tests?|assertions?|static_asserts?|checks?|errors?|failures?|jobs?|files?|warnings?|projects?|commits?|suites?)\b' | cut -d: -f2-)
+' "$body" | sed -E 's/`[^`]*`//g' | grep -nEi '[0-9]+ *(of|/) *[0-9]+|[0-9](%|x\b)|\b[0-9]+ +[a-z]+|\b(one|two|three|four|five|six|seven|eight|nine|ten|no) +([a-z_-]+ +){0,3}(tests?|assertions?|static_asserts?|checks?|errors?|failures?|jobs?|files?|warnings?|projects?|commits?|suites?)\b' | cut -d: -f2-)
 
 absolute=$(printf '%s\n' "$body" | grep -nEi \
   '\b(only|exactly|always|never|every|all|none|nothing|everything|guaranteed|any)\b' \

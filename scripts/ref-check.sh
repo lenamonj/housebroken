@@ -68,9 +68,20 @@ out=$(
       */*/commit/*)
         r=$(printf '%s' "$path" | cut -d/ -f1-2); c=$(printf '%s' "$path" | cut -d/ -f4)
         if gh api "repos/$r/commits/$c" --jq .sha >/dev/null 2>&1; then found "$url"; else lost "$url"; fi ;;
+      */*/compare/*)
+        r=$(printf '%s' "$path" | cut -d/ -f1-2); c=$(printf '%s' "$path" | cut -d/ -f4- | sed 's/[?#].*//')
+        if gh api "repos/$r/compare/$c" --jq .status >/dev/null 2>&1; then found "$url"; else lost "$url"; fi ;;
       */*/blob/*|*/*/tree/*)
-        r=$(printf '%s' "$path" | cut -d/ -f1-2); ref=$(printf '%s' "$path" | cut -d/ -f4); p=$(printf '%s' "$path" | cut -d/ -f5- | sed 's/#.*//')
-        if gh api "repos/$r/contents/$p?ref=$ref" --jq 'if type == "array" then "dir" else .path end' >/dev/null 2>&1; then found "$url"; else lost "$url"; fi ;;
+        r=$(printf '%s' "$path" | cut -d/ -f1-2); rest=$(printf '%s' "$path" | cut -d/ -f4- | sed 's/#.*//')
+        # A branch can hold slashes, so try each place the ref could end.
+        ref="${rest%%/*}"; p="${rest#"$ref"}"; p="${p#/}"; hit=0
+        while :; do
+          if gh api "repos/$r/contents/$p?ref=$ref" --jq 'if type == "array" then "dir" else .path end' >/dev/null 2>&1; then hit=1; break; fi
+          [ -n "$p" ] || break
+          ref="$ref/${p%%/*}"
+          case "$p" in */*) p="${p#*/}" ;; *) p="" ;; esac
+        done
+        if [ "$hit" -eq 1 ]; then found "$url"; else lost "$url"; fi ;;
     esac
   done
 )
@@ -81,16 +92,23 @@ if [ -n "$clone" ]; then
   names=$(printf '%s\n' "$text" | grep -oE '`[^`]+`' | tr -d '`' | sort -u)
   local_out=$(printf '%s\n' "$names" | while IFS= read -r n; do
     [ -n "$n" ] || continue
-    if printf '%s' "$n" | grep -qE '^[0-9a-f]{7,40}$'; then
+    # All digits is a number, not a hash.
+    if printf '%s' "$n" | grep -qE '^[0-9a-f]{7,40}$' && printf '%s' "$n" | grep -q '[a-f]'; then
       if git -C "$clone" cat-file -e "$n^{commit}" 2>/dev/null; then found "commit $n"; else lost "commit $n"; fi
     elif printf '%s' "$n" | grep -qE '^[A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,6}$'; then
-      # A dotted name is a file when the clone has it; without a slash it may
-      # be an identifier (os.path, t.Run, v1.2.3), so only a path is NOT FOUND.
+      # A dotted name is a file when the clone has it or once had it, as a file
+      # the branch deletes does. Without a slash it may be an identifier (os.path,
+      # t.Run, v1.2.3); with one whose first directory the clone does not have it
+      # may be a package or a media type (net/http.Client, application/vnd.api).
+      first="${n%%/*}"
       if git -C "$clone" ls-files --error-unmatch -- "$n" >/dev/null 2>&1 \
-        || git -C "$clone" ls-files | grep -qE "(^|/)$(printf '%s' "$n" | sed 's/[.[\*^$]/\\&/g')$"; then
+        || git -C "$clone" ls-files | grep -qE "(^|/)$(printf '%s' "$n" | sed 's/[.[\*^$]/\\&/g')$" \
+        || [ -n "$(git -C "$clone" log -1 --format=%h --all -- "$n" 2>/dev/null)" ]; then
         found "file $n"
-      elif printf '%s' "$n" | grep -q /; then
+      elif [ "$first" != "$n" ] && [ -n "$first" ] && [ -n "$(git -C "$clone" ls-files -- "$first" | head -1)" ]; then
         lost "file $n"
+      elif [ "$first" != "$n" ] && [ -n "$first" ]; then
+        echo "  CHECK      $n is not in the clone, and neither is $first; a path or a name?"
       fi
     elif printf '%s' "$n" | grep -qE '^(Test[A-Z][A-Za-z0-9_]*|test_[A-Za-z0-9_]+|[A-Za-z0-9_]+_test|[A-Z][A-Za-z0-9_]*Tests?)$'; then
       if git -C "$clone" grep -qw -- "$n" 2>/dev/null; then found "test $n"; else lost "test $n"; fi

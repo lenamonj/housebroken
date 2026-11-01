@@ -39,6 +39,8 @@
 # .py .rb .sh .toml .yaml .yml, and ; for .asm .s .lisp .el .clj. A file with
 # any other extension gets no neighbourhood check.
 set -u
+# shellcheck source=scripts/common.sh
+. "$(cd "$(dirname "$0")" && pwd)/common.sh"
 
 usage() {
   sed -n '2,/^set -u$/p' "$0" | sed 's/^# \{0,1\}//; /^set -u$/d'
@@ -74,24 +76,22 @@ trap 'rm -f "$flagfile"' EXIT
 
 flag_scan() {
   local d="$1" base="$2" br="$3" name="$4"
-  local map content addedset cur row f ln text e re lo hi body
-  local rows=()
+  local map content addedset cur f ln text e re lo hi body
   map=$(mktemp) || return 1
   content=$(mktemp) || { rm -f "$map"; return 1; }
   addedset=$(mktemp) || { rm -f "$map" "$content"; return 1; }
 
-  git -C "$d" diff --unified=0 "$base..$br" -- "${paths[@]}" | awk '
-    /^\+\+\+ / { file=""; if (substr($0,1,6) == "+++ b/") file=substr($0,7); next }
-    /^--- /    { next }
-    /^@@ /     { split($3, a, ","); ln=substr(a[1],2)+0; next }
-    /^\+/      { if (file != "") { print file "\t" ln "\t" substr($0,2); ln++ } next }
-    /^ /       { ln++ }
+  # Three dots: what the branch adds, not what the base dropped since it forked.
+  gitq -C "$d" diff --no-ext-diff --unified=0 "$base...$br" -- "${paths[@]}" | awk '
+    /^@@ /          { split($3, a, ","); ln=substr(a[1],2)+0; n=(index($3, ",") ? a[2] : 1)+0; next }
+    n > 0 && /^\+/  { if (file != "") { print file "\t" ln "\t" substr($0,2); ln++ } n--; next }
+    n > 0 && /^-/   { next }
+    /^\+\+\+ /      { file=""; if (substr($0,1,6) == "+++ b/") { file=substr($0,7); sub(/\t$/, "", file) } next }
   ' > "$map"
 
-  mapfile -t rows < "$map"
   cur=""
-  for row in ${rows[@]+"${rows[@]}"}; do
-    IFS=$'\t' read -r f ln text <<< "$row"
+  # shellcheck disable=SC2094  # the awk below reads the map too; nothing writes it
+  while IFS=$'\t' read -r f ln text; do
     e="${f##*.}"
     re=$(comment_re "$e") || continue
     printf '%s\n' "$text" | grep -qE "$re" || continue
@@ -117,7 +117,7 @@ flag_scan() {
     ' "$content"; then
       printf 'FLAG %s %s %s:%s %s\n' "$name" "$br" "$f" "$ln" "$text" >> "$flagfile"
     fi
-  done
+  done < "$map"
 
   rm -f "$map" "$content" "$addedset"
 }
@@ -145,14 +145,16 @@ for d in "$root"/*/; do
     [ -n "$br" ] || continue
     [ "$br" = "$default_branch" ] && continue
     [ "$(git -C "$d" rev-list --count "$base..$br")" = "0" ] && continue
-    added=$(git -C "$d" diff "$base..$br" -- "${paths[@]}" | grep '^+' | grep -v '^+++' || true)
+    added=$(gitq -C "$d" diff --no-ext-diff -U0 "$base...$br" -- "${paths[@]}" | added_lines | cut -f2- | sed 's/^/+/' || true)
+    # A # comment has a space or nothing after it; #include and #define are code.
+    cre='^\+[[:space:]]*(//|/\*|\*|///|\*/|#([[:space:]!]|$))'
     if [ -z "$added" ]; then
       code=0; cmnt=0
     else
-      code=$(printf '%s\n' "$added" | grep -v -E '^\+\s*(//|/\*|\*|#|///|\*/)' | grep -c -v -E '^\+\s*$' || true)
-      cmnt=$(printf '%s\n' "$added" | grep -c -E '^\+\s*(//|/\*|\*|///|\*/)' || true)
+      code=$(printf '%s\n' "$added" | grep -v -E "$cre" | grep -c -v -E '^\+[[:space:]]*$' || true)
+      cmnt=$(printf '%s\n' "$added" | grep -c -E "$cre" || true)
     fi
-    tests=$(git -C "$d" diff "$base..$br" --numstat | awk '/[Tt]est/{s+=$1} END{print s+0}')
+    tests=$(gitq -C "$d" diff --no-ext-diff "$base...$br" --numstat | awk '/[Tt]est/{s+=$1} END{print s+0}')
     printf '%-28s %-36s %5s %5s %5s\n' "$name" "$br" "$code" "$cmnt" "$tests"
     flag_scan "$d" "$base" "$br" "$name"
   done < <(git -C "$d" for-each-ref --format='%(refname:short)' refs/heads/)

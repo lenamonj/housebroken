@@ -54,4 +54,37 @@ printf 'Use `os.path` and `t.Run` since `v1.2.3`. See https://github.com/feature
 out=$(bash "$script" octocat/Hello-World "$body" --clone "$clone"); rc=$?
 [ "$rc" -eq 0 ] || fail "identifiers, code blocks or a features page were refused: $out"
 
+# what reads like a reference and is not one
+(cd "$clone" && printf 'gone\n' > src/old.py && $G add -A && $G commit -q -m "add old" && $G rm -q src/old.py && $G commit -q -m "remove old") || fail "fixture failed"
+# shellcheck disable=SC2016  # the backticks are markdown, written literally
+for fine in 'Removes the dead `src/old.py`.' 'The `net/http.Client` timeout is ignored.' 'A buffer of `1048576` bytes overflows.' \
+            'The value `2147483647` wraps.' 'It reads `/etc/app/config.yml` at startup.' 'Sends `application/vnd.api` as the type.'; do
+  printf '%s\n' "$fine" > "$body"
+  out=$(bash "$script" octocat/Hello-World "$body" --clone "$clone"); rc=$?
+  [ "$rc" -eq 0 ] || fail "not a reference, exited $rc: $fine: $out"
+done
+# shellcheck disable=SC2016  # the backticks are markdown, written literally
+printf 'See the `lib/nope.go` file.\n' > "$body"
+out=$(bash "$script" octocat/Hello-World "$body" --clone "$clone")
+printf '%s' "$out" | grep -q "CHECK      lib/nope.go is not in the clone" || fail "an unknown first directory was not noted: $out"
+
+# a branch with a slash in its name, and a comparison, are looked up as what they are
+stubbed="$tmp/bin"
+mkdir -p "$stubbed"
+cat > "$stubbed/gh" <<'STUB'
+#!/bin/bash
+case "$*" in
+  "api repos/me/fork/contents/?ref=fix/parser "*|"api repos/me/fork/contents/a.c?ref=fix/parser "*) echo ok ;;
+  "api repos/o/r/compare/main...me:real "*) echo ahead ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$stubbed/gh"
+refs() { printf '%s\n' "$1" > "$body"; PATH="$stubbed:$PATH" bash "$script" o/r "$body"; }
+refs 'See https://github.com/me/fork/tree/fix/parser for it.' >/dev/null || fail "a branch with a slash was refused"
+refs 'See https://github.com/me/fork/blob/fix/parser/a.c#L3 for it.' >/dev/null || fail "a file on a branch with a slash was refused"
+refs 'See https://github.com/me/fork/tree/fix/nosuch for it.' >/dev/null && fail "a branch that does not exist was found"
+refs 'See https://github.com/o/r/compare/main...me:real for it.' >/dev/null || fail "a comparison was refused"
+refs 'See https://github.com/o/r/compare/main...me:nosuch for it.' >/dev/null && fail "a comparison of nothing was found"
+
 echo "PASS $name"

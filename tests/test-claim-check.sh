@@ -44,4 +44,16 @@ printf 'Result below.\n\n15 of 15 tests passed\n' > "$tmp/unfenced.md"
 bash "$script" "$tmp/unfenced.md" >/dev/null 2>&1
 [ "$?" = "1" ] || { echo "FAIL $name: fence exemption is not resting on the fence"; exit 1; }
 
+# counts of any noun, percentages and multiples, and a table row, which is ours;
+# a number in a code span or a quote is evidence
+for claim in 'Reduces allocations by 40%.' '17 call sites were changed.' 'It runs 3x faster.' '| tests | 12 of 12 pass |'; do
+  printf '%s\n' "$claim" > "$tmp/c.md"
+  bash "$script" "$tmp/c.md" >/dev/null && { echo "FAIL $name: no claim found in: $claim"; exit 1; }
+done
+# shellcheck disable=SC2016  # the backticks are markdown
+for evidence in 'See `line 17 of x`.' '> 17 tests ran'; do
+  printf '%s\n' "$evidence" > "$tmp/c.md"
+  bash "$script" "$tmp/c.md" >/dev/null || { echo "FAIL $name: evidence was read as a claim: $evidence"; exit 1; }
+done
+
 echo "PASS $name"

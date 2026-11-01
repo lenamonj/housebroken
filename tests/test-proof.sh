@@ -54,7 +54,8 @@ printf '%s' "$out" | grep -q "ran the same files" || fail "identical arms were n
 
 # a relative --base-file is read from where it was given, not from the clone
 printf 'broken\n' > "$root/base.txt"
-out=$(cd "$root" && bash "$script" "$(basename "$PWD" >/dev/null; printf '%s' "$OLDPWD")" --base upstream-main \
+clone=$PWD
+out=$(cd "$root" && bash "$script" "$clone" --base upstream-main \
   --test 'bash src/lib_test.sh' --base-file "src/lib.txt=base.txt"); rc=$?
 [ "$rc" -eq 0 ] || fail "a relative --base-file exited $rc: $out"
 grep -q "^base-file: $(git hash-object "$root/base.txt") src/lib.txt" "$stamp" || fail "the base arm did not run the given file: $(cat "$stamp")"

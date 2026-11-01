@@ -45,4 +45,14 @@ printf '%s\n' "$out" | grep -qE '^o/r: 1 distinct outside humans in 30d ->' || f
 
 bash "$script" --days notanumber o/r >/dev/null 2>&1 && fail "--days notanumber was accepted"
 
+# a deleted account has no user, which is no reason to give up on the count
+jq --arg t "$(iso 5)" '. + [{user: null, author_association: "NONE", merged_at: $t}]' "$root/page1.json" > "$root/p.json" && mv "$root/p.json" "$root/page1.json"
+out=$(bash "$script" o/r) || fail "a null user stopped the count: $out"
+printf '%s\n' "$out" | grep -qE '^o/r: 2 distinct' || fail "a null user changed the count: $out"
+
+# two full pages still inside the window are a lower bound, and say so
+jq -n --arg t "$(iso 5)" '[range(0; 200) | {user: {login: "team1"}, author_association: "MEMBER", merged_at: $t, updated_at: $t}]' > "$root/page1.json"
+out=$(bash "$script" o/r) || fail "the full-page run failed: $out"
+printf '%s\n' "$out" | grep -qE '^o/r: at least 0 distinct outside humans' || fail "a capped read was not a lower bound: $out"
+
 echo "PASS $name"

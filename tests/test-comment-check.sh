@@ -137,6 +137,39 @@ commit "non-ascii name"
 out=$(run); rc=$?
 [ "$rc" = "1" ] || { echo "FAIL $name: a comment in a non-ASCII file exited $rc, expected 1: $out"; exit 1; }
 
+# 13b. code that only looks like a comment, and a comment in a kind of file
+# that had no gate
+$G reset -q --hard main
+printf 'void f(int *out) {\n  return;\n}\n' > src/d.c
+commit "c file"
+$G checkout -q main -- . 2>/dev/null
+$G branch -q -f feature HEAD
+printf 'void f(int *out) {\n  *out = 0;\n  return;\n}\n' > src/d.c
+commit "set out"
+git update-ref refs/heads/cbase "$(git rev-parse HEAD~1)"
+out=$(bash "$script" . --base cbase 2>&1); rc=$?
+[ "$rc" = "0" ] || { echo "FAIL $name: a dereference was read as a comment: $out"; exit 1; }
+printf 'void f(int *out) {\n  /* set it\n   * to zero\n   */\n  *out = 0;\n  return;\n}\n' > src/d.c
+commit "a block comment"
+out=$(bash "$script" . --base cbase 2>&1); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: a block comment exited $rc: $out"; exit 1; }
+$G reset -q --hard main
+mkdir -p ci
+printf '#!/bin/bash\nmake test\n' > ci/run.sh
+commit "a script in a new directory"
+out=$(run); rc=$?
+[ "$rc" = "0" ] || { echo "FAIL $name: a shebang was read as a comment: $out"; exit 1; }
+for f in a.mts Makefile b.pyi; do
+  $G reset -q --hard main
+  case "$f" in
+    a.mts) printf '// a whole-line comment\nconst x = 1;\n' > "$f" ;;
+    *) printf '# a whole-line comment\nall:\n' > "$f" ;;
+  esac
+  commit "add $f"
+  out=$(run); rc=$?
+  [ "$rc" = "1" ] || { echo "FAIL $name: a comment in $f exited $rc: $out"; exit 1; }
+done
+
 # 14. a pure rename adds no comment, and a comment added in the same commit is still seen
 $G reset -q --hard main
 $G mv src/b.go src/b2.go

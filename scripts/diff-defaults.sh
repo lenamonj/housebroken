@@ -148,11 +148,12 @@ function is_forward(t,   s, name) {
   if (s ~ /return/ || index(s, "=>") > 0 || index(s, "=") > 0 || index(s, "{") > 0) return 1
   return 0
 }
-/^\+\+\+ / { file = ""; if (substr($0,1,6) == "+++ b/") file = substr($0,7); next }
-/^--- /    { next }
-/^@@ /     { split($3, a, ","); ln = substr(a[1],2) + 0; next }
+/^@@ /     { split($3, a, ","); ln = substr(a[1],2) + 0; n = (index($3, ",") ? a[2] : 1) + 0; next }
 /^\\/      { next }
+n <= 0 && /^\+\+\+ / { file = ""; if (substr($0,1,6) == "+++ b/") { file = substr($0,7); sub(/\t$/, "", file) } next }
+n <= 0     { next }
 /^\+/ {
+  n--
   if (file != "") {
     t = substr($0, 2)
     if (supported(ext(file))) {
@@ -164,7 +165,7 @@ function is_forward(t,   s, name) {
   next
 }
 /^-/ { next }
-/^ / { ln++ }
+/^ / { ln++; n-- }
 AWK
 )
 
@@ -209,7 +210,7 @@ else
       [ -n "$br" ] || continue
       [ "$br" = "$default_branch" ] && continue
       [ "$(git -C "$d" rev-list --count "$base..$br")" = "0" ] && continue
-      git -C "$d" diff --unified=0 "$base..$br" | awk "$analyzer" >> "$hits"
+      git -C "$d" -c core.quotePath=false -c color.ui=false diff --no-ext-diff --unified=0 "$base...$br" | awk "$analyzer" >> "$hits"
     done < <(git -C "$d" for-each-ref --format='%(refname:short)' refs/heads/)
   done
   if [ "$found" = 0 ]; then

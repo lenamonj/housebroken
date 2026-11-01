@@ -6,7 +6,8 @@
 # Outside means the PR's author_association is CONTRIBUTOR, FIRST_TIMER,
 # FIRST_TIME_CONTRIBUTOR or NONE; everything else is counted as team. Known bot
 # accounts are dropped. Only the two most recently updated pages of closed PRs
-# are read, so a very busy repo is a lower bound on a long window.
+# are read, so when both are full and still inside the window the count is
+# printed as a lower bound.
 #
 # Usage:
 #   bash distinct-outside.sh [--days N] owner/repo [owner/repo ...]
@@ -58,7 +59,7 @@ home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 cache="$home/cache"
 mkdir -p "$cache" || { echo "distinct-outside.sh: cannot create $cache" >&2; exit 1; }
 
-cutoff=$(date -u -d "$days days ago" '+%Y-%m-%dT%H:%M:%SZ') ||
+cutoff=$(date -u -d "$days days ago" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-"$days"d '+%Y-%m-%dT%H:%M:%SZ') ||
   { echo "distinct-outside.sh: cannot compute the cutoff date" >&2; exit 1; }
 
 for repo in "${repos[@]}"; do
@@ -72,14 +73,16 @@ for repo in "${repos[@]}"; do
     def bot: ascii_downcase | test("dependabot|renovate|github-actions|pre-commit-ci|allcontributors|snyk|\\[bot\\]");
     def tally: reduce .[] as $l ({}; .[$l] += 1);
     (add // [])
+    | (length >= 200 and (map(.updated_at // "") | min) >= $cutoff) as $capped
     | map(select(.merged_at != null and .merged_at >= $cutoff))
-    | map(select((.user.login // "") | bot | not))
+    | map(select(.user != null))
+    | map(select(.user.login | bot | not))
     | (map(select(.author_association as $a
         | ["CONTRIBUTOR","FIRST_TIME_CONTRIBUTOR","FIRST_TIMER","NONE"] | index($a)))
         | map(.user.login) | tally) as $out
     | (map(select(.author_association as $a
         | ["CONTRIBUTOR","FIRST_TIME_CONTRIBUTOR","FIRST_TIMER","NONE"] | index($a) | not))
         | map(.user.login) | tally) as $team
-    | "\($repo): \($out | length) distinct outside humans in \($days)d -> \($out | tojson) | team merges \($team | tojson)"
+    | "\($repo): \(if $capped then "at least " else "" end)\($out | length) distinct outside humans in \($days)d -> \($out | tojson) | team merges \($team | tojson)"
   ' "$json" || { echo "distinct-outside.sh: cannot parse the PR list for $repo" >&2; exit 1; }
 done

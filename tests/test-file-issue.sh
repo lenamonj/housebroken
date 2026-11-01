@@ -94,13 +94,30 @@ run --title t --body-file "$bodyfile" >/dev/null 2>&1
 [ "$?" -eq 2 ] || fail "an offer worded without fix, patch or PR was not refused"
 printf 'The parser drops the last field since the 2.1.3 patch release.\n' > "$bodyfile"
 run --title t --body-file "$bodyfile" >/dev/null 2>&1 || fail "a bug report naming a patch release was refused as an offer"
+for said in "I have a small patch for this." "I'll send a PR." "I've written a fix." "A fix exists on my machine." \
+            "The fix changes parser.c to check the read." "I pushed a fix to my fork; want it?"; do
+  printf 'The parser drops the last field. %s\n' "$said" > "$bodyfile"
+  run --title t --body-file "$bodyfile" >/dev/null 2>&1
+  [ "$?" -eq 2 ] || fail "an offer was not refused: $said"
+done
+for said in "If you want to reproduce it, run make test." "I can provide a stack trace." "A patch would bound the copy."; do
+  printf 'The parser drops the last field. %s\n' "$said" > "$bodyfile"
+  run --title t --body-file "$bodyfile" >/dev/null 2>&1 || fail "not an offer, and refused: $said"
+done
+# a link to the upstream's own code points at the bug, not at the work
+printf 'I have a fix. The bug is at https://github.com/octocat/Hello-World/blob/master/README in their code.\n' > "$bodyfile"
+run --title t --body-file "$bodyfile" >/dev/null 2>&1
+[ "$?" -eq 2 ] || fail "a link to the upstream's own file satisfied the link gate"
+printf 'I have a fix at https://github.com/octocat/Hello-World/tree/test here.\n' > "$bodyfile"
+run --title t --body-file "$bodyfile" >/dev/null 2>&1
+[ "$?" -eq 2 ] || fail "a branch of the upstream itself satisfied the link gate"
 printf 'The parser drops the last field. I have a fix in https://github.com/octocat/Hello-World/pull/1 for review.\n' > "$bodyfile"
 run --title t --body-file "$bodyfile" >/dev/null 2>&1 || fail "a fix linked to its filed pull request was refused"
 printf 'The parser drops the last field, as in #99999999.\n' > "$bodyfile"
 out=$(run --title t --body-file "$bodyfile"); rc=$?
 [ "$rc" -eq 2 ] || fail "a body naming an issue that does not exist exited $rc, expected 2"
 printf '%s' "$out" | grep -q "NOT FOUND  #99999999" || fail "the missing reference was not named: $out"
-printf 'The parser drops the last field. The fix is at https://github.com/octocat/Hello-World/tree/test for review.\n' > "$bodyfile"
+printf 'The parser drops the last field. The fix is at https://github.com/me/Hello-World/tree/fix for review.\n' > "$bodyfile"
 out=$(run --title t --body-file "$bodyfile"); rc=$?
 [ "$rc" -eq 0 ] || fail "a fix with a branch link exited $rc, expected 0: $out"
 printf '%s' "$out" | grep -q "DRY RUN" || fail "a passing body did not reach the dry run"

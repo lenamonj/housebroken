@@ -51,9 +51,10 @@ gates:
               RESULT: DISCLOSE the body must name the AI use
   prose       no tool footer, session trailer, co-author trailer, em dash or
               en dash, in any case, in the --body-file or the --title
-  link        a body that mentions a fix, a patch or a pull request must
-              carry a github.com URL to a branch, commit or comparison, so
-              the work it describes is attributable
+  link        a body that offers or describes a fix, a patch or a pull
+              request must carry a github.com URL to that work: a branch or
+              commit outside this repository, a comparison across forks, or a
+              filed pull request, so the work is attributable
 
 environment:
   HOUSEBROKEN_HOME  work directory, default $HOME/.housebroken
@@ -122,12 +123,32 @@ if ! refs=$(bash "$(dirname "$0")/ref-check.sh" "$repo" "$bodyfile" 2>&1); then
   exit 2
 fi
 
-# An offer is a first-person promise of work, whatever noun it uses; "patch
-# release" in a bug report is not one. The link may be the filed pull request.
-offer_re='\b(I|we) (have|had|can|could|will|would|am|are)( be happy to| be glad to)? (send|open|submit|provide|offer|push|put up|prepare|write)\b|\b(I|we) (have|wrote|made) (a|the) (fix|patch|change)\b|\bsay the word\b|\bif you (want|would like|are interested)\b|\bhappy to (send|open|submit|provide)\b|\b(fix|fixes|patch|pull request|PR|change) (is |are )?(ready|available|done)\b'
-link_re='https://github\.com/[^/[:space:]]+/[^/[:space:]]+/(tree|commit|compare|blob|pull)/[^[:space:])]+'
+# An offer is work promised or described: a person sending a fix, a fix that
+# exists, the fix's own effect. "Patch release" in a bug report, a suggestion
+# that a patch would help, and "I can provide a stack trace" are not.
+offer_re="\b(I|we)('ve|'ll|'d| have| had| can| could| will| would| am| are)?( be happy to| be glad to| already| also| just)? ?(send|open|submit|push|put up|prepare|write|wrote|written|made|pushed|sent|opened|drafted)\b[^.]*\b(fix|patch|change|pull request|PR|branch)\b"
+offer_re="$offer_re|\b(I|we)('ve| have| had)( got)? (a|an|the|this|one)( [a-z-]+)? (fix|patch|change)\b"
+offer_re="$offer_re|\bsay the word\b|\bhappy to (send|open|submit)\b"
+offer_re="$offer_re|\bif you (want|would like|are interested)\b[^.]*\b(fix|patch|change|pull request|PR)\b"
+offer_re="$offer_re|\b(fix|fixes|patch|pull request|PR|change) (is |are )?(ready|available|done)\b"
+offer_re="$offer_re|\b(fix|fixes|patch) exists?\b|\bthe (fix|patch) (changes|adds|moves|replaces|removes|bounds|checks)\b"
+# Work that exists is linked where it can be attributed: a filed pull request, a
+# comparison across forks, or a branch or commit somewhere other than this
+# repository. A link to the upstream's own code points at the bug, not the fix.
+work_link() {
+  local url path
+  while IFS= read -r url; do
+    path="${url#https://github.com/}"
+    case "$path" in
+      */pull/*|"$repo"/compare/*:*) return 0 ;;
+      "$repo"/*) ;;
+      *) return 0 ;;
+    esac
+  done < <(printf '%s' "$body" | grep -oE 'https://github\.com/[^/[:space:]]+/[^/[:space:]]+/(tree|commit|compare|pull)/[^[:space:])]+')
+  return 1
+}
 offer=$(printf '%s' "$body" | grep -ioE "$offer_re" | head -1) || true
-if [ -n "$offer" ] && ! printf '%s' "$body" | grep -qE "$link_re"; then
+if [ -n "$offer" ] && ! work_link; then
   echo "REFUSED: the body says '$offer' and links no branch or commit - push the work to your fork and link it, or take it out of the body" >&2
   exit 2
 fi

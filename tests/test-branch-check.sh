@@ -257,6 +257,8 @@ hyg "printf 'const p = \"C:/Users/$(basename "$HOME")/work/x\";\n' > src/p.ts" "
 hyg "printf 'const p = \"/home/$(basename "$HOME")/src/x\";\n' > src/p.ts" "personal path"
 hyg "printf 'const p = \"/home/alice/src/x\";\n' > src/p.ts" ""
 hyg "printf 'const t = \"ghp_%s\";\n' abcdefghijklmnopqrstuvwxyz0123 > src/t.ts" "credential"
+hyg "printf 'image: risk-management-service-configuration\n' > src/a.yml" ""
+hyg "printf 'key: sk-abcdefghijklmnopqrstuvwxyz\n' > src/a.yml" "credential"
 hyg "printf '{}\n' > package-lock.json" "lockfile"
 hyg "printf '{}\n' > package-lock.json" "" --allow package-lock.json
 hyg "printf '\000\001\002' > src/blob.bin" "is binary"
@@ -267,9 +269,9 @@ hyg "mkdir -p .claude && printf '{}\n' > .claude/settings.json" "agent's working
 (cd "$repo" && for i in $(seq 1 40); do printf 'line %s\n' "$i"; done > src/long.txt &&
   mkdir -p .claude/commands && printf 'run the tests\n' > .claude/commands/t.md &&
   $G add -A && $G commit -q -m "long file" && setbase HEAD) || { echo "FAIL $name: CRLF fixture failed"; exit 1; }
-hyg "sed -i 's/\$/\r/; s/^line 7\r\$/line seven\r/' src/long.txt" "beyond whitespace"
-hyg "sed -i 's/^line 7\$/line seven/' src/long.txt" ""
-hyg "sed -i 's/^line \([0-9]\)/    line \1/; 1i if (x) {' src/long.txt && printf '}\n' >> src/long.txt" ""
+hyg "perl -pi -e 's/\$/\r/; s/^line 7\r\$/line seven\r/' src/long.txt" "beyond whitespace"
+hyg "perl -pi -e 's/^line 7\$/line seven/' src/long.txt" ""
+hyg "perl -pi -e 's/^line (\d)/    line \$1/; print qq(if (x) {\n) if \$. == 1' src/long.txt && printf '}\n' >> src/long.txt" ""
 hyg "printf 'run every test\n' > .claude/commands/t.md" ""
 # a suppression that explains itself, and an id with a lowercase prefix
 printf 'errcheck xUnit1004\n' > "$root/lint2.log"
@@ -331,7 +333,9 @@ out=$(run)
 out=$(run); rc=$?
 [ "$rc" = "0" ] || { echo "FAIL $name: a pure rename exited $rc: $out"; exit 1; }
 stamp="$HOUSEBROKEN_HOME/branch-checks/$(cd "$repo" && git rev-parse HEAD)"
-grep -qx 'file: src/moved.ts' "$stamp" && grep -qx 'from: src/keep.ts' "$stamp" || { echo "FAIL $name: the stamp does not name both sides of a rename"; cat "$stamp"; exit 1; }
+if ! grep -qx 'file: src/moved.ts' "$stamp" || ! grep -qx 'from: src/keep.ts' "$stamp"; then
+  echo "FAIL $name: the stamp does not name both sides of a rename"; cat "$stamp"; exit 1
+fi
 (cd "$repo" && $G reset -q --hard HEAD~1)
 
 echo "PASS $name"

@@ -20,7 +20,7 @@
 #
 # Usage:
 #   bash branch-check.sh [CLONE] [--base REF] [--asked URL]
-#                        [--warning-log FILE] [--aot-log FILE]
+#                        [--warning-log FILE] [--aot-log FILE] [--allow PATH]...
 #   bash branch-check.sh --help
 #
 # CLONE defaults to the current directory. REF defaults to the first of
@@ -29,7 +29,9 @@
 # comment refusal into a check. --warning-log FILE is a build log of the
 # branch without its suppressions; it must name every warning id they suppress.
 # --aot-log FILE is the output of an AOT publish (dotnet publish
-# -p:PublishAot=true) of the branch, run and read.
+# -p:PublishAot=true) of the branch, run and read. --allow PATH names a file the
+# change really is about, such as a dependency bump's lockfile; it lifts the
+# credential, generated-file and binary checks for that file.
 #
 # Exits 0 when nothing blocks, 1 on a refusal, 2 on a usage error.
 set -u
@@ -290,7 +292,7 @@ allowed() { local a; for a in ${allows[@]+"${allows[@]}"}; do [ "$1" = "$a" ] &&
 # A credential anywhere is refused, and so is a path under this user's own
 # home; a path under another user's is a fixture or an example, and is noted.
 me=$(basename "${HOME:-/nobody}")
-leak_re="gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|[A-Za-z]:[\\\\/]Users[\\\\/]$me([\\\\/ ]|\$)|/home/$me/|/Users/$me/|/mnt/[a-z]/Users/$me/"
+leak_re="gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|xox[baprs]-[A-Za-z0-9-]{10,}|(^|[^A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|[A-Za-z]:[\\\\/]Users[\\\\/]$me([\\\\/ ]|\$)|/home/$me/|/Users/$me/|/mnt/[a-z]/Users/$me/"
 path_re='[A-Za-z]:[\\/]Users[\\/][^\\/ ]+|/home/[a-z][a-z0-9_-]*/|/Users/[A-Za-z][^/ ]*/|/mnt/[a-z]/Users/'
 nfiles=0; nadded=0; netleaks=""
 while IFS= read -r f; do
