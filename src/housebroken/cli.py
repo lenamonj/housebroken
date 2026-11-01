@@ -44,7 +44,10 @@ def package_version():
 
 
 def install_skill(skill_md):
-    target = Path(os.path.expanduser("~")) / ".claude" / "skills" / "housebroken" / "SKILL.md"
+    # HOME first, as install-hook does through bash: Python on Windows reads
+    # USERPROFILE, which would put the skill and the hook in different homes.
+    home = os.environ.get("HOME") or os.path.expanduser("~")
+    target = Path(home) / ".claude" / "skills" / "housebroken" / "SKILL.md"
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(skill_md, target)
     print(f"installed {target}")

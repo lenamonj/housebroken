@@ -29,8 +29,9 @@
 # yourself.
 #
 # `housebroken install-hook` copies this script to
-# ~/.claude/hooks/housebroken-gate.sh, where an upgrade does not move it, and
-# prints the entry to add to the "PreToolUse" list in ~/.claude/settings.json.
+# ~/.claude/hooks/housebroken-gate.sh and prints the entry to add to the
+# "PreToolUse" list in ~/.claude/settings.json. An upgrade does not move the
+# copy; housebroken notes when it differs, and install-hook replaces it.
 # It does not edit your settings.
 #
 # Usage:
@@ -55,7 +56,10 @@ case "${1:-}" in
     fi
     echo "installed $dest"
     echo "Add this to the \"PreToolUse\" list under \"hooks\" in ~/.claude/settings.json:"
-    printf '  {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash %s", "timeout": 10}]}\n' "$dest"
+    # Quoted for the shell, then escaped for JSON: a home with a space must not
+    # split the command, or the hook exits 126 and refuses nothing.
+    esc=${dest//\\/\\\\}
+    printf '  {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash \\"%s\\"", "timeout": 10}]}\n' "$esc"
     echo "Owners of your own repositories, whose writes pass, go one per line in $own."
     exit 0 ;;
 esac

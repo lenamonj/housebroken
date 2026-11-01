@@ -130,4 +130,12 @@ HOME="$tmp" bash "$script" --install > "$tmp/out" || fail "--install failed"
 [ -f "$tmp/.claude/hooks/housebroken-gate.sh" ] || fail "--install wrote no hook"
 grep -q '"matcher": "Bash"' "$tmp/out" || fail "--install printed no settings entry"
 
+# the printed entry runs from a home with a space, and refuses
+spaced="$tmp/home space/First Last"
+mkdir -p "$spaced"
+HOME="$spaced" bash "$script" --install > "$tmp/out" || fail "--install under a spaced home failed"
+entry=$(sed -n '/"matcher"/p' "$tmp/out" | jq -r '.hooks[0].command') || fail "the printed entry is not JSON"
+printf '{"tool_input": {"command": "gh pr create -R a/b --title x"}}' | bash -c "$entry" 2>/dev/null
+[ "$?" = 2 ] || fail "the printed entry did not refuse under a home with a space: $entry"
+
 echo "PASS $name"

@@ -96,6 +96,8 @@ The first line puts the `housebroken` command on your path. The second puts the 
 uv tool install git+https://github.com/lenamonj/housebroken
 ```
 
+An upgrade moves the package and not those two copies, so after one run `housebroken install-skill` and `housebroken install-hook` again; the command notes a copy that is behind.
+
 `housebroken help` prints the door in order. Every gate is also a plain bash script under `scripts/`, runnable on its own.
 
 ## What is in the repository

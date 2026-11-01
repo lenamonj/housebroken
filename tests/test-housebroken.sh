@@ -71,6 +71,21 @@ got=$(HOME="$tmp/home" HOUSEBROKEN_HOME="$tmp/hbhome" bash "$bindir/housebroken"
   fail "installed dispatcher version exited non-zero"
 [ "$got" = "$want" ] || fail "installed dispatcher says '$got', expected '$want'"
 
+# a copy of the hook or the skill left behind by an upgrade is noted, and an
+# up to date one is not
+mkdir -p "$tmp/home/.claude/hooks"
+printf 'old hook\n' > "$tmp/home/.claude/hooks/housebroken-gate.sh"
+out=$(HOME="$tmp/home" bash "$hb" notes --list 2>&1)
+printf '%s\n' "$out" | grep -q "housebroken-gate.sh is not this version's; run housebroken install-hook" || fail "a stale hook was not noted: $out"
+cp "$repo/scripts/gate-hook.sh" "$tmp/home/.claude/hooks/housebroken-gate.sh"
+printf 'old skill\n' > "$skilldir/SKILL.md"
+out=$(HOME="$tmp/home" bash "$hb" notes --list 2>&1)
+printf '%s\n' "$out" | grep -q "SKILL.md is not this version's; run housebroken install-skill" || fail "a stale skill was not noted: $out"
+printf '%s\n' "$out" | grep -q "housebroken-gate.sh" && fail "a current hook was noted: $out"
+cp "$repo/skills/housebroken/SKILL.md" "$skilldir/SKILL.md"
+out=$(HOME="$tmp/home" bash "$hb" notes --list 2>&1)
+printf '%s\n' "$out" | grep -q "is not this version's" && fail "current copies were noted: $out"
+
 HOME="$tmp/home" HOUSEBROKEN_HOME="$tmp/hbhome" bash "$repo/install.sh" --uninstall >/dev/null ||
   fail "--uninstall exited non-zero"
 [ -e "$bindir/housebroken" ] && fail "dispatcher survived uninstall"

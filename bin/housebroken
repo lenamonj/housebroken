@@ -49,6 +49,7 @@ usage: housebroken <subcommand> [args...]
   2  prior-art   issues and pull requests on the touched files, rulings quoted
   4  proof       run the test on the base and the head, and stamp red then green
   6  census      added code lines against added comment lines, per branch
+  6  defaults    default arguments and wrappers added to keep call sites untouched
   6  comments    refuse a comment added to code nobody asked for
   6  claims      every falsifiable claim in outbound text, listed to re-derive
   6  refs        every issue, link, test, file and commit the text names, looked up
@@ -65,12 +66,14 @@ usage: housebroken <subcommand> [args...]
  10  push        the only way a rework reaches a filed pull request's branch
  11  hygiene     delete fork branches after merge or close, list orphan forks
 
+  install-skill  put the skill where Claude Code loads it (pip, pipx and uv installs)
+  skill-path     print where the packaged skill is (pip, pipx and uv installs)
   install-hook   a Claude Code hook that refuses GitHub writes outside these gates
   help           this list
   version        the installed housebroken version
 
-Step numbers are the steps of "How it works" in the README. Every argument
-after the subcommand is passed to the script unchanged.
+Step numbers are the steps of "The rules" in the README. Every argument after
+the subcommand is passed to the script unchanged.
 EOF
 }
 
@@ -100,6 +103,7 @@ case "$cmd" in
   outside)   script=distinct-outside.sh ;;
   prior-art) script=prior-art.sh ;;
   census)    script=comment-census.sh ;;
+  defaults)  script=diff-defaults.sh ;;
   comments)  script=comment-check.sh ;;
   claims)    script=claim-check.sh ;;
   refs)      script=ref-check.sh ;;
@@ -131,6 +135,18 @@ if [ -z "$scripts_dir" ] || [ ! -f "$scripts_dir/$script" ]; then
   } >&2
   exit 2
 fi
+
+# The skill and the hook are copies outside the package, so an upgrade moves the
+# gates and leaves what the agent was told, and the hook that holds it, behind.
+stale() { # installed-copy packaged-copy command
+  if [ -f "$1" ] && [ -f "$2" ] && ! cmp -s "$1" "$2"; then
+    echo "note: $1 is not this version's; run $3" >&2
+  fi
+}
+for packaged in "$scripts_dir/../skill/SKILL.md" "$scripts_dir/../skills/housebroken/SKILL.md"; do
+  stale "$HOME/.claude/skills/housebroken/SKILL.md" "$packaged" "housebroken install-skill"
+done
+stale "$HOME/.claude/hooks/housebroken-gate.sh" "$scripts_dir/gate-hook.sh" "housebroken install-hook"
 
 export HOUSEBROKEN_HOME
 exec bash "$scripts_dir/$script" "$@"
