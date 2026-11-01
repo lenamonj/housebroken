@@ -51,15 +51,11 @@ issue() { # owner/repo number label
     lost "$3"
   fi
 }
-out=$(
-  printf '%s\n' "$text" | grep -oE '\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+\b' | sort -u | while IFS= read -r ref; do
-    issue "${ref%#*}" "${ref##*#}" "$ref"
-  done
-  printf '%s\n' "$text" | sed -E 's/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#[0-9]+//g' | grep -oE '(^|[^A-Za-z0-9&/])#[0-9]+\b' \
-    | grep -oE '[0-9]+' | sort -un | while IFS= read -r n; do
-    issue "$repo" "$n" "#$n"
-  done
-  printf '%s\n' "$text" | grep -oE 'https://github\.com/[^ )>"]+' | sed 's/[.,;:]$//' | sort -u | while IFS= read -r url; do
+# Outside the $(...) below: bash before 4.0 cannot parse a case pattern's closing
+# parenthesis inside a command substitution, and macOS ships 3.2.
+look_up_links() {
+  local url path r n c rest ref p hit
+  while IFS= read -r url; do
     path="${url#https://github.com/}"
     case "$path" in
       */*/pull/[0-9]*|*/*/issues/[0-9]*)
@@ -84,6 +80,17 @@ out=$(
         if [ "$hit" -eq 1 ]; then found "$url"; else lost "$url"; fi ;;
     esac
   done
+}
+
+out=$(
+  printf '%s\n' "$text" | grep -oE '\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+\b' | sort -u | while IFS= read -r ref; do
+    issue "${ref%#*}" "${ref##*#}" "$ref"
+  done
+  printf '%s\n' "$text" | sed -E 's/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#[0-9]+//g' | grep -oE '(^|[^A-Za-z0-9&/])#[0-9]+\b' \
+    | grep -oE '[0-9]+' | sort -un | while IFS= read -r n; do
+    issue "$repo" "$n" "#$n"
+  done
+  printf '%s\n' "$text" | grep -oE 'https://github\.com/[^ )>"]+' | sed 's/[.,;:]$//' | sort -u | look_up_links
 )
 
 # Names in backticks, checked against the clone: a path, a test, a commit.

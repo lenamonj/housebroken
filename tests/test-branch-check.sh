@@ -228,10 +228,11 @@ bash "$script" "$repo" --base origin/main --aot-log "$root/aot.log" 2>&1 | grep 
 # 15. The upstream moved and the clone never fetched: the local base is stale.
 fires "the base moved" && { echo "FAIL $name: a current base was called stale"; exit 1; }
 basesha=$(cd "$repo" && git rev-parse origin/main)
-(cd "$repo" && moved=$($G commit-tree "$basesha^{tree}" -p "$basesha" -m "upstream moves") &&
-  git push -q -f "$(git remote get-url origin)" "$moved:refs/heads/main") || { echo "FAIL $name: could not move the upstream"; exit 1; }
-fires "the base moved" || { echo "FAIL $name: a base the upstream moved past was not refused"; exit 1; }
-(cd "$repo" && git push -q -f "$(git remote get-url origin)" "$basesha:refs/heads/main")
+# From another clone: it is the upstream moving, and this clone must not hear of it.
+git clone -q -b main "$(cd "$repo" && git remote get-url origin)" "$root/elsewhere" || { echo "FAIL $name: could not clone the upstream"; exit 1; }
+(cd "$root/elsewhere" && $G commit -q --allow-empty -m "upstream moves" && git push -q origin HEAD:refs/heads/main) || { echo "FAIL $name: could not move the upstream"; exit 1; }
+fires "the base moved" || { echo "FAIL $name: a base the upstream moved past was not refused"; run; exit 1; }
+(cd "$root/elsewhere" && git push -q -f origin "$basesha:refs/heads/main")
 fires "the base moved" && { echo "FAIL $name: restoring the upstream did not lift the stale-base refusal"; exit 1; }
 # A local branch or a SHA cannot be checked against anything, so it is refused.
 (cd "$repo" && git branch -q -f localbase origin/main)
