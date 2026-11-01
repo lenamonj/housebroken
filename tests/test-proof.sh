@@ -116,10 +116,10 @@ out=$(bash "$script" . --base upstream-main --test 'bash src/repro.sh' --keep ./
 
 # --fix takes away a file whose path says test
 git checkout -q -b testing upstream-main
-mkdir -p src/testing && printf 'fixed\n' > src/testing/util.txt && printf '#!/bin/bash\ngrep -q fixed src/testing/util.txt\n' > src/lib_test.sh && $G add -A && $G commit -q -m util
+mkdir -p tests/helpers && printf 'fixed\n' > tests/helpers/util.txt && printf '#!/bin/bash\ngrep -q fixed tests/helpers/util.txt\n' > src/lib_test.sh && $G add -A && $G commit -q -m util
 out=$(bash "$script" . --base upstream-main --test 'bash src/lib_test.sh' 2>&1); rc=$?
 [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q "every changed file is a test or kept" || fail "a fix under testing/ was taken away: $out"
-out=$(bash "$script" . --base upstream-main --test 'bash src/lib_test.sh' --fix src/testing/util.txt); rc=$?
+out=$(bash "$script" . --base upstream-main --test 'bash src/lib_test.sh' --fix tests/helpers/util.txt); rc=$?
 [ "$rc" -eq 0 ] || fail "--fix was refused: $out"
 
 # one file carrying the test and the fix: --base-file gives the base arm the base plus the test

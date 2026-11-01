@@ -72,7 +72,37 @@ disclosed="$HOUSEBROKEN_HOME/disclosed.md"
 printf 'one finding, one test\n\nThe patch and this description were written with Claude.\n' > "$disclosed"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$disclosed" 2>&1); rc=$?
 printf '%s' "$out" | grep -q "requires AI use to be disclosed" && fail "a disclosed body was refused by the DISCLOSE gate"
+# an unanswered template question, or a word with "assist" in it, discloses nothing
+undisclosed() { out=$(bash "$script" octocat/Hello-World --title t --body-file "$1" 2>&1)
+  printf '%s' "$out" | grep -q "requires AI use to be disclosed" || fail "$2 passed the DISCLOSE gate: $out"; }
+said() { out=$(bash "$script" octocat/Hello-World --title t --body-file "$1" 2>&1)
+  printf '%s' "$out" | grep -q "requires AI use to be disclosed" && fail "$2 was refused by the DISCLOSE gate: $out"; }
+b="$HOUSEBROKEN_HOME/d.md"
+printf -- '- [ ] I used AI to create any part of this pull request.\n\none finding, one test\n' > "$b"
+undisclosed "$b" "an unticked box"
+printf 'The Home Assistant loader drops the last field.\n' > "$b"
+undisclosed "$b" "the word Assistant"
+printf -- '- [x] I used AI to create any part of this pull request.\n\none finding, one test\n' > "$b"
+said "$b" "a ticked box"
+printf 'Copilot wrote the first draft of the test.\n' > "$b"
+said "$b" "a named tool"
+printf -- '- [ ] Which AI tool was used?\n' > "$HOUSEBROKEN_HOME/policy/template-octocat-Hello-World.md"
+printf -- '- [ ] Which AI tool was used?\n\none finding, one test\n' > "$b"
+undisclosed "$b" "a template question left as it was"
+rm -f "$HOUSEBROKEN_HOME/policy/template-octocat-Hello-World.md"
 policy "CLEAN (no policy file names AI)"
+
+# printouts over a day old stop the filing
+touch -t 202001010000 "$policyfile"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "an old policy printout exited $rc, expected 2"
+printf '%s' "$out" | grep -q "h old - rerun check-ai-policy" || fail "an old policy printout was not refused: $out"
+touch "$policyfile"
+touch -t 202001010000 "$HOUSEBROKEN_HOME/prior-art/prior-art-octocat-Hello-World.md"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "an old prior art printout exited $rc, expected 2"
+printf '%s' "$out" | grep -q "h old - rerun prior-art" || fail "an old prior art printout was not refused: $out"
+touch "$HOUSEBROKEN_HOME/prior-art/prior-art-octocat-Hello-World.md"
 
 # gate four: branch-check has not stamped this head
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
@@ -160,6 +190,13 @@ cp "$art" "$art.keep"
 printf '## Prior art: octocat/Hello-World\n\n### foo\n' > "$art"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
 printf '%s' "$out" | grep -q "never searched files this branch changes: src/x.c" || fail "prior art for other terms cleared the filing: $out"
+# a file is exempt for being a test, not for having the letters in its name
+stamp "$head" origin/master "$master_sha" src/latest.c
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "never searched files this branch changes: src/latest.c" || fail "src/latest.c was taken for a test: $out"
+stamp "$head" origin/master "$master_sha" tests/a_test.c
+bash "$script" octocat/Hello-World --title t --body-file "$clean" >/dev/null 2>&1 || fail "a test file needed a prior art term"
+stamp "$head"
 mv "$art.keep" "$art"
 
 # three open pull requests on the repository, or one filed under ten minutes
@@ -201,6 +238,21 @@ printf '%s' "$out" | grep -q "REFUSED" && fail "a base moved elsewhere was refus
 stamp "$head" origin/master 0000000000000000000000000000000000000001
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
 printf '%s' "$out" | grep -q "is not on octocat/Hello-World master" || fail "a base unknown upstream was not refused: $out"
+# a checked base the upstream does not contain, a rewind, a rename on either
+# side, and a compare that lists no files; gh is wrapped so compare answers from
+# STUB_COMPARE
+stamp "$head" origin/master 553c2077f0edc3d5dc5d17262f6aa498e69d6f8e src/x.c; proof 553c2077f0edc3d5dc5d17262f6aa498e69d6f8e
+# shellcheck disable=SC2016  # the stub's own $* and $@, written literally
+printf '#!/bin/bash\ncase "$*" in *compare/*) printf "%%s\\n" "$STUB_COMPARE" ;; *) exec "%s" "$@" ;; esac\n' "$realgh" > "$HOUSEBROKEN_HOME/bin/gh"
+compared() { PATH="$HOUSEBROKEN_HOME/bin:$PATH" STUB_COMPARE="$1" bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1; }
+compared '{"status":"diverged","files":[]}' | grep -q "is not on octocat/Hello-World master (compare reads diverged)" || fail "a diverged base was not refused"
+compared '{"status":"behind","files":[]}' | grep -q "compare reads behind" || fail "a rewound upstream was not refused"
+compared '{"status":"ahead"}' | grep -q "listed no files" || fail "a compare with no file list was not refused"
+compared '{"status":"ahead","files":[{"filename":"README"}]}' | grep -q "none of its new commits touch" || fail "a move elsewhere was refused"
+compared '{"status":"ahead","files":[{"filename":"src/new.c","previous_filename":"src/x.c"}]}' | grep -q "changed files this branch changes" || fail "an upstream rename of our file was not refused"
+printf 'from: src/old.c\n' >> "$HOUSEBROKEN_HOME/branch-checks/$head"
+compared '{"status":"ahead","files":[{"filename":"src/old.c"}]}' | grep -q "changed files this branch changes" || fail "an upstream change to a path this branch renames was not refused"
+# restore the wrapper the capped cases use, then the plain stamp
 stamp "$head"; proof
 
 # a body over 120 words is refused
@@ -238,6 +290,24 @@ printf '%s' "$out" | grep -q "REFUSED: the body is" && fail "the answer to the t
 answer 51
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$templated" 2>&1)
 printf '%s' "$out" | grep -q "REFUSED: the answer to the template's AI question is 51 words" || fail "a 51-word AI answer was not refused: $out"
+# an answer written under a template heading about AI counts the same way
+rm -f "$template"
+printf '## Summary\n\n## AI usage\n' > "$template"
+{ printf '## Summary\n\n'; for _ in $(seq 1 100); do printf 'word '; done; printf '\n\n## AI usage\n\n'
+  for _ in $(seq 1 30); do printf 'answer '; done; printf '\n'; } > "$templated"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$templated" 2>&1)
+printf '%s' "$out" | grep -q "REFUSED: the body is" && fail "an AI answer under a heading was counted against the body: $out"
+
+# a body that replaces the template is refused; comments in it need not be kept
+printf -- '<!-- delete this comment -->\n- [ ] I signed the CLA.\n- [ ] I ran the tests.\n' > "$template"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "REFUSED: the body keeps none of" || fail "a body dropping the template was not refused: $out"
+printf -- '- [x] I ran the tests.\n\none finding, one test\n' > "$templated"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$templated" 2>&1)
+printf '%s' "$out" | grep -q "keeps none of" && fail "a body keeping one template line was refused: $out"
+printf -- '<!-- only a comment -->\n' > "$template"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "keeps none of" && fail "a comment-only template was required: $out"
 rm -f "$template"
 
 # the body file may be named either way gh reads it
@@ -281,5 +351,25 @@ stamp "$(git rev-parse HEAD)"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "a commit made after the review, stamped, exited $rc, expected 2"
 printf '%s' "$out" | grep -q "REFUSED: no proof for head" || fail "a moved branch printed no proof refusal"
+
+# a real filing runs gh pr create, keeps the copy, and starts the ten minutes;
+# the stub writes only to this log
+stamp "$(git rev-parse HEAD)"
+$G commit -q --amend --allow-empty -m "after the review"
+head=$(git rev-parse HEAD); stamp "$head"
+cp "$decl" "$HOUSEBROKEN_HOME/declarations/$head.md"; decl="$HOUSEBROKEN_HOME/declarations/$head.md"
+sed -i.bak "1s/.*/head: $head/" "$decl"; rm -f "$decl.bak"
+proof
+report="$HOUSEBROKEN_HOME/reviews/review-octocat-Hello-World-${head:0:12}.md"
+review sonnet "POST AS IS"
+writes="$HOUSEBROKEN_HOME/writes.log"
+out=$(FILE_PR_DRY=0 STUB_WRITES="$writes" bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 0 ] || fail "a real filing exited $rc: $out"
+grep -q "^pr create -R octocat/Hello-World" "$writes" || fail "no gh pr create ran: $out"
+[ -f "$HOUSEBROKEN_HOME/filed/octocat-Hello-World-$head.md" ] || fail "the filed copy was not kept"
+out=$(FILE_PR_DRY=0 STUB_WRITES="$writes" bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a second filing inside ten minutes exited $rc: $out"
+printf '%s' "$out" | grep -q "wait until ten minutes" || fail "the spacing was not named: $out"
+[ "$(grep -c '^pr create' "$writes")" = "1" ] || fail "a second filing reached gh"
 
 echo "PASS $name"

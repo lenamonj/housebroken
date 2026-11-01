@@ -1,5 +1,5 @@
 #!/bin/bash
-# file-pr.sh - the only way a PR gets filed: gh pr create behind five gates.
+# file-pr.sh - the only way a PR gets filed: gh pr create behind its gates.
 #
 # Gate one is prior art: prior-art-<owner>-<repo>.md exists under
 # $HOUSEBROKEN_HOME/prior-art/ and is under 24 hours old.
@@ -13,7 +13,11 @@
 # Gate five is the adversarial review (review.sh): a different model attacked
 # this exact head and this exact body file and said POST AS IS. An inline
 # --body is refused, because a review cannot be bound to text that was never a
-# file.
+# file. Around them: every file the branch changes was searched for prior art,
+# a body keeps the project's template and holds to 120 words of its own, every
+# reference exists, the base has not moved under the branch's files, a proof
+# and a declaration exist for the head, three open pull requests at most, and
+# ten minutes since the last filing.
 #
 # Usage:
 #   bash file-pr.sh owner/repo <gh pr create args...>
@@ -25,8 +29,8 @@
 #                     art, policy, branch stamps and reviews are read from it.
 #   FILE_PR_DRY       set to 1 to print the gh command instead of running it.
 #
-# Assumes gh is installed and authenticated. It writes to GitHub only after all
-# five gates pass, and only when FILE_PR_DRY is not 1.
+# Assumes gh is installed and authenticated. It writes to GitHub only after every
+# gate passes, and only when FILE_PR_DRY is not 1.
 set -u
 
 usage() {
@@ -44,8 +48,9 @@ gates:
   prior art   $HOUSEBROKEN_HOME/prior-art/prior-art-<owner>-<repo>.md must
               exist and be under 24 hours old
   policy      $HOUSEBROKEN_HOME/policy/policy-<owner>-<repo>.md must exist,
-              be under 24 hours old and not read RESULT: BAN; when it reads
-              RESULT: DISCLOSE the body must name the AI use
+              be under 24 hours old and not read RESULT: BAN or UNREAD; when
+              it reads RESULT: DISCLOSE the body must name the AI use, and
+              RESULT: MENTION needs a recorded --reading
   prose       no tool footer, session trailer, co-author trailer, em dash or
               en dash, in any case, in the --body-file or the --title; a
               body of at most 120 words of its own, the answer to the
@@ -85,20 +90,6 @@ home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 . "$(dirname "$0")/common.sh"
 read_printouts "$repo" "$home"
 
-em=$(printf '\xe2\x80\x94')   # em dash U+2014, built at runtime to keep this file ASCII
-en=$(printf '\xe2\x80\x93')   # en dash U+2013
-# Matched in any case, because GitHub itself writes "Co-authored-by", and the
-# HTML entities render as the dashes they name.
-banned_re="Generated with|Claude-Session|claude\.ai/code/session_|Co-Authored-By|$em|$en|&[mn]dash;|&#821[12];|&#x201[34];"
-check_text() {
-  local what="$1" text="$2" hit
-  hit=$(printf '%s' "$text" | grep -ioE "$banned_re" | head -1) || true
-  if [ -n "$hit" ]; then
-    echo "REFUSED: $what contains '$hit' - strip it before filing" >&2
-    exit 2
-  fi
-}
-
 # gh pr create also takes a body from --body, --fill, --template, --recover and
 # stdin, reads -F glued to its value (-Fbody.md, -dF body.md), obeys the last
 # -R it is given, and files whatever branch --head names without pushing. Each
@@ -136,22 +127,38 @@ check_text "--title" "$title"
 # The project's own template text is kept verbatim and is not ours to count:
 # HTML comments and every line the saved template carries, a ticked box read
 # as its unticked line, are left out before the words are counted. The
-# answer written after a template line that asks about AI is the project's
-# requirement, not ours: it is counted on its own and held to 50 words.
+# answer written after or under a template line that asks about AI is the
+# project's requirement, not ours: it is counted on its own and held to 50
+# words. A body that keeps none of the template has dropped it.
 template="$home/policy/template-${repo%%/*}-${repo##*/}.md"
 [ -f "$template" ] || template=/dev/null
-read -r words ai_words < <(awk -v T="$template" '
+read -r words ai_words kept wanted < <(awk -v T="$template" '
   function norm(s) { gsub(/\[[xX]\]/, "[ ]", s); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
-  BEGIN { while ((getline l < T) > 0) { l = norm(l); if (l != "") t[l] = 1 } }
-  { l = norm($0); if (l in t) next
+  function asks_ai(s) { return tolower(s) ~ /(^|[^a-z])ai([^a-z]|$)|artificial intelligence|generative|llm|language model/ }
+  BEGIN { while ((getline l < T) > 0) {
+      if (l ~ /<!--/) c = 1
+      inc = c
+      if (l ~ /-->/) c = 0
+      l = norm(l)
+      if (l != "") { t[l] = 1; if (!inc) { real[l] = 1 } }
+    }
+    for (l in real) wanted++ }
+  { l = norm($0)
+    if (l in t) { if (l in real) kept++; section_ai = asks_ai(l); next }
     best = ""
     for (k in t) if (index(l, k) == 1 && length(k) > length(best)) best = k
     if (best != "") {
+      kept++
       l = substr(l, length(best) + 1)
-      if (tolower(best) ~ /(^|[^a-z])ai([^a-z]|$)|artificial intelligence|generative|llm|language model/) { ai += split(l, w); next }
+      if (asks_ai(best)) { ai += split(l, w); next }
     }
+    if (section_ai) { ai += split(l, w); next }
     ours += split(l, w) }
-  END { print ours + 0, ai + 0 }' "$bodyfile")
+  END { print ours + 0, ai + 0, kept + 0, wanted + 0 }' "$bodyfile")
+if [ "$wanted" -gt 0 ] && [ "$kept" -eq 0 ]; then
+  echo "REFUSED: the body keeps none of $repo's pull request template ($template) - fill it in rather than replacing it" >&2
+  exit 2
+fi
 if [ "$words" -gt 120 ]; then
   echo "REFUSED: the body is $words words outside the project's template - say what was wrong, what the change does and how it was verified in 120 or fewer" >&2
   exit 2
@@ -160,7 +167,7 @@ if [ "$ai_words" -gt 50 ]; then
   echo "REFUSED: the answer to the template's AI question is $ai_words words - name the tool and what it did in 50 or fewer" >&2
   exit 2
 fi
-if [ "$policy_result" = "DISCLOSE" ] && ! grep -qiE '\bAI\b|LLM|Claude|Copilot|ChatGPT|language model|assist' "$bodyfile"; then
+if [ "$policy_result" = "DISCLOSE" ] && ! discloses "$bodyfile" "$template"; then
   echo "REFUSED: $repo requires AI use to be disclosed ($policy) and the body does not name it" >&2
   exit 2
 fi
@@ -180,10 +187,13 @@ fi
 # repository means another branch's run replaces it.
 searched=$(sed -n 's/^### //p' "$art" | tr -d '\r')
 ours=$(sed -n 's/^file: //p' "$home/branch-checks/$head" | tr -d '\r')
+# Both sides of a rename: an upstream change to the old path meets this branch.
+touched=$(sed -n -e 's/^file: //p' -e 's/^from: //p' "$home/branch-checks/$head" | tr -d '\r')
 [ -n "$ours" ] || { echo "REFUSED: the branch-check stamp for head ${head:0:12} lists no files - rerun branch-check.sh" >&2; exit 2; }
 unsearched=""
 while IFS= read -r f; do
-  case "$f" in ""|*test*|*Test*|*spec*) continue ;; esac
+  [ -n "$f" ] || continue
+  is_test_path "$f" && continue
   printf '%s\n' "$searched" | grep -qxF -e "$f" -e "$(basename "$f")" || unsearched="$unsearched $f"
 done <<EOF
 $ours
@@ -219,13 +229,25 @@ if [ "$stamped" != "$upstream" ]; then
     echo "REFUSED: the checked base ${stamped:0:12} is not on $repo $target - fetch, rebase and rerun branch-check.sh" >&2
     exit 2
   fi
+  # Any 200 is not enough. Diverged means the checked base carries commits the
+  # upstream lacks, so the pull request would too, and behind means the upstream
+  # was rewound past it.
+  moved_how=$(printf '%s' "$cmp" | jq -r '.status // "unknown"' | tr -d '\r')
+  if [ "$moved_how" != ahead ]; then
+    echo "REFUSED: the checked base ${stamped:0:12} is not on $repo $target (compare reads $moved_how) - fetch, rebase and rerun branch-check.sh" >&2
+    exit 2
+  fi
+  if [ "$(printf '%s' "$cmp" | jq -r '.files | type' | tr -d '\r')" != array ]; then
+    echo "REFUSED: GitHub listed no files for $target since ${stamped:0:12}, so what moved is unknown - fetch, rebase, rerun branch-check.sh and the review" >&2
+    exit 2
+  fi
   # GitHub lists at most 300 files here; past that the overlap cannot be known.
   if [ "$(printf '%s' "$cmp" | jq '.files | length')" -ge 300 ]; then
     echo "REFUSED: $target moved by 300 files or more since branch-check (${stamped:0:12} to ${upstream:0:12}) - fetch, rebase, rerun branch-check.sh and the review" >&2
     exit 2
   fi
-  moved=$(printf '%s' "$cmp" | jq -r '.files[].filename')
-  overlap=$(printf '%s\n' "$moved" | grep -Fx -f <(printf '%s\n' "$ours"))
+  moved=$(printf '%s' "$cmp" | jq -r '.files[] | .filename, (.previous_filename // empty)')
+  overlap=$(printf '%s\n' "$moved" | tr -d '\r' | grep -Fx -f <(printf '%s\n' "$touched"))
   if [ -n "$overlap" ]; then
     echo "REFUSED: $target moved since branch-check (${stamped:0:12} to ${upstream:0:12}) and changed files this branch changes - fetch, rebase, rerun branch-check.sh and the review:" >&2
     printf '%s\n' "$overlap" | sed 's/^/    /' >&2
@@ -250,6 +272,7 @@ if [ "$since" -lt 600 ]; then
   echo "REFUSED: your last pull request on $repo was filed ${since}s ago - wait until ten minutes have passed" >&2
   exit 2
 fi
+spacing_gate "$repo" "$home"
 # The experiment the body describes was run by proof.sh, not recounted, and
 # against the base branch-check measured; the author's declaration of what
 # was not tested passes and names a proof that was waived; and the review
@@ -295,4 +318,5 @@ fi
 # What was filed, kept so verify-filed-pr.sh can compare GitHub's copy to it.
 mkdir -p "$home/filed"
 cp "$bodyfile" "$home/filed/${repo%%/*}-${repo##*/}-$head.md"
-gh pr create -R "$repo" "${pass[@]}"
+gh pr create -R "$repo" "${pass[@]}" || exit $?
+log_filing "$repo" "$home" "pull request $head"

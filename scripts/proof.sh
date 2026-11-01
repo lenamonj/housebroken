@@ -26,10 +26,12 @@
 # branch-check stamp for the head names, then to the first of upstream/main,
 # upstream/master, origin/main and origin/master that resolves. COMMAND runs
 # with bash -c from the clone's top; name the new test in it so the run is
-# that test, not the whole suite. A changed file is taken for a test when its
-# path says test or spec; --keep PATH keeps another changed file at the head
-# in the base arm, such as a fixture the test reads; --fix PATH takes a file
-# away although its path says test, such as src/testing/util.go. When one
+# that test, not the whole suite. A changed file is taken for a test when it
+# lives under a tests or spec directory or its name says so (a_test.go,
+# test_a.py, a.test.ts, ATest.java); --keep PATH keeps another changed file at
+# the head in the base arm, such as a fixture the test reads; --fix PATH takes a
+# file away although it reads as a test, such as tests/helpers/fake_clock.go.
+# When one
 # file carries both the test and the fix, a Rust module with its #[cfg(test)]
 # block, --base-file PATH=FILE puts FILE's content, the base plus the test,
 # at PATH in the base arm.
@@ -40,6 +42,8 @@
 set -u
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
+# shellcheck source=scripts/common.sh
+. "$(cd "$(dirname "$0")" && pwd)/common.sh"
 
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 clone="."; cmd=""; none=""; base=""
@@ -102,7 +106,7 @@ while IFS= read -r f; do
   [ -n "$f" ] || continue
   if listed "$f" ${keeps[@]+"${keeps[@]}"}; then kept+=("$f"); continue; fi
   if ! listed "$f" ${forces[@]+"${forces[@]}"}; then
-    case "$f" in *test*|*Test*|*spec*) kept+=("$f"); continue ;; esac
+    if is_test_path "$f"; then kept+=("$f"); continue; fi
   fi
   for t in HEAD "$mb"; do
     case "$(mode_in "$t" "$f")" in

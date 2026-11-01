@@ -94,3 +94,51 @@ read_printouts() {
     *) echo "REFUSED: $policy has no RESULT line - rerun check-ai-policy.sh --out" >&2; exit 2 ;;
   esac
 }
+
+# What no outbound text carries. Matched in any case, because GitHub itself
+# writes "Co-authored-by", and the HTML entities render as the dashes they name.
+em=$(printf '\xe2\x80\x94')   # em dash U+2014, built at runtime to keep this file ASCII
+en=$(printf '\xe2\x80\x93')   # en dash U+2013
+dash_re="$em|$en|&[mn]dash;|&#821[12];|&#x201[34];"
+tool_re='Generated with|(Generated|Built|Created) (with|by) \[?(Claude|Copilot|ChatGPT|Cursor|Codex|Gemini|Aider)|Claude-Session|claude\.ai/code/session_|Co-Authored-By'
+banned_re="$tool_re|$dash_re"
+check_text() {
+  local what="$1" text="$2" hit
+  hit=$(printf '%s' "$text" | grep -ioE "$banned_re" | head -1) || true
+  if [ -n "$hit" ]; then
+    echo "REFUSED: $what contains '$hit' - strip it before filing" >&2
+    exit 2
+  fi
+}
+
+# Whether a body says AI was used, in its own words: a ticked box naming it, or
+# a line that is not the project's template. An unanswered template question
+# says nothing, and "Home Assistant" names no tool.
+discloses() { # body-file template-file
+  local names='\bAI\b|\bLLMs?\b|Claude|Copilot|ChatGPT|Gemini|Codex|Cursor|language model'
+  grep -qiE "^[[:space:]]*[-*] \[x\].*($names)" "$1" && return 0
+  sed 's/<!--.*-->//' "$1" | awk -v T="$2" '
+    function norm(s) { gsub(/\[[xX]\]/, "[ ]", s); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+    BEGIN { while ((getline l < T) > 0) { l = norm(l); if (l != "") t[l] = 1 } }
+    { l = norm($0); if (l in t || l ~ /^[-*] \[ \]/) next
+      best = ""
+      for (k in t) if (index(l, k) == 1 && length(k) > length(best)) best = k
+      print substr(l, length(best) + 1) }' | grep -qiE "$names"
+}
+
+# Ten minutes between filings on one repository, issues and pull requests alike.
+filing_log() { printf '%s/filings/%s-%s.log' "$2" "${1%%/*}" "${1##*/}"; }
+spacing_gate() { # repo home
+  local log last since
+  log=$(filing_log "$1" "$2")
+  [ -f "$log" ] || return 0
+  last=$(tail -1 "$log" | awk '{print $1}')
+  since=$(( $(date -u +%s) - ${last:-0} ))
+  if [ "$since" -lt 600 ]; then
+    echo "REFUSED: your last filing on $1 went out ${since}s ago - wait until ten minutes have passed" >&2
+    exit 2
+  fi
+}
+log_filing() { # repo home what
+  mkdir -p "$2/filings" && printf '%s %s\n' "$(date -u +%s)" "$3" >> "$(filing_log "$1" "$2")"
+}

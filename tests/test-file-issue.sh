@@ -42,7 +42,21 @@ policy "DISCLOSE (a policy file asks for disclosure)"
 out=$(run --title t --body-file "$bodyfile"); rc=$?
 [ "$rc" -eq 2 ] || fail "an undisclosed body under DISCLOSE exited $rc, expected 2"
 printf '%s' "$out" | grep -q "requires AI use to be disclosed" || fail "an undisclosed body under DISCLOSE printed no refusal"
+printf 'The Home Assistant loader drops the last field.\n' > "$HOUSEBROKEN_HOME/assist.md"
+run --title t --body-file "$HOUSEBROKEN_HOME/assist.md" 2>&1 | grep -q "requires AI use to be disclosed" || fail "the word Assistant counted as a disclosure"
 policy "CLEAN (no policy file names AI)"
+
+# printouts over a day old stop the filing
+touch -t 202001010000 "$policyfile"
+out=$(run --title t --body-file "$bodyfile"); rc=$?
+[ "$rc" -eq 2 ] || fail "an old policy printout exited $rc, expected 2"
+printf '%s' "$out" | grep -q "h old - rerun check-ai-policy" || fail "an old policy printout was not refused: $out"
+touch "$policyfile"
+touch -t 202001010000 "$HOUSEBROKEN_HOME/prior-art/prior-art-octocat-Hello-World.md"
+out=$(run --title t --body-file "$bodyfile"); rc=$?
+[ "$rc" -eq 2 ] || fail "an old prior art printout exited $rc, expected 2"
+printf '%s' "$out" | grep -q "h old - rerun prior-art" || fail "an old prior art printout was not refused: $out"
+touch "$HOUSEBROKEN_HOME/prior-art/prior-art-octocat-Hello-World.md"
 
 # gate three: an em dash, a session link and a co-author trailer in the body; a dash in the title
 for bad in 'the parser \xe2\x80\x94 one line' 'see https://claude.ai/code/session_abc' 'Co-Authored-By: x'; do
@@ -98,5 +112,16 @@ run --title t --body-file "$bodyfile" >/dev/null 2>&1 || fail "a commit link was
 printf 'The parser drops the last field of a quoted row.\n' > "$bodyfile"
 out=$(run --title t --body-file "$bodyfile"); rc=$?
 [ "$rc" -eq 0 ] || fail "a plain report exited $rc, expected 0: $out"
+
+# a real filing runs gh issue create and starts the ten minutes, which a pull
+# request respects too; the stub writes only to this log
+writes="$HOUSEBROKEN_HOME/writes.log"
+out=$(FILE_ISSUE_DRY=0 STUB_WRITES="$writes" bash "$script" octocat/Hello-World --title t --body-file "$bodyfile" 2>&1); rc=$?
+[ "$rc" -eq 0 ] || fail "a real filing exited $rc: $out"
+grep -q "^issue create -R octocat/Hello-World" "$writes" || fail "no gh issue create ran: $out"
+out=$(FILE_ISSUE_DRY=0 STUB_WRITES="$writes" bash "$script" octocat/Hello-World --title t --body-file "$bodyfile" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a second issue inside ten minutes exited $rc: $out"
+printf '%s' "$out" | grep -q "wait until ten minutes" || fail "the spacing was not named: $out"
+[ "$(grep -c '^issue create' "$writes")" = "1" ] || fail "a second filing reached gh"
 
 echo "PASS $name"

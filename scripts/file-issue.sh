@@ -25,6 +25,9 @@
 #                     art and policy printouts are read from it.
 #   FILE_ISSUE_DRY    set to 1 to print the gh command instead of running it.
 #
+# Filings on one repository, issues and pull requests alike, go out at least ten
+# minutes apart.
+#
 # Assumes gh is installed and authenticated. It writes to GitHub only after all
 # four gates pass, and only when FILE_ISSUE_DRY is not 1.
 set -u
@@ -79,18 +82,6 @@ home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 . "$(dirname "$0")/common.sh"
 read_printouts "$repo" "$home"
 
-em=$(printf '\xe2\x80\x94')   # em dash U+2014, built at runtime to keep this file ASCII
-en=$(printf '\xe2\x80\x93')   # en dash U+2013
-banned_re="Generated with|Claude-Session|claude\.ai/code/session_|Co-Authored-By|$em|$en|&[mn]dash;|&#821[12];|&#x201[34];"
-check_text() {
-  local what="$1" text="$2" hit
-  hit=$(printf '%s' "$text" | grep -ioE "$banned_re" | head -1) || true
-  if [ -n "$hit" ]; then
-    echo "REFUSED: $what contains '$hit' - strip it before filing" >&2
-    exit 2
-  fi
-}
-
 # gh issue create also takes a body from --body, --template, --recover, --web
 # and stdin, and obeys the last -R it is given. Each of those files something
 # no gate read, so only these flags pass.
@@ -121,7 +112,7 @@ fi
 body=$(cat "$bodyfile")
 check_text "body file $bodyfile" "$body"
 check_text "--title" "$title"
-if [ "$policy_result" = "DISCLOSE" ] && ! grep -qiE '\bAI\b|LLM|Claude|Copilot|ChatGPT|language model|assist' "$bodyfile"; then
+if [ "$policy_result" = "DISCLOSE" ] && ! discloses "$bodyfile" /dev/null; then
   echo "REFUSED: $repo requires AI use to be disclosed ($policy) and the body does not name it" >&2
   exit 2
 fi
@@ -141,10 +132,13 @@ if [ -n "$offer" ] && ! printf '%s' "$body" | grep -qE "$link_re"; then
   exit 2
 fi
 
+spacing_gate "$repo" "$home"
+
 if [ "${FILE_ISSUE_DRY:-0}" = "1" ]; then
   printf 'DRY RUN, not filed:\ngh issue create -R %s' "$repo"
   for arg in "${pass[@]}"; do printf ' %q' "$arg"; done
   printf '\n'
   exit 0
 fi
-gh issue create -R "$repo" "${pass[@]}"
+gh issue create -R "$repo" "${pass[@]}" || exit $?
+log_filing "$repo" "$home" issue
