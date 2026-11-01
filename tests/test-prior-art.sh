@@ -24,6 +24,7 @@ case "$args" in
     case "$args" in
       *completion*) printf 'TOTAL\t50\t10\tfalse\n' ;;
       *"relative URL"*) printf 'TOTAL\t1\t1\tfalse\nissue\t98\tclosed\t2026-01-01\treporter\tRelative URLs\n' ;;
+      *timedout*) printf 'TOTAL\t0\t0\ttrue\n' ;;
       *) printf 'TOTAL\t0\t0\tfalse\n' ;;
     esac ;;
   *"search/issues"*"type:pr"*)
@@ -32,16 +33,24 @@ case "$args" in
       *) printf 'TOTAL\t0\t0\tfalse\n' ;;
     esac ;;
   *"issues/98/comments"*)
-    echo '[{"user":{"login":"maint"},"body":"This is intended behaviour. We will not change it."}]' ;;
-  *commits*) ;;
+    [ -f "$STUB_DIR/comments.fail" ] && exit 1
+    cat "$STUB_DIR/comments.json" ;;
+  *commits*)
+    echo "$*" >> "$STUB_DIR/commit-calls"
+    [ -f "$STUB_DIR/commits.fail" ] && exit 1
+    cat "$STUB_DIR/commits.tsv" 2>/dev/null; true ;;
   "pr list -R o/r --state open"*)
     printf '1881\t2026-08-01\tsomeone\tUtils docs\ttyper/cli.py\n4103\t2026-08-02\tother\tBig move\tMORE\n' ;;
-  *"pulls/4103/files"*) printf 'a.rb\nlib/prefix_tree.rb\n' ;;
+  *"pulls/4103/files"*)
+    [ -f "$STUB_DIR/files.fail" ] && exit 1
+    printf 'a.rb\nlib/prefix_tree.rb\n' ;;
   *) exit 1 ;;
 esac
 STUB
 chmod +x "$root/bin/gh"
 export PATH="$root/bin:$PATH"
+
+echo '[{"user":{"login":"maint","type":"User"},"body":"This is intended behaviour. We will not change it."}]' > "$root/comments.json"
 
 help=$(bash "$script" --help) || fail "--help exited non-zero"
 printf '%s' "$help" | grep -q "usage: prior-art.sh" || fail "--help printed no usage line"
@@ -78,5 +87,41 @@ printf '%s' "$out" | grep -q "showing 10 of 50 issues for 'completion'" || fail 
 [ ! -f "$saved" ] || fail "a partial printout was saved without --partial"
 bash "$script" o/r completion --out --partial >/dev/null 2>&1 || fail "--partial did not save"
 grep -q "saved with --partial" "$saved" || fail "the saved partial printout is not marked"
+
+# a read that failed is a printout that has not read everything, whatever it found
+partial() { # what it is for, then the arguments
+  local what="$1"; shift
+  rm -f "$saved"
+  out=$(bash "$script" o/r "$@" --out 2>&1); rc=$?
+  [ "$rc" -eq 1 ] || fail "$what saved a printout: exit $rc: $out"
+  printf '%s' "$out" | grep -q "^PARTIAL: " || fail "$what was not marked partial: $out"
+  [ ! -f "$saved" ] || fail "$what was saved"
+}
+partial "a search GitHub gave up on, with no results" timedout
+touch "$root/commits.fail"; partial "a failed history read" src/parser.py; rm -f "$root/commits.fail"
+touch "$root/files.fail"; partial "a failed file list of a large open pull request" src/parser.py; rm -f "$root/files.fail"
+touch "$root/comments.fail"; partial "a failed read of a closed item's comments" "relative URL"; rm -f "$root/comments.fail"
+
+# the history is read in full, with the path as a field so a + survives
+rm -f "$root/commit-calls"
+bash "$script" o/r libstdc++-v3/ChangeLog >/dev/null || fail "a path with a plus failed"
+grep -q -- "--paginate" "$root/commit-calls" || fail "the history is not paginated: $(cat "$root/commit-calls")"
+grep -q -- "-f path=libstdc++-v3/ChangeLog" "$root/commit-calls" || fail "the path was not sent as a field: $(cat "$root/commit-calls")"
+
+# a merged pull request is the number the merge wrote, not an issue the subject names
+printf 'Fix #12 in the parser (#34)\t2026-10-01\tmaint\nMerge pull request #56 from a/b\t2026-10-02\tmaint\nFix #78 by hand\t2026-10-03\tmaint\n' > "$root/commits.tsv"
+out=$(bash "$script" o/r src/parser.py) || fail "the history run failed"
+printf '%s\n' "$out" | grep -q '^| PR | #34 | merged' || fail "the merged pull request was not listed: $out"
+printf '%s\n' "$out" | grep -q '^| PR | #56 | merged' || fail "a merge commit's pull request was not listed: $out"
+printf '%s\n' "$out" | grep -qE '^\| PR \| #(12|78) ' && fail "an issue named in a subject was listed as a merged pull request: $out"
+rm -f "$root/commits.tsv"
+
+# a lock bot's boilerplate is not the ruling, and a stranger's escapes do not print
+esc=$(printf '\033')
+jq -n --arg b "$(printf 'We will not change this. %s[2J' "$esc")" '[{user: {login: "maint", type: "User"}, body: $b}, {user: {login: "lock", type: "Bot"}, body: "This issue has been automatically locked."}, {user: {login: "stale[bot]"}, body: "Closing."}]' > "$root/comments.json"
+out=$(bash "$script" o/r "relative URL") || fail "the ruling run failed"
+printf '%s\n' "$out" | grep -q 'We will not change this' || fail "the ruling was replaced by a bot: $out"
+case "$out" in *"$esc"*) fail "an escape sequence reached the printout" ;; esac
+printf '%s\n' "$out" | sed -n 2p | grep -q "strangers' text" || fail "the printout does not mark what is untrusted: $out"
 
 echo "PASS $name"
