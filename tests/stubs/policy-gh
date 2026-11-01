@@ -1,23 +1,23 @@
 #!/bin/bash
 # stubs/policy-gh - a repository served from files on disk, for
 # check-ai-policy.sh: $STUB_DIR/tree.txt lists the paths and $STUB_DIR/files
-# holds them. STUB_TREE_FAIL, STUB_CONTENTS_FAIL, STUB_ORG_FAIL and
-# STUB_TRUNCATED make the calls misbehave.
+# holds them. STUB_TREE_FAIL, STUB_TREE_ERR, STUB_CONTENTS_FAIL, STUB_EMPTY_BODY,
+# STUB_ORG_FAIL, STUB_ORG_ERR and STUB_TRUNCATED make the calls misbehave.
 args="$*"
 case "$args" in
   *"git/trees/"*)
     [ "${STUB_TREE_FAIL:-0}" = 1 ] && exit 1
+    if [ -n "${STUB_TREE_ERR:-}" ]; then echo "$STUB_TREE_ERR" >&2; exit 1; fi
     json=$(jq -Rn --argjson t "${STUB_TRUNCATED:-false}" \
-      '{truncated: $t, tree: [inputs | {path: ., type: "blob"}]}' < "$STUB_DIR/tree.txt")
-    case "$args" in
-      *--jq*) printf '%s' "$json" | jq -r '.tree[] | select(.type == "blob") | .path' ;;
-      *) printf '%s' "$json" ;;
-    esac ;;
+      '{truncated: $t, tree: [inputs | {path: ., type: "blob", size: 9}]}' < "$STUB_DIR/tree.txt")
+    printf '%s' "$json" ;;
   *"/contents/"*)
     [ "${STUB_CONTENTS_FAIL:-0}" = 1 ] && exit 1
+    [ "${STUB_EMPTY_BODY:-0}" = 1 ] && exit 0
     f=$(printf '%s' "$args" | sed -n 's/.*contents\/\([^?]*\)?.*/\1/p')
-    base64 < "$STUB_DIR/files/$f" | tr -d '\n' ;;
+    cat "$STUB_DIR/files/$f" ;;
   *"/.github"*)
+    if [ -n "${STUB_ORG_ERR:-}" ]; then echo "$STUB_ORG_ERR" >&2; exit 1; fi
     if [ "${STUB_ORG_FAIL:-0}" = 1 ]; then echo "gh: API rate limit exceeded (HTTP 403)" >&2
     else echo "gh: Not Found (HTTP 404)" >&2; fi
     exit 1 ;;

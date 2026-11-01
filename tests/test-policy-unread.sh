@@ -68,7 +68,7 @@ printf 'nothing here\n' > "$root/files/CONTRIBUTING.md"
 STUB_CONTENTS_FAIL=1 bash "$script" --out o/r >/dev/null
 grep -q '^RESULT: UNREAD' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "--out did not save the UNREAD printout"
 mkdir -p "$HOUSEBROKEN_HOME/prior-art"
-printf 'prior art\n' > "$HOUSEBROKEN_HOME/prior-art/prior-art-o-r.md"
+printf '## Prior art: o/r\n' > "$HOUSEBROKEN_HOME/prior-art/prior-art-o-r.md"
 msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file /dev/null 2>&1)
 printf '%s\n' "$msg" | grep -q "UNREAD" || fail "file-pr.sh did not refuse an UNREAD printout: $msg"
 

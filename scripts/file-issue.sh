@@ -75,35 +75,9 @@ esac
 [ "$#" -gt 0 ] || { echo "REFUSED: no gh issue create arguments given" >&2; exit 2; }
 
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
-art="$home/prior-art/prior-art-${repo%%/*}-${repo##*/}.md"
-if [ ! -f "$art" ]; then
-  echo "REFUSED: no prior art at $art - run prior-art.sh $repo <terms> --out first" >&2
-  exit 2
-fi
-now=$(date +%s)
-made=$(date -r "$art" +%s) || { echo "REFUSED: cannot read the age of $art" >&2; exit 2; }
-if [ $((now - made)) -gt 86400 ]; then
-  echo "REFUSED: prior art $art is $(( (now - made) / 3600 ))h old - rerun prior-art.sh --out" >&2
-  exit 2
-fi
-
-policy="$home/policy/policy-${repo%%/*}-${repo##*/}.md"
-if [ ! -f "$policy" ]; then
-  echo "REFUSED: no policy printout at $policy - run check-ai-policy.sh $repo --out first" >&2
-  exit 2
-fi
-made=$(date -r "$policy" +%s) || { echo "REFUSED: cannot read the age of $policy" >&2; exit 2; }
-if [ $((now - made)) -gt 86400 ]; then
-  echo "REFUSED: policy printout $policy is $(( (now - made) / 3600 ))h old - rerun check-ai-policy.sh --out" >&2
-  exit 2
-fi
-policy_result=$(grep -m1 '^RESULT: ' "$policy" | awk '{print $2}')
-case "$policy_result" in
-  BAN) echo "REFUSED: $repo forbids AI-written contributions ($policy); never file here" >&2; exit 2 ;;
-  DISCLOSE|MENTION|CLEAN) ;;
-  UNREAD) echo "REFUSED: $policy reads UNREAD - GitHub did not give every policy file; rerun check-ai-policy.sh --out" >&2; exit 2 ;;
-  *) echo "REFUSED: $policy has no RESULT line - rerun check-ai-policy.sh --out" >&2; exit 2 ;;
-esac
+# shellcheck source=scripts/common.sh
+. "$(dirname "$0")/common.sh"
+read_printouts "$repo" "$home"
 
 em=$(printf '\xe2\x80\x94')   # em dash U+2014, built at runtime to keep this file ASCII
 en=$(printf '\xe2\x80\x93')   # en dash U+2013
