@@ -229,8 +229,10 @@ report it in one line and do not proceed to the next step.
    did not re-derive itself: a passed review is not a proof. Then
    `housebroken file owner/repo --title ... --body-file ...`, the only way a
    pull request is opened. Never run the pull request creation command
-   directly; `housebroken install-hook` installs a Claude Code hook that
-   refuses it, and every other write to GitHub outside these gates. The gate refuses when the prior-art printout for that repository
+   directly; `housebroken install-hook` prints the entry for a Claude Code
+   hook that refuses it, along with every other pull request or issue write,
+   a write through `gh api` and a forced push, outside these gates. It is a
+   list, not a deny-all, so its silence is not permission. The gate refuses when the prior-art printout for that repository
    is missing, older than a day or never searched a file the branch changes,
    when the policy printout is missing, older than a day or reads BAN or
    UNREAD, when the policy reads DISCLOSE and the body does not disclose,

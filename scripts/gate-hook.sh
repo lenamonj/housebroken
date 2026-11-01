@@ -11,19 +11,22 @@
 # push or a branch delete. The same action through its gate (housebroken
 # file, issue, reply, push or hygiene) passes, because the gate runs gh
 # inside its own script, where this hook does not look. Reads, releases and
-# plain pushes are not touched.
+# inside its own script, where this hook does not look. Reads, releases and
+# plain pushes are not touched, and nor is any other gh command: this is a
+# list of what a filing can go around the gates with, not a deny-all.
 #
-# It reads the command text, so it holds the accident, not the intent: a
-# write behind bash -c, eval, xargs, env, a script file, a full path to gh
-# or an alias passes it.
+# Each command in a line is judged by itself, so a read beside a write does
+# not excuse it, and quoted text is not a command. It still reads text, so it
+# holds the accident, not the intent: a write behind bash -c, eval, xargs,
+# env, a script file, a full path to gh or an alias passes it.
 #
 # Writes to your own repositories pass when the owner is listed, one per
 # line, in $HOUSEBROKEN_HOME/own (default ~/.housebroken/own); the owner is
-# read from -R/--repo or from the repos/OWNER/... path of a gh api call, never
-# from the clone, because in a fork's clone gh writes to the upstream parent
-# while origin names you. A forced push
-# is refused everywhere, because a fork carries your name too: push a rework
-# with housebroken push, or run it yourself.
+# read from the -R/--repo or the repos/OWNER/... path of that same command,
+# never from the clone, because in a fork's clone gh writes to the upstream
+# parent while origin names you. A forced push is refused everywhere, because
+# a fork carries your name too: push a rework with housebroken push, or run it
+# yourself.
 #
 # `housebroken install-hook` copies this script to
 # ~/.claude/hooks/housebroken-gate.sh, where an upgrade does not move it, and
@@ -73,58 +76,118 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 [ -n "$cmd" ] || exit 0
 
 # A here-document is text, not commands: its lines are dropped before the read.
+# <<- may indent its terminator with tabs, and <<< opens nothing.
 text=$(printf '%s\n' "$cmd" | awk -v q="'" '
-  BEGIN { open = "<<-?[[:space:]]*[\"" q "]?[A-Za-z_][A-Za-z0-9_]*" }
-  stop != "" { if ($0 == stop) stop = ""; next }
-  match($0, open) { stop = substr($0, RSTART, RLENGTH); sub("^<<-?[[:space:]]*[\"" q "]?", "", stop) }
+  BEGIN { open = "(^|[^<])<<-?[[:space:]]*[\"" q "]?[A-Za-z_][A-Za-z0-9_]*" }
+  stop != "" { l = $0; if (strip) sub(/^\t+/, "", l); if (l == stop) stop = ""; next }
+  match($0, open) {
+    stop = substr($0, RSTART, RLENGTH); strip = (stop ~ /<<-/)
+    sub("^.*<<-?[[:space:]]*[\"" q "]?", "", stop)
+  }
   { print }')
 
-# A command counts where it would run: at the start of a line or after a
-# separator or a shell keyword, past any VAR=value prefixes and past git's
-# -C and -c options. Text that only mentions one, in a commit message or a
-# here-document, does not.
-at='(^|[;&|({]|\$\(|\b(then|do|else|elif)[[:space:]]+)[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*'
-git='git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+'
-runs() { printf '%s\n' "$text" | grep -qE "${at}$1"; }
-has() { printf '%s' "$text" | grep -qiE "$1"; }
+# One command per line: split at the separators a shell would run them at, and
+# never inside quotes, so text that only mentions a write is not one. A $(...)
+# inside double quotes does run. Comments go, and a { in a path is not a brace.
+commands=$(printf '%s\n' "$text" | LC_ALL=C awk '
+  { src = src $0 "\n" }
+  END {
+    n = length(src); quote = ""; seg = ""; sq = "\047"; dq = "\042"; bt = "\140"
+    for (i = 1; i <= n; i++) {
+      c = substr(src, i, 1); d = substr(src, i + 1, 1); p = (i > 1) ? substr(src, i - 1, 1) : "\n"
+      if (quote == sq) { seg = seg (c == "\n" ? " " : c); if (c == sq) quote = ""; continue }
+      if (quote == dq) {
+        if (c == "\\") { seg = seg c d; i++; continue }
+        if (c == dq) { quote = ""; seg = seg c; continue }
+        if ((c == "$" && d == "(") || c == bt) { quote = ""; print seg; seg = ""; if (c == "$") i++; continue }
+        seg = seg (c == "\n" ? " " : c); continue
+      }
+      if (c == "\\") { seg = seg ((d == "\n") ? " " : c d); i++; continue }
+      if (c == sq || c == dq) { quote = c; seg = seg c; continue }
+      space = (p == " " || p == "\t" || p == "\n" || p == ";")
+      if (c == "#" && space) { while (i < n && substr(src, i + 1, 1) != "\n") i++; continue }
+      if (c == "\n" || c == ";" || c == "|" || c == "(" || c == ")" || c == bt) { print seg; seg = ""; continue }
+      if (c == "&" && p != ">" && d != ">") { print seg; seg = ""; continue }
+      if ((c == "{" || c == "}") && space && (d == " " || d == "\t" || d == "\n" || d == ";")) { print seg; seg = ""; continue }
+      seg = seg c
+    }
+    print seg
+  }')
+
+shopt -s nocasematch
+# A command counts where it would run: past keywords, a VAR=value prefix, and
+# past the -R of gh and the -C and -c of git. Text after it is its arguments.
+at='^[[:space:]]*((then|do|else|elif|if|while|until|time|command|exec|!)[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*'
+repo_flag='((-R|--repo)([[:space:]]+|=)[^[:space:]]+[[:space:]]+)*'
+end='([[:space:]]|$)'
+gh="${at}gh[[:space:]]+$repo_flag"
+pr_re="${gh}pr[[:space:]]+$repo_flag(create|comment|review|edit|close|merge|ready|reopen|update-branch)$end"
+issue_re="${gh}issue[[:space:]]+$repo_flag(create|comment|edit|close|reopen)$end"
+graphql_re="${gh}api[[:space:]]+graphql$end"
+api_re="${gh}api$end"
+push_re="${at}git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push$end"
+quote="[\"']?"
+mutation_re="(^|[^a-z])mutation([^a-z]|$)"
+write_method_re="(-X|--method)[[:space:]=]*${quote}(POST|PATCH|PUT|DELETE)$quote$end"
+get_method_re="(-X|--method)[[:space:]=]*${quote}GET$quote$end"
+# -f and -F take their value glued too, as in -fbody=x.
+fields_re='[[:space:]](-f|--field|--raw-field|--input)([[:space:]=]|$)|[[:space:]]-f[^[:space:]-]'
+force_re='[[:space:]](--force(-with-lease)?|--delete|--mirror|-[a-zA-Z]*[fd][a-zA-Z]*)([[:space:]=]|$)|[[:space:]][+:][^[:space:]]'
 
 why=""; push=""
-if runs 'gh[[:space:]]+pr[[:space:]]+(create|comment|review|edit|close|merge|ready|reopen|update-branch)\b'; then
-  why="it writes to a pull request outside the gate; open one with housebroken file, answer one with housebroken reply"
-elif runs 'gh[[:space:]]+issue[[:space:]]+(create|comment|edit|close|reopen)\b'; then
-  why="it writes to an issue outside the gate; open one with housebroken issue, answer one with housebroken reply"
-elif runs 'gh[[:space:]]+api[[:space:]]+graphql\b'; then
-  has '\bmutation\b' && why="a GraphQL mutation changes GitHub outside the gate"
-elif runs 'gh[[:space:]]+api\b'; then
-  # gh api reads unless it names a writing method, or sends fields without
-  # saying GET.
-  if has '(-X|--method)[[:space:]=]*(POST|PATCH|PUT|DELETE)\b'; then
-    why="gh api with a writing method changes GitHub outside the gate"
-  elif printf '%s' "$text" | grep -qE '[[:space:]](-f|-F|--field|--raw-field|--input)[[:space:]=]' &&
-       ! has '(-X|--method)[[:space:]=]*GET\b'; then
-    why="gh api with fields and no -X GET is a POST, which changes GitHub outside the gate"
+judge() {
+  why=""; push=""
+  if [[ $1 =~ $pr_re ]]; then
+    why="it writes to a pull request outside the gate; open one with housebroken file, answer one with housebroken reply"
+  elif [[ $1 =~ $issue_re ]]; then
+    why="it writes to an issue outside the gate; open one with housebroken issue, answer one with housebroken reply"
+  elif [[ $1 =~ $graphql_re ]]; then
+    if [[ $1 =~ $mutation_re ]]; then why="a GraphQL mutation changes GitHub outside the gate"; fi
+  elif [[ $1 =~ $api_re ]]; then
+    # gh api reads unless it names a writing method, or sends fields without
+    # saying GET.
+    if [[ $1 =~ $write_method_re ]]; then
+      why="gh api with a writing method changes GitHub outside the gate"
+    elif [[ $1 =~ $fields_re ]] && ! [[ $1 =~ $get_method_re ]]; then
+      why="gh api with fields and no -X GET is a POST, which changes GitHub outside the gate"
+    fi
+  elif [[ $1 =~ $push_re ]] && [[ $1 =~ $force_re ]]; then
+    why="a forced push or a branch delete rewrites what a maintainer may already have reviewed; push a rework with housebroken push"
+    push=1
   fi
-elif runs "${git}push\b" &&
-     printf '%s' "$text" | grep -qE '[[:space:]](--force(-with-lease)?|--delete|--mirror|-[a-zA-Z]*[fd][a-zA-Z]*)\b|[[:space:]][+:][^[:space:]]'; then
-  why="a forced push or a branch delete rewrites what a maintainer may already have reviewed; push a rework with housebroken push"
-  push=1
-fi
-[ -n "$why" ] || exit 0
+}
 
-# Your own repositories: the door is for other people's.
-if [ -z "$push" ] && [ -s "$own" ]; then
-  # Only a repository the command names counts. With none named, gh picks
-  # one from the clone, and in a fork's clone that is the upstream parent.
-  owner=$(printf '%s' "$text" | grep -oE '((-R|--repo)[[:space:]=]+|repos/)[A-Za-z0-9_.-]+/' | head -1 | sed -E 's#/$##; s#.*[[:space:]=/]##')
-  [ -n "$owner" ] && awk -v o="$owner" 'tolower($0) == tolower(o) {f = 1} END {exit !f}' "$own" && exit 0
-fi
-
-{
-  echo "housebroken: refused: $why."
-  if [ -n "$push" ]; then
-    echo "If the user asked for exactly this, they can run it themselves."
+# Your own repositories: the door is for other people's. Only a repository this
+# command names counts. With none named, gh picks one from the clone, and in a
+# fork's clone that is the upstream parent.
+is_own() {
+  local owner="" o
+  [ -s "$own" ] || return 1
+  if [[ $1 =~ $api_re ]]; then
+    [[ $1 =~ [[:space:]]/?repos/([A-Za-z0-9_.-]+)/ ]] && owner="${BASH_REMATCH[1]}"
   else
-    echo "If the user asked for exactly this, they can run it themselves; a repository of their own passes once its owner is listed in $own."
+    [[ $1 =~ [[:space:]](-R|--repo)([[:space:]]+|=)([A-Za-z0-9_.-]+)/ ]] && owner="${BASH_REMATCH[3]}"
   fi
-} >&2
-exit 2
+  [ -n "$owner" ] || return 1
+  while IFS= read -r o; do
+    if [[ ${o%$'\r'} == "$owner" ]]; then return 0; fi
+  done < "$own"
+  return 1
+}
+
+while IFS= read -r c; do
+  [ -n "$c" ] || continue
+  judge "$c"
+  [ -n "$why" ] || continue
+  if [ -z "$push" ] && is_own "$c"; then continue; fi
+  {
+    echo "housebroken: refused: $why."
+    if [ -n "$push" ]; then
+      echo "If the user asked for exactly this, they can run it themselves."
+    else
+      echo "If the user asked for exactly this, they can run it themselves; a repository of their own passes once its owner is listed in $own."
+    fi
+  } >&2
+  exit 2
+done <<< "$commands"
+exit 0
