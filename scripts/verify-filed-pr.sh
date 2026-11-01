@@ -16,17 +16,21 @@
 # Environment:
 #   none
 #
-# Assumes: gh is installed and authenticated with read access to the repo, and
-# that the caller knows which head sha and which files were intended. Exits
-# non-zero when the head does not match, when checks are red, or when they do
-# not settle before the watch gives up.
-# Exits 3, and says NOT SETTLED, when nothing is wrong but a workflow on the
-# head still waits for a maintainer's approval, so CI has not run.
+# Assumes: gh is installed and authenticated with read access to the repo. The
+# intended head is the sha passed in, else one branch-check stamped: a head
+# neither names was not meant by anyone. Exits non-zero when the head does not
+# match, when a read fails, when checks are not green, or when they do not settle
+# before the watch gives up.
+# Exits 3, and says NOT SETTLED, when nothing is wrong but CI has not run: a
+# workflow on the head waits for a maintainer's approval, no check has started,
+# or the runs could not be read.
 set -u
 
 usage() {
   sed -n '2,/^set -u$/p' "$0" | sed 's/^# \{0,1\}//; /^set -u$/d'
 }
+# shellcheck source=scripts/common.sh
+. "$(cd "$(dirname "$0")" && pwd)/common.sh"
 
 case "${1:-}" in
   --help|-h) usage; exit 0 ;;
@@ -43,16 +47,18 @@ fail=0
 unsettled=0
 note() { printf '%-26s %s\n' "$1" "$2"; }
 
+# Fails with the read: every $(view ...) below tests that, because an exit inside
+# a command substitution only ends the substitution.
 view() {
   local field="$1" jqexpr="$2"
   if ! gh pr view "$pr" --repo "$repo" --json "$field" --jq "$jqexpr"; then
     echo "verify-filed-pr.sh: gh pr view $repo#$pr ($field) failed" >&2
-    exit 1
+    return 1
   fi
 }
 
-state=$(view state .state)
-head=$(view headRefOid .headRefOid)
+state=$(view state .state) || exit 1
+head=$(view headRefOid .headRefOid) || exit 1
 note "state" "$state"
 note "head" "${head:0:12}"
 if [ -n "$want" ]; then
@@ -64,7 +70,7 @@ fi
 
 echo ""
 echo "-- files in the PR (what a reviewer sees)"
-view files '.files[] | "   " + .path + "  +" + (.additions|tostring) + "/-" + (.deletions|tostring)'
+view files '.files[] | "   " + .path + "  +" + (.additions|tostring) + "/-" + (.deletions|tostring)' || exit 1
 
 # The intended files are the branch-check stamp's, and the intended body is the
 # copy file-pr.sh kept; GitHub's versions are compared to both.
@@ -73,24 +79,29 @@ stamp="$home/branch-checks/$head"
 intended=""
 [ -f "$stamp" ] && intended=$(sed -n 's/^file: //p' "$stamp" | tr -d '\r' | sort)
 if [ -n "$intended" ]; then
-  filed=$(view files '.files[].path' | sort)
+  filed=$(view files '.files[].path') || exit 1
+  filed=$(printf '%s\n' "$filed" | sort)
   if [ "$intended" = "$filed" ]; then
     note "files match the stamp" "yes"
   else
     note "FILES DIFFER FROM STAMP" "$(diff <(printf '%s\n' "$intended") <(printf '%s\n' "$filed") | grep '^[<>]' | tr '\n' ' ')"
     fail=1
   fi
-else
+elif [ -n "$want" ]; then
   note "files" "no branch-check stamp listing files for ${head:0:12}; not compared"
+else
+  note "HEAD NOT INTENDED" "no branch-check stamp for ${head:0:12} and no sha passed, so nothing says this head was meant"
+  fail=1
 fi
+body=$(view body .body) || exit 1
 kept="$home/filed/${repo%%/*}-${repo##*/}-$head.md"
 if [ -f "$kept" ]; then
   norm() { tr -d '\r' | sed -e 's/[[:space:]]*$//' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'; }
-  if [ "$(view body .body | norm)" = "$(norm < "$kept")" ]; then
+  if [ "$(printf '%s\n' "$body" | norm)" = "$(norm < "$kept")" ]; then
     note "body matches what was filed" "yes"
   else
     note "BODY DIFFERS" "from $kept; read the diff, a maintainer may have edited it"
-    diff <(norm < "$kept") <(view body .body | norm) | head -20 | sed 's/^/    /'
+    diff <(norm < "$kept") <(printf '%s\n' "$body" | norm) | head -20 | clean_lines | sed 's/^/    /'
   fi
 else
   note "body" "no filed copy for ${head:0:12}; not compared"
@@ -99,19 +110,30 @@ fi
 echo ""
 echo "-- checks (waits until every check has settled)"
 gh pr checks "$pr" --repo "$repo" --watch --interval 20 >/dev/null 2>&1 || true
-rollup=$(view statusCheckRollup '[.statusCheckRollup[] | (.conclusion // .status // .state)] | group_by(.) | map({k:.[0], n:length}) | .[] | .k + "=" + (.n|tostring)')
+rollup=$(view statusCheckRollup "$ci_jq"'[.statusCheckRollup[] | check_state] | group_by(.) | map({k:.[0], n:length}) | .[] | .k + "=" + (.n|tostring)') || exit 1
+ci=$(view statusCheckRollup "$ci_jq"'[.statusCheckRollup[] | ci] | if any(. == "red") then "red" elif any(. == "running") then "running" else "green" end') || exit 1
 if [ -z "$rollup" ]; then
-  note "checks" "none reported"
+  # Straight after filing a fork's checks may not exist yet, and that is not green.
+  if [ "$(gh api "repos/$repo/actions/workflows" --jq .total_count 2>/dev/null)" = "0" ]; then
+    note "checks" "none, and the repository has no workflows"
+  else
+    note "CHECKS NOT STARTED" "nothing has reported on this head yet"
+    unsettled=1
+  fi
 else
   echo "$rollup" | awk '{print "   " $0}'
-  case "$rollup" in
-    *FAILURE*|*TIMED_OUT*|*CANCELLED*|*ACTION_REQUIRED*) note "CHECKS NOT GREEN" "read the logs"; fail=1 ;;
-    *IN_PROGRESS*|*QUEUED*|*PENDING*) note "CHECKS DID NOT SETTLE" "watch timed out"; fail=1 ;;
+  case "$ci" in
+    red) note "CHECKS NOT GREEN" "read the logs"; fail=1 ;;
+    running) note "CHECKS DID NOT SETTLE" "watch timed out"; fail=1 ;;
   esac
 fi
 # A fork's workflow that waits for a maintainer's approval has run nothing and
 # is absent from the rollup above.
-waiting=$(gh run list --repo "$repo" --commit "$head" --json conclusion --jq '[.[] | select(.conclusion == "action_required")] | length' 2>/dev/null)
+if ! waiting=$(gh run list --repo "$repo" --commit "$head" --json conclusion --jq '[.[] | select(.conclusion == "action_required")] | length' 2>/dev/null); then
+  note "WORKFLOW RUNS UNREAD" "whether any waits for approval is unknown"
+  waiting=0
+  unsettled=1
+fi
 if [ "${waiting:-0}" -gt 0 ]; then
   note "WORKFLOWS AWAIT APPROVAL" "$waiting run(s) on this head have not started"
   unsettled=1
@@ -119,16 +141,17 @@ fi
 
 echo ""
 echo "-- rendered body, first 15 lines"
-view body .body | head -15 | sed 's/^/   /'
+printf '%s\n' "$body" | head -15 | fence "the body on GitHub" "   "
 
 echo ""
 echo "-- comments, newest last"
-view comments '.comments[] | "   " + .author.login + ": " + (.body | gsub("\n"; " ") | .[0:150])'
+comments=$(view comments '.comments[] | .author.login + ": " + (.body | gsub("\n"; " ") | .[0:150])') || exit 1
+[ -z "$comments" ] || printf '%s\n' "$comments" | fence "these commenters" "   "
 
 echo ""
 if [ "$fail" -ne 0 ]; then echo "PR-VERIFY: PROBLEMS ABOVE"
 elif [ "${waiting:-0}" -gt 0 ]; then echo "PR-VERIFY: NOT SETTLED ($waiting workflow run(s) wait for a maintainer to approve them; nothing settles until one does, so move on)"
-elif [ "$unsettled" -ne 0 ]; then echo "PR-VERIFY: NOT SETTLED (CI has not run on this head)"
+elif [ "$unsettled" -ne 0 ]; then echo "PR-VERIFY: NOT SETTLED (CI has not run on this head, or its runs could not be read)"
 else echo "PR-VERIFY: OK"; fi
 [ "$fail" -eq 0 ] && [ "$unsettled" -ne 0 ] && exit 3
 exit "$fail"
