@@ -11,6 +11,10 @@
 # the tests stay and the fix goes; runs the command again; and restores the
 # head from the commit, checked by hash. The stamp is written only when the
 # base arm fails, the head arm passes, and the two arms ran different code.
+# It reads exit codes: a base arm that fails because the test could not build or
+# import reads as red, and only the review, which is handed both arms' output,
+# can tell that from the bug. A run that does not show the fix removes any stamp
+# an earlier run left for this head.
 #
 # A change with nothing to prove red, a documentation fix or a refactor
 # whose behaviour the existing suite already pins, says so with --none and a
@@ -59,7 +63,8 @@ while [ "$#" -gt 0 ]; do
     --base-file)
       case "${2:-}" in ?*=?*) ;; *) echo "REFUSED: --base-file needs PATH=FILE" >&2; exit 2 ;; esac
       [ -f "${2#*=}" ] || { echo "REFUSED: --base-file: ${2#*=} does not exist" >&2; exit 2; }
-      basefiles+=("$2"); shift ;;
+      # Made absolute here: the swap runs from the top of the clone.
+      basefiles+=("${2%%=*}=$(cd "$(dirname "${2#*=}")" && pwd)/$(basename "${2#*=}")"); shift ;;
     -*) echo "REFUSED: unknown option $1" >&2; exit 2 ;;
     *) clone="$1" ;;
   esac
@@ -83,6 +88,8 @@ if [ -n "$none" ]; then
 fi
 
 [ -z "$(git status --porcelain)" ] || { echo "REFUSED: the working tree is dirty, so the arms would not be the commits; after a proof run that was killed, git checkout -- . puts the head back" >&2; exit 2; }
+# This run is the answer now, whichever way it goes.
+rm -f "$stamp"
 [ -n "$base" ] || base=$(sed -n 's/^base-ref: //p' "$home/branch-checks/$head" 2>/dev/null | tr -d '\r')
 if [ -z "$base" ]; then
   for candidate in upstream/main upstream/master origin/main origin/master; do
@@ -156,9 +163,10 @@ restore() {
 trap restore EXIT
 for f in "${fixes[@]}"; do
   if bf=$(base_file_for "$f"); then
-    cat "$bf" > "$f"
+    cat "$bf" > "$f" || { echo "REFUSED: could not put $bf at $f, so the base arm would not be the base" >&2; exit 2; }
   elif git cat-file -e "$mb:./$f" 2>/dev/null; then
-    mkdir -p "$(dirname "$f")" && git cat-file --filters "$mb:./$f" > "$f"
+    { mkdir -p "$(dirname "$f")" && git cat-file --filters "$mb:./$f" > "$f"; } ||
+      { echo "REFUSED: could not put the base's $f in place, so the base arm would not be the base" >&2; exit 2; }
     [ "$(mode_in "$mb" "$f")" != 100755 ] || chmod +x "$f"
   else
     rm -f -- "$f"

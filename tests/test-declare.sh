@@ -33,6 +33,13 @@ write "- none" "$good_as"
 bash "$script" "$root/repo" >/dev/null && fail "not-tested: none passed"
 write "" "$good_as"
 bash "$script" "$root/repo" >/dev/null && fail "an empty not-tested passed"
+for said in "- None known." "- n/a." "- nothing to note" "- nothing else" "- NONE"; do
+  write "$said" "$good_as"
+  bash "$script" "$root/repo" >/dev/null && fail "not-tested: $said passed"
+done
+write "$good_nt" "- <assumption> | if wrong: <what breaks, for whom> | checked by: <command and result, or unchecked>"
+out=$(bash "$script" "$root/repo") && fail "the template's assumption line passed"
+printf '%s' "$out" | grep -q "still the template line" || fail "the template line was not named: $out"
 write "$good_nt" "- callers pass their comparer"
 out=$(bash "$script" "$root/repo") && fail "an assumption without if wrong and checked by passed"
 printf '%s' "$out" | grep -q "lacks '| if wrong" || fail "the bare assumption was not named: $out"

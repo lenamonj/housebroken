@@ -35,12 +35,30 @@ grep -q '^proof: red-green' "$stamp" || fail "no red-green stamp"
 grep -q '^base-exit: 1' "$stamp" && grep -q '^head-exit: 0' "$stamp" || fail "the stamp does not record both exits"
 [ "$(git hash-object src/lib.txt)" = "$before" ] && [ -z "$(git status --porcelain)" ] || fail "the head was not restored"
 
-# a test that passes on the base too shows nothing
-rm -f "$stamp"
+# a test that passes on the base too shows nothing, and takes back the proof
+# an earlier run left for this head
 out=$(bash "$script" . --base upstream-main --test 'true'); rc=$?
 [ "$rc" -eq 1 ] || fail "a test that always passes exited $rc"
 printf '%s' "$out" | grep -q "passes without the fix" || fail "the always-green test was not named: $out"
-[ ! -f "$stamp" ] || fail "an always-green test was stamped"
+[ ! -f "$stamp" ] || fail "a run that refuted the proof left its stamp"
+
+# two arms that ran the same files have not tested the variable, however they
+# exited: the command fails only on its second run
+cp src/lib.txt "$root/same.txt"
+marker="$root/ran-once"
+out=$(bash "$script" . --base upstream-main --base-file "src/lib.txt=$root/same.txt" --test "[ ! -f '$marker' ] && touch '$marker'"); rc=$?
+rm -f "$marker"
+[ "$rc" -eq 1 ] || fail "identical arms exited $rc: $out"
+printf '%s' "$out" | grep -q "ran the same files" || fail "identical arms were not named: $out"
+[ ! -f "$stamp" ] || fail "identical arms were stamped"
+
+# a relative --base-file is read from where it was given, not from the clone
+printf 'broken\n' > "$root/base.txt"
+out=$(cd "$root" && bash "$script" "$(basename "$PWD" >/dev/null; printf '%s' "$OLDPWD")" --base upstream-main \
+  --test 'bash src/lib_test.sh' --base-file "src/lib.txt=base.txt"); rc=$?
+[ "$rc" -eq 0 ] || fail "a relative --base-file exited $rc: $out"
+grep -q "^base-file: $(git hash-object "$root/base.txt") src/lib.txt" "$stamp" || fail "the base arm did not run the given file: $(cat "$stamp")"
+rm -f "$stamp"
 
 # a test that fails with the fix too
 out=$(bash "$script" . --base upstream-main --test 'false'); rc=$?

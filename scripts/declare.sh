@@ -63,7 +63,7 @@ nt=$(section not-tested)
 if [ -z "$nt" ]; then
   bad="$bad
     not-tested: names nothing; one line per item, each starting with '- '"
-elif printf '%s\n' "$nt" | grep -qixE 'none\.?|n/a|nothing\.?'; then
+elif printf '%s\n' "$nt" | grep -qiE '^(none|nothing|n/a)([^a-z]|$)'; then
   bad="$bad
     not-tested: says none; something always was not tested"
 fi

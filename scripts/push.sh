@@ -82,9 +82,9 @@ if ! git merge-base --is-ancestor "$theirs" HEAD; then
 fi
 
 if [ "${PUSH_DRY:-0}" = "1" ]; then
-  echo "DRY RUN, not pushed: git push ${force[*]} $remote HEAD:refs/heads/$branch"
+  echo "DRY RUN, not pushed: git push ${force[*]:-} $remote HEAD:refs/heads/$branch"
   exit 0
 fi
-git push "${force[@]}" "$remote" "HEAD:refs/heads/$branch" || exit 2
+git push ${force[@]+"${force[@]}"} "$remote" "HEAD:refs/heads/$branch" || exit 2
 mkdir -p "$home/pushes"
 printf '%s %s %s\n' "$(date -u +%s)" "$head" "${rework:-fast-forward}" >> "$log"

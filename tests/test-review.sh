@@ -97,7 +97,9 @@ write_report sonnet "POST AS IS" "$head" "$tmp/prose.diff"
 passes && fail "a blind fix that is prose, not a diff, cleared the gate"
 
 # the header says POST AS IS and the body disagrees, or items were skipped
-for f in '1. BLOCKING: the test never runs.' '2) SHOULD FIX: the comparer is lost.' '### 3. BLOCKING: AOT' '**Severity:** SHOULD FIX' '1. [BLOCKING] the test never runs' '- BLOCKING: the test never runs'; do
+for f in '1. BLOCKING: the test never runs.' '2) SHOULD FIX: the comparer is lost.' '### 3. BLOCKING: AOT' '**Severity:** SHOULD FIX' '1. [BLOCKING] the test never runs' '- BLOCKING: the test never runs' \
+         '## BLOCKING: the test never runs' 'BLOCKING: the test never runs' 'Finding 1 (BLOCKING): the test never runs' \
+         '| 1 | BLOCKING | the test never runs |' '1. SHOULD-FIX: the comparer is lost' '1. Severity: BLOCKING, the test never runs'; do
   findings="1. NIT: fine.
 $f"
   write_report sonnet "POST AS IS" "$head"
@@ -106,6 +108,11 @@ done
 findings='1. NIT: nothing blocking. No BLOCKING or SHOULD FIX finding remains.'
 write_report sonnet "POST AS IS" "$head"
 passes || fail "a NIT-only report that names the severities in prose was refused"
+findings='1. NIT: fine.
+Blocking the event loop was checked: the read is on a worker.'
+write_report sonnet "POST AS IS" "$head"
+passes || fail "a line of prose that starts with the word was taken for a finding"
+findings='1. NIT: fine.'
 skipped='9, 11 (no AOT toolchain)'
 write_report sonnet "POST AS IS" "$head"
 passes && fail "POST AS IS over skipped items cleared the gate"
@@ -162,6 +169,16 @@ if command -v cygpath >/dev/null 2>&1; then
   bash "$script" brief --author claude-opus-5 --repo octo/cat --clone "$(cygpath -w "$clone")" --text "$(cygpath -w "$reply")" 2>/dev/null |
     grep -qF "text: sha256:$hash " || fail "a brief given a Windows path asked for a text line that check cannot match"
 fi
+
+# the brief shows the diff the branch was stamped against, not main
+(cd "$clone" && $G checkout -q -b dev && printf 'dev only\n' > dev.txt && $G add -A && $G commit -q -m "on dev" &&
+  git update-ref refs/remotes/origin/dev HEAD && $G checkout -q -b onto-dev && printf 'fix\n' > fix.txt && $G add -A && $G commit -q -m fix) || fail "dev fixture failed"
+devhead=$(git -C "$clone" rev-parse HEAD)
+mkdir -p "$HOUSEBROKEN_HOME/branch-checks"
+printf 'head: %s\nbase-ref: origin/dev\nfile: fix.txt\n' "$devhead" > "$HOUSEBROKEN_HOME/branch-checks/$devhead"
+out=$(bash "$script" brief --author opus --repo octo/cat --clone "$clone" 2>/dev/null)
+printf '%s\n' "$out" | grep -q "dev.txt" && fail "the brief showed a diff against main for a branch stamped against dev: $out"
+printf '%s\n' "$out" | grep -q "fix.txt" || fail "the brief did not show the branch's own diff: $out"
 
 # no report at all
 rm -f "$report"

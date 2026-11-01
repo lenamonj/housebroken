@@ -46,6 +46,12 @@ out=$(bash "$script" o/r . --remote upstream 2>&1) && fail "a push to a remote w
 printf '%s' "$out" | grep -q "cannot read fix on upstream" || fail "the unreadable remote was not named: $out"
 [ -z "$(git -C "$root/upstream.git" for-each-ref)" ] || fail "the refused push reached upstream"
 out=$(bash "$script" o/r . --remote nosuch 2>&1) && fail "a push to a remote that does not exist went"
+# a review that does not clear the head stops the push, as a missing one does
+report="$HOUSEBROKEN_HOME/reviews/review-o-r-$(git rev-parse --short=12 HEAD).md"
+sed -i.bak 's/^verdict: POST AS IS$/verdict: DO NOT POST/' "$report" && rm -f "$report.bak"
+out=$(bash "$script" o/r . 2>&1) && fail "a head the review refused was pushed"
+[ "$(git -C "$root/fork.git" rev-parse fix)" != "$(git rev-parse HEAD)" ] || fail "the refused head reached the fork"
+ready
 out=$(bash "$script" o/r . 2>&1) || fail "a reviewed fast-forward was refused: $out"
 [ "$(git -C "$root/fork.git" rev-parse fix)" = "$(git rev-parse HEAD)" ] || fail "the push did not reach the fork"
 log=$(ls "$HOUSEBROKEN_HOME/pushes/"*)

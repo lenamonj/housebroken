@@ -137,6 +137,9 @@ cmd_brief() {
     head=$(git -C "$clone" rev-parse HEAD 2>/dev/null) || bad_usage "$clone is not a git clone"
     [ -z "$(git -C "$clone" status --porcelain)" ] ||
       refuse "$clone has uncommitted changes, so the reviewer would read files that are not in ${head:0:12}: commit or stash them first"
+    # The base the branch was measured against, so the reviewer reads the diff the
+    # maintainer will: a project may take pull requests on dev.
+    [ -n "$base" ] || base=$(sed -n 's/^base-ref: //p' "$home/branch-checks/$head" 2>/dev/null | tr -d '\r')
     if [ -z "$base" ]; then
       for t in upstream/main upstream/master origin/main origin/master; do
         if git -C "$clone" rev-parse --verify --quiet "$t" >/dev/null; then base="$t"; break; fi
@@ -203,11 +206,11 @@ EOF
     fi
   fi
   cat <<'EOF'
-3. The project's own CI, read from its workflow files: tests, lint, format, API and mutation checks, run on the change.
+3. The project's own CI, read from its workflow files: tests, lint, format, API and mutation checks, run on the change. A claim about how its CI is triggered is read from those files and from the run objects (run_started_at, triggering_actor, run_attempt), never inferred from comment timing.
 4. The form: write the changed block the way the best engineer in this language would, in this repository's own idioms and at the language version its manifest names, then measure the diff against it. Fewer moving parts, no state the loop already carries, no extra pass, no extra allocation, no counter beside a cursor that could be bounded itself. When yours is smaller or clearer, the finding is SHOULD FIX with your version in full; when the diff is already that form, say which alternatives you tried and why each is worse. A maintainer who asks for a rework is a review round you could have spent on the merge.
 5. Scope: every changed line is needed for what was asked, nothing is unrequested, no comment appears where the surrounding code has none, and documentation, README and CHANGELOG that describe the changed behaviour change with it.
 6. Prior art: nothing duplicates an open pull request or argues with a ruling in a closed issue.
-7. The text: it leads with the fact; no verdict on the reviewer, no thanks, apology or offer of help; a reply runs one to three sentences and a body stays under 120 words; no footer, trailer or typographic dash; every sentence is true as literally worded.
+7. The text: it leads with the fact; no verdict on the reviewer, no thanks, apology or offer of help; a reply runs one to three sentences and a body stays within 120 words; no footer, trailer or typographic dash; every sentence is true as literally worded. A reply answers a question: list every condition the maintainer's question names, write under each the evidence the reply carries for it, and a condition with none is a finding.
 8. Anything else that would embarrass the author in front of this maintainer. When a text is the author's declaration (not-tested and assumptions), rerun every "checked by", and test the assumptions marked unchecked yourself: a false assumption is a finding, and so is one the change rests on that the declaration leaves out. A "checked by" that cannot be rerun as written, because it names no command or no result, is a finding too.
 EOF
   if [ -n "$clone" ]; then
@@ -285,7 +288,12 @@ cmd_check() {
   [ -n "$skipped" ] || refuse "$report has no skipped: line in its header - 'none', or the items not attacked"
   printf '%s' "$skipped" | grep -qiE '^none\.?$' ||
     refuse "the skipped: line must read exactly none for POST AS IS, or list the items not attacked ($skipped): attack them or review again"
-  open=$(grep -iE '^[[:space:]#*]*([0-9]+[.)]|[-*])[[:space:]*[]*(BLOCKING|SHOULD FIX)\b|^[[:space:]*-]*severity:[[:space:]*]*(BLOCKING|SHOULD FIX)\b' "$report")
+  # Numbered or bulleted in any case, and any other line whose label is a severity
+  # in capitals: a heading, a table row, "Finding 1 (BLOCKING):". Prose that names
+  # one, as "No BLOCKING finding remains", is not a label.
+  local sev='(BLOCKING|SHOULD[- _]FIX)'
+  open=$( { grep -iE "^[[:space:]#*]*([0-9]+[.)]|[-*])[[:space:]*[]*(severity:[[:space:]*]*)?$sev\b|^[[:space:]*-]*severity:[[:space:]*]*$sev\b" "$report"
+            grep -E "^[[:space:]#*>|-]*(Finding[[:space:]]+[0-9]+[[:space:]]*[(:-]?[[:space:]]*|[0-9]+[[:space:]]*\|[[:space:]]*)?[(*[]*${sev}[])*]*[[:space:]]*[:|,-]" "$report"; } )
   [ -z "$open" ] || refuse "the verdict is POST AS IS but the report lists open findings: $(printf '%s' "$open" | head -1 | cut -c1-120)"
 
   if [ -n "$clone" ]; then
