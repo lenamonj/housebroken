@@ -348,4 +348,14 @@ if ! grep -qx 'file: src/moved.ts' "$stamp" || ! grep -qx 'from: src/keep.ts' "$
 fi
 (cd "$repo" && $G reset -q --hard HEAD~1)
 
+# 20. A suppression the edited line already carried is the maintainer's, not the
+# branch's (Jebel-Quant/rhiza-claude: a name added to an import that keeps its
+# "# noqa: E402"); one removed line answers for one added line, so a second is new.
+(cd "$repo" && printf 'from m import a  # noqa: E402\n' > src/k.py && $G add -A && $G commit -q -m k && setbase HEAD) || exit 1
+(cd "$repo" && printf 'from m import a, b  # noqa: E402\n' > src/k.py && $G add -A && $G commit -q -m "edit k") || exit 1
+fires "adds a warning suppression" && { echo "FAIL $name: an edited line keeping its own suppression was refused"; exit 1; }
+(cd "$repo" && printf 'from m import a, b  # noqa: E402\nfrom n import c  # noqa: E402\n' > src/k.py && $G add -A && $G commit -q --amend -m "edit k") || exit 1
+fires "adds a warning suppression" || { echo "FAIL $name: a second suppression beside a kept one was not refused"; exit 1; }
+(cd "$repo" && $G reset -q --hard HEAD~1)
+
 echo "PASS $name"

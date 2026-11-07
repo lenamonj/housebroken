@@ -232,7 +232,17 @@ printf '%s\n' "$comments" | grep -E '^CHECK: ' | sed 's/^/    /'
 # that is wrong in a way the analyzer cannot see.
 added=$(gdiff -U0 "$base..HEAD" -- . ':(exclude)*.md' ':(exclude)*.rst' ':(exclude)*.txt' 2>/dev/null \
   | added_lines | cut -f2-)
-suppressions=$(printf '%s\n' "$added" | grep -E 'UnconditionalSuppressMessage|SuppressMessage\(|#pragma warning disable|pragma warning *\( *disable|<NoWarn>|@SuppressWarnings|@SuppressLint|@Suppress\(|#!?\[allow\(|nolint|NOLINT|NOSONAR|noqa|eslint-disable|@ts-ignore|@ts-expect-error|type: *ignore|pylint: *disable|rubocop:disable|swiftlint:disable|phpstan-ignore|psalm-suppress')
+supp_re='UnconditionalSuppressMessage|SuppressMessage\(|#pragma warning disable|pragma warning *\( *disable|<NoWarn>|@SuppressWarnings|@SuppressLint|@Suppress\(|#!?\[allow\(|nolint|NOLINT|NOSONAR|noqa|eslint-disable|@ts-ignore|@ts-expect-error|type: *ignore|pylint: *disable|rubocop:disable|swiftlint:disable|phpstan-ignore|psalm-suppress'
+# A suppression the edited line already carried is the maintainer's: each
+# removed line answers for one added line with the same suppression text.
+removed=$(gdiff -U0 "$base..HEAD" -- . ':(exclude)*.md' ':(exclude)*.rst' ':(exclude)*.txt' 2>/dev/null \
+  | awk '/^@@ / { n = (index($2, ",") ? substr($2, index($2, ",") + 1) : 1) + 0; next }
+         n > 0 && /^-/ { print substr($0, 2); n--; next }')
+suppressions=$(printf '%s\n' "$added" | grep -E "$supp_re" | SUPP_RE="$supp_re" REMOVED="$removed" awk '
+  BEGIN { re = ENVIRON["SUPP_RE"]; n = split(ENVIRON["REMOVED"], r, "\n")
+          for (i = 1; i <= n; i++) if (match(r[i], re)) kept[substr(r[i], RSTART)]++ }
+  match($0, re) && kept[substr($0, RSTART)]-- > 0 { next }
+  { print }')
 if [ -n "$suppressions" ]; then
   # Each suppression names what it hides: a code such as IL2075 or C4996, else
   # the rule names after its keyword (errcheck, no-unused-vars). One that names
