@@ -67,8 +67,10 @@ MAX_PRINTED=20
 AI='\bAIs?\b|\bA\.I\.|artificial intelligence|\bLLMs?\b|large language models?|\bGPT\b|\bGPT-?[0-9]|chatgpt|\bopenai\b|copilot|\bclaude\b|\bgemini\b|\bcodex\b|generative|machine[- ]generated|agentic|(coding|code|ai) (agents?|assistants?)|vibe[- ]cod|cursor (ai|ide|editor)|\.cursorrules'
 # A prohibition counts when the sentence names AI and it refuses the work, or
 # when it governs the AI term itself: "must not" beside an unrelated noun, as in
-# "API keys must not be committed", is not a ban.
-BAN_RE="(\b(not|never|cannot)|n.t)( be)? (accept|allow|permit|welcome|merg|review|consider)|prohibit|forbid|disallow|\bbans?\b|banned|unwelcome|unacceptable|not acceptable|zero tolerance|will be (closed|rejected|declined|refused)|closed without|\b(reject|decline|refuse)[sd]?\b|refrain from|\bno[- ](ai|llm|machine-generated|generative)|(do not|don.t|never|must not|may not|should not|shouldn.t) (use|submit|send|open|contribute)[^,;:]*($AI)|avoid( using)?[^,;:]*($AI)|($AI)[^,;:]* (must|may|should|can) not be (used|submitted|contributed|sent)"
+# "API keys must not be committed", is not a ban. "Reject" counts only when its
+# object in the same clause is the work or the AI term: "a client rejects that
+# manifest" beside "Claude Code" is a README describing a tool.
+BAN_RE="(\b(not|never|cannot)|n.t)( be)? (accept|allow|permit|welcome|merg|review|consider)|prohibit|forbid|disallow|\bbans?\b|banned|unwelcome|unacceptable|not acceptable|zero tolerance|will be (closed|rejected|declined|refused)|closed without|\b(reject|decline|refuse)[sd]?\b[^,;:.]*(contribution|pull request|\bPRs?\b|patch|submission|merge request|$AI)|\b(are|is|get|gets) (rejected|declined|refused)\b|refrain from|\bno[- ](ai|llm|machine-generated|generative)s?([- ](use|usage|generated|written|assisted|tools?|code|contributions?|content|output|PRs?|patch|polic|rules?|ai|llms?)|[.!]|$)|(do not|don.t|never|must not|may not|should not|shouldn.t) (use|submit|send|open|contribute)[^,;:]*($AI)|avoid( using)?[^,;:]*($AI)|($AI)[^,;:]* (must|may|should|can) not be (used|submitted|contributed|sent)"
 DISCLOSE_RE='disclos|disclaimer|declare|reveal|(must|should|please) (state|say|note|indicate|mention)|be transparent|label(l)?ed as|clearly (state|indicate|mark)|acknowledg|(if|whether) (you )?(use|used|using|have used) (ai|an ai|llm)|(if|whether) (ai|llm)[a-z -]* (was|were)|which (ai|llm) tool|ai transcript|used ai to|let us know|tell us|assisted-by|generated-by|\bmark (ai|llm)'
 
 branch_opt=""
