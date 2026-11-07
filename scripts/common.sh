@@ -109,6 +109,54 @@ check_text() {
   fi
 }
 
+# The project's own template text is kept verbatim and is not ours to count:
+# HTML comments and every line the saved template carries, a ticked box read
+# as its unticked line, are left out before the words are counted. The
+# answer written after or under a template line that asks about AI is the
+# project's requirement, not ours: it is counted on its own and held to 50
+# words. A body that keeps none of the template has dropped it. Sets
+# template, for the disclosure check that follows.
+prose_gate() { # repo body-file home
+  local repo="$1" bodyfile="$2" words ai_words kept wanted
+  template="$3/policy/template-${repo%%/*}-${repo##*/}.md"
+  [ -f "$template" ] || template=/dev/null
+  read -r words ai_words kept wanted < <(awk -v T="$template" '
+    function norm(s) { gsub(/\[[xX]\]/, "[ ]", s); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+    function asks_ai(s) { return tolower(s) ~ /(^|[^a-z])ai([^a-z]|$)|artificial intelligence|generative|llm|language model/ }
+    BEGIN { while ((getline l < T) > 0) {
+        if (l ~ /<!--/) c = 1
+        inc = c
+        if (l ~ /-->/) c = 0
+        l = norm(l)
+        if (l != "") { t[l] = 1; if (!inc) { real[l] = 1 } }
+      }
+      for (l in real) wanted++ }
+    { l = norm($0)
+      if (l in t) { if (l in real) kept++; section_ai = asks_ai(l); next }
+      best = ""
+      for (k in t) if (index(l, k) == 1 && length(k) > length(best)) best = k
+      if (best != "") {
+        kept++
+        l = substr(l, length(best) + 1)
+        if (asks_ai(best)) { ai += split(l, w); next }
+      }
+      if (section_ai) { ai += split(l, w); next }
+      ours += split(l, w) }
+    END { print ours + 0, ai + 0, kept + 0, wanted + 0 }' "$bodyfile")
+  if [ "$wanted" -gt 0 ] && [ "$kept" -eq 0 ]; then
+    echo "REFUSED: the body keeps none of $repo's pull request template ($template) - fill it in rather than replacing it" >&2
+    exit 2
+  fi
+  if [ "$words" -gt 120 ]; then
+    echo "REFUSED: the body is $words words outside the project's template - say what was wrong, what the change does and how it was verified in 120 or fewer" >&2
+    exit 2
+  fi
+  if [ "$ai_words" -gt 50 ]; then
+    echo "REFUSED: the answer to the template's AI question is $ai_words words - name the tool and what it did in 50 or fewer" >&2
+    exit 2
+  fi
+}
+
 # Whether a body says AI was used, in its own words: a ticked box naming it, or
 # a line that is not the project's template. An unanswered template question
 # says nothing, and "Home Assistant" names no tool.

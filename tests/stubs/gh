@@ -17,7 +17,13 @@ case "$*" in
   "api repos/octocat/Hello-World/compare/553c2077f0edc3d5dc5d17262f6aa498e69d6f8e...7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"*)
     printf '{"status":"ahead","files":[{"filename":"README"}]}\n' ;;
   "pr list -R octocat/Hello-World --author @me"*) echo "[]" ;;
-  "pr create -R octocat/Hello-World"*|"issue create -R octocat/Hello-World"*|"api repos/octocat/Hello-World/issues/1/comments -F"*)
+  "pr view 9 --repo octocat/Hello-World --json author,state,headRefOid"*)
+    printf '{"author":{"login":"me"},"state":"OPEN","headRefOid":"7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"}\n' ;;
+  "pr view 8 --repo octocat/Hello-World --json author,state,headRefOid"*)
+    printf '{"author":{"login":"other"},"state":"OPEN","headRefOid":"7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"}\n' ;;
+  "pr view 7 --repo octocat/Hello-World --json author,state,headRefOid"*)
+    printf '{"author":{"login":"me"},"state":"MERGED","headRefOid":"7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"}\n' ;;
+  "pr create -R octocat/Hello-World"*|"issue create -R octocat/Hello-World"*|"api repos/octocat/Hello-World/issues/1/comments -F"*|"pr edit 9 --repo octocat/Hello-World"*)
     # A write only where the test asked for one, and only to its own log.
     [ -n "${STUB_WRITES:-}" ] || exit 1
     echo "$*" >> "$STUB_WRITES"; echo "https://github.com/octocat/Hello-World/pull/9" ;;

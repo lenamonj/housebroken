@@ -58,6 +58,7 @@ usage: housebroken <subcommand> [args...]
   9  review      a different model attacks the change before it is filed
   9  file        the only way a pull request gets filed
   9  issue       the only way an issue gets filed
+ 10  edit        the only way a filed pull request's body or title is changed
  10  verify      the filed pull request is what was meant, and CI settled
  10  sweep       every open pull request where the ball is in your court
  10  inbox       what GitHub has to tell you since you last looked, bodies included
@@ -113,6 +114,7 @@ case "$cmd" in
   review)    script=review.sh ;;
   file)      script=file-pr.sh ;;
   issue)     script=file-issue.sh ;;
+  edit)      script=edit-pr.sh ;;
   verify)    script=verify-filed-pr.sh ;;
   sweep)     script=pr-sweep.sh ;;
   inbox)     script=inbox.sh ;;
