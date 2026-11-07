@@ -3,7 +3,10 @@
 #
 # A push to a filed branch is a new head in front of the maintainer, and it
 # is held to what the first filing was: a branch-check stamp and a POST AS IS
-# review of that exact head. Two pushes in one sitting read as indecision,
+# review of that exact head. A rebase that leaves the patch as it was, run so
+# CI starts or a conflict clears, carries the review of the head the remote
+# holds: both heads are stamped with the base each was measured against, and
+# their diffs have one patch-id. Two pushes in one sitting read as indecision,
 # and a force push rewrites what the maintainer may already have reviewed,
 # so a second push to the branch within thirty minutes is refused, and a
 # push that is not a fast-forward goes only with --rework naming why. The
@@ -52,9 +55,36 @@ branch=$(git rev-parse --abbrev-ref HEAD)
 [ "$branch" != "HEAD" ] || { echo "REFUSED: the clone is on no branch" >&2; exit 2; }
 
 [ -f "$home/branch-checks/$head" ] || { echo "REFUSED: branch-check.sh has not passed head ${head:0:12}" >&2; exit 2; }
-review="$home/reviews/review-${repo%%/*}-${repo##*/}-${head:0:12}.md"
-[ -f "$review" ] || { echo "REFUSED: no review of head ${head:0:12} at $review" >&2; exit 2; }
-bash "$here/review.sh" check "$review" --clone . >/dev/null || exit 2
+
+if ! git fetch -q "$remote" "$branch" 2>/dev/null; then
+  echo "REFUSED: cannot read $branch on $remote: a rework goes to the remote the pull request's branch is on (--remote NAME); a first push is a plain git push" >&2
+  exit 2
+fi
+theirs=$(git rev-parse FETCH_HEAD)
+[ "$theirs" != "$head" ] || { echo "REFUSED: $remote $branch is already at ${head:0:12}; nothing to push" >&2; exit 2; }
+
+# The patch of a head, against the base its stamp names: one id for one change,
+# whatever commit carries it. Empty when the stamp names no base.
+patch_id() { # head
+  local base
+  base=$(sed -n 's/^base: //p' "$home/branch-checks/$1" 2>/dev/null | tr -d '\r')
+  [ -n "$base" ] || return 1
+  git diff --no-ext-diff --no-textconv "$base" "$1" 2>/dev/null | git patch-id --stable | cut -d' ' -f1 | grep .
+}
+reviews="$home/reviews/review-${repo%%/*}-${repo##*/}"
+review="$reviews-${head:0:12}.md"
+if [ -f "$review" ]; then
+  bash "$here/review.sh" check "$review" --clone . >/dev/null || exit 2
+else
+  old="$reviews-${theirs:0:12}.md"
+  if [ -f "$old" ] && [ "$(patch_id "$head")" = "$(patch_id "$theirs")" ] && [ -n "$(patch_id "$head")" ] \
+     && grep -q "^head: $theirs" "$old" && bash "$here/review.sh" check "$old" >/dev/null 2>&1; then
+    echo "note: the patch is unchanged since ${theirs:0:12}, so the review of ${theirs:0:12} holds for ${head:0:12}: $old" >&2
+  else
+    echo "REFUSED: no review of head ${head:0:12} at $review (a rebase carries the review of ${theirs:0:12} only when both heads are stamped and the patch is unchanged)" >&2
+    exit 2
+  fi
+fi
 
 log="$home/pushes/${repo%%/*}-${repo##*/}-${branch//\//-}.log"
 if [ -f "$log" ]; then
@@ -66,12 +96,6 @@ if [ -f "$log" ]; then
   fi
 fi
 
-if ! git fetch -q "$remote" "$branch" 2>/dev/null; then
-  echo "REFUSED: cannot read $branch on $remote: a rework goes to the remote the pull request's branch is on (--remote NAME); a first push is a plain git push" >&2
-  exit 2
-fi
-theirs=$(git rev-parse FETCH_HEAD)
-[ "$theirs" != "$head" ] || { echo "REFUSED: $remote $branch is already at ${head:0:12}; nothing to push" >&2; exit 2; }
 force=()
 if ! git merge-base --is-ancestor "$theirs" HEAD; then
   if [ -z "$rework" ]; then

@@ -2,7 +2,8 @@
 # test-push.sh - push.sh refuses a head with no branch-check stamp or no
 # POST AS IS review, a second push to the branch within thirty minutes, and a
 # push that rewrites the branch unless --rework says why; a reviewed
-# fast-forward goes. Local only: the "fork" is a bare repository beside the
+# fast-forward goes, and a rebase that keeps the patch as it was carries the
+# review of the head it replaces. Local only: the "fork" is a bare repository beside the
 # clone, and every push is a dry run or goes to that bare repository.
 # shellcheck disable=SC2015  # "a && b || fail": fail exits, so it is the if-then-else it reads as
 set -u
@@ -25,10 +26,15 @@ $G init -q -b fix . && printf 'a\n' > a.txt && $G add -A && $G commit -q -m one 
 git remote add origin "$root/fork.git" && git push -q origin fix || fail "fixture failed"
 printf 'b\n' >> a.txt && $G commit -q -am two || fail "fixture failed"
 
+stamp() { # stamp the current head, measured against BASE (default: the root commit)
+  local head; head=$(git rev-parse HEAD)
+  mkdir -p "$HOUSEBROKEN_HOME/branch-checks"
+  printf 'head: %s\nbase: %s\n' "$head" "$(git rev-parse "${1:-$(git rev-list --max-parents=0 HEAD)}")" > "$HOUSEBROKEN_HOME/branch-checks/$head"
+}
 ready() { # stamp and review the current head
   local head; head=$(git rev-parse HEAD)
-  mkdir -p "$HOUSEBROKEN_HOME/branch-checks" "$HOUSEBROKEN_HOME/reviews"
-  printf 'head: %s\n' "$head" > "$HOUSEBROKEN_HOME/branch-checks/$head"
+  stamp
+  mkdir -p "$HOUSEBROKEN_HOME/reviews"
   printf 'diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+c\n' > "$root/blind.diff"
   printf 'review-of: o/r\nhead: %s\nauthor-model: opus\nreviewer-model: fable\nblind-fix: %s\nskipped: none\nverdict: POST AS IS\n\n1. NIT: fine.\n' \
     "$head" "$root/blind.diff" > "$HOUSEBROKEN_HOME/reviews/review-o-r-${head:0:12}.md"
@@ -72,5 +78,27 @@ out=$(PUSH_DRY=1 bash "$script" o/r . 2>&1) && fail "a rewrite without --rework 
 printf '%s' "$out" | grep -q "rewrites fix on origin" || fail "the rewrite refusal did not say why: $out"
 out=$(PUSH_DRY=1 bash "$script" o/r . --rework "the maintainer asked for one commit" 2>&1) || fail "a rewrite with --rework was refused: $out"
 printf '%s' "$out" | grep -q -- "--force-with-lease=fix:" || fail "the rewrite was not a lease-guarded force: $out"
+
+# a rebase that leaves the patch as it was carries the review of the head the
+# fork holds; a rebase that changes the patch does not
+$G reset -q --hard origin/fix && ready
+old=$(git rev-parse HEAD)
+git branch -q main "$(git rev-list --max-parents=0 HEAD)" && git checkout -q main || fail "fixture failed"
+printf 'm\n' > m.txt && $G add m.txt && $G commit -q -m upstream && git checkout -q fix || fail "fixture failed"
+$G rebase -q main || fail "fixture failed"
+[ "$(git rev-parse HEAD)" != "$old" ] || fail "the rebase moved nothing"
+stamp main
+out=$(PUSH_DRY=1 bash "$script" o/r . --rework "rebased onto main so CI runs" 2>&1) || fail "a rebase that kept the patch was refused: $out"
+printf '%s' "$out" | grep -q "review of ${old:0:12} holds" || fail "the carried review was not named: $out"
+printf '%s' "$out" | grep -q -- "--force-with-lease=fix:" || fail "the rebase was not a lease-guarded force: $out"
+# without a stamped base on either side nothing can be compared
+sed -i.bak '/^base: /d' "$HOUSEBROKEN_HOME/branch-checks/$old" && rm -f "$HOUSEBROKEN_HOME/branch-checks/$old.bak"
+out=$(PUSH_DRY=1 bash "$script" o/r . --rework "rebased" 2>&1) && fail "a review was carried with no base to compare against"
+printf '%s' "$out" | grep -q "no review of head" || fail "the missing review was not named: $out"
+printf 'base: %s\n' "$(git rev-list --max-parents=0 HEAD)" >> "$HOUSEBROKEN_HOME/branch-checks/$old"
+# a changed patch is a new head to review
+printf 'd\n' >> a.txt && $G commit -q -a --amend --no-edit && stamp main
+out=$(PUSH_DRY=1 bash "$script" o/r . --rework "rebased and changed" 2>&1) && fail "a changed patch rode on the old review"
+printf '%s' "$out" | grep -q "no review of head" || fail "the missing review was not named: $out"
 
 echo "PASS $name"
