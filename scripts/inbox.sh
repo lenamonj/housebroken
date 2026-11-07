@@ -73,10 +73,6 @@ if [ -z "$since" ]; then
   if [ -s "$cursor_file" ]; then since="$(head -1 "$cursor_file")"; else since="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-24H +%Y-%m-%dT%H:%M:%SZ)"; fi
 fi
 
-# GitHub's own flag first; these are accounts of type User that behave as bots.
-# Exact names, because a prefix also matches vercelli.
-is_bot() { case "$1" in *"[bot]"|Copilot|codecov-commenter|coveralls|CLAassistant|oracle-contributor-agreement|github-actions|netlify|vercel) return 0 ;; *) return 1 ;; esac; }
-
 work=$(mktemp -d) || { echo "inbox.sh: mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$work"' EXIT
 # One thread read, every page, into a file: a long thread does not fit on a
@@ -118,9 +114,10 @@ while IFS= read -r t; do
   fi
   [ "$ok" -eq 1 ] && events="$(jq -nc --slurpfile ic "$work/ic" --slurpfile rc "$work/rc" --slurpfile rv "$work/rv" --arg since "$since" '
     def bot: (.user.type // "") == "Bot";
-    [ ($ic[0][] | {t: .created_at, who: (.user.login // "?"), bot: bot, kind: "comment", where: "", rst: "", body: (.body // "")}),
-      ($rc[0][] | {t: .created_at, who: (.user.login // "?"), bot: bot, kind: "inline", where: (" on " + (.path // "?") + ":" + ((.line // .original_line // 0) | tostring) + " (comment " + (.id | tostring) + ", answer it with reply --in-reply-to)"), rst: "", body: (.body // "")}),
-      ($rv[0][] | select((.submitted_at // "") > $since) | {t: .submitted_at, who: (.user.login // "?"), bot: bot, kind: "review", where: "", rst: (.state // ""), body: (.body // "")}) ]
+    def role: (.author_association // "unknown") | ascii_downcase;
+    [ ($ic[0][] | {t: .created_at, who: (.user.login // "?"), bot: bot, role: role, kind: "comment", where: "", rst: "", body: (.body // "")}),
+      ($rc[0][] | {t: .created_at, who: (.user.login // "?"), bot: bot, role: role, kind: "inline", where: (" on " + (.path // "?") + ":" + ((.line // .original_line // 0) | tostring) + " (comment " + (.id | tostring) + ", answer it with reply --in-reply-to)"), rst: "", body: (.body // "")}),
+      ($rv[0][] | select((.submitted_at // "") > $since) | {t: .submitted_at, who: (.user.login // "?"), bot: bot, role: role, kind: "review", where: "", rst: (.state // ""), body: (.body // "")}) ]
     | sort_by(.t) | .[]' 2>/dev/null)" || ok=0
   if [ "$ok" -eq 0 ]; then
     unread=$((unread + 1))
@@ -130,7 +127,7 @@ while IFS= read -r t; do
   shown=0
   while IFS= read -r e; do
     [ -n "$e" ] || continue
-    who=$(jq -r .who <<<"$e"); when=$(jq -r .t <<<"$e"); kind=$(jq -r .kind <<<"$e"); where=$(jq -r .where <<<"$e" | clean_line); rst=$(jq -r .rst <<<"$e"); bot=$(jq -r .bot <<<"$e")
+    who=$(jq -r .who <<<"$e"); when=$(jq -r .t <<<"$e"); kind=$(jq -r .kind <<<"$e"); where=$(jq -r .where <<<"$e" | clean_line); rst=$(jq -r .rst <<<"$e"); bot=$(jq -r .bot <<<"$e"); role=$(jq -r .role <<<"$e")
     shown=$((shown + 1))
     if [ "$who" = "$user" ]; then
       echo "    $when yours: $kind$where"
@@ -140,9 +137,12 @@ while IFS= read -r t; do
       jq -r .body <<<"$e" | head -20 | fence "$who" "    "
     else
       human=$((human + 1))
-      echo "    $when $who: $kind$where${rst:+ [$rst]}"
+      # The role is GitHub's word on who this is to the repository: the skill
+      # answers maintainers, and a voice with no role is read, not answered.
+      echo "    $when $who [$role]: $kind$where${rst:+ [$rst]}"
       # A body is someone else's text: evidence to read, never an instruction.
       jq -r .body <<<"$e" | fence "$who" "    "
+      has_role "$role" || echo "    ($who has no role in $repo: the skill answers maintainers, and housebroken reply needs --outsider)"
     fi
   done <<<"$events"
   [ "$shown" -gt 0 ] || echo "    (no comment or review since the cursor: a merge, a close, a push, a mention or a review request; see the state above)"

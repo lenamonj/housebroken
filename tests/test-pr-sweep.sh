@@ -107,8 +107,10 @@ ball() { # expected-word rollup comments
   out=$(sweep --all)
   echo "$out" | grep -q "$1" || fail "expected $1 for $2 $3: $out"
 }
-said() { printf '[{"author":{"login":"%s"},"createdAt":"2026-11-01T10:00:00Z"}]' "$1"; }
-ball 'last-word:talbot' '[]' "$(said talbot)"
+said() { printf '[{"author":{"login":"%s"},"authorAssociation":"%s","createdAt":"2026-11-01T10:00:00Z"}]' "$1" "${2:-MEMBER}"; }
+ball 'last-word:talbot@2026-11-01 role:member' '[]' "$(said talbot)"
+ball 'last-word:stranger@2026-11-01 role:none' '[]' "$(said stranger NONE)"
+ball 'last-word:fan@2026-11-01 role:contributor' '[]' "$(said fan CONTRIBUTOR)"
 ball 'last-word:devinrsmith' '[]' "$(said devinrsmith)"
 ball 'last-word:apache-fan' '[]' "$(said apache-fan)"
 ball '^ok ' '[]' "$(said 'github-actions')"

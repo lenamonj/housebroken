@@ -170,15 +170,17 @@ while IFS=$'\t' read -r repo num updated title; do
   # Whole names only: gh gives no bot flag here, and a substring also matches
   # the humans talbot and devinrsmith.
   last_actor="$(printf '%s' "$j" | jq -r '
-    [ (.comments[]? | {a: .author.login, t: .createdAt}), (.reviews[]? | {a: .author.login, t: .submittedAt}) ]
+    [ (.comments[]? | {a: .author.login, t: .createdAt, r: .authorAssociation}), (.reviews[]? | {a: .author.login, t: .submittedAt, r: .authorAssociation}) ]
     | map(select(.a != null and (.a | test("(\\[bot\\]|^app/.*|^github-actions|^dependabot|^codecov(-commenter)?|^coveralls|^claassistant|^cla-assistant|^coderabbitai|^devin-ai-integration|^vercel|^netlify|^sonarcloud|^copilot|^asf-ci|^apache-ci)$"; "i") | not)))
-    | sort_by(.t) | last | "\(.a // "-") \(.t // "-")"')"
-  la_user="${last_actor%% *}"; la_time="${last_actor#* }"
+    | sort_by(.t) | last | "\(.a // "-") \(.t // "-") \(.r // "-")"')"
+  read -r la_user la_time la_role <<<"$last_actor"
   ci="$(printf '%s' "$j" | jq -r "$ci_jq"'[.statusCheckRollup[]?] | if length == 0 then "none" elif any(.[]; ci == "red" and check_state != "ACTION_REQUIRED") then "FAILING" elif any(.[]; check_state == "ACTION_REQUIRED") then "needs-approval" elif any(.[]; ci == "running") then "pending" else "green" end')"
   mergeable="$(printf '%s' "$j" | jq -r '.mergeable // "-"')"
   decision="$(printf '%s' "$j" | jq -r '.reviewDecision // "-"')"
   why=""
-  [ "$la_user" != "-" ] && [ "$la_user" != "$ME" ] && why="$why last-word:$la_user@${la_time:0:10}"
+  # The role is GitHub's word on who spoke last: a maintainer is answered, an
+  # outsider is read, and the desk should know which before it drafts.
+  [ "$la_user" != "-" ] && [ "$la_user" != "$ME" ] && why="$why last-word:$la_user@${la_time:0:10} role:$(printf '%s' "$la_role" | tr '[:upper:]' '[:lower:]')"
   [ "$decision" = "CHANGES_REQUESTED" ] && why="$why changes-requested"
   [ "$ci" = "FAILING" ] && why="$why ci-failing"
   [ "$mergeable" = "CONFLICTING" ] && why="$why conflicting"

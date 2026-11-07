@@ -151,6 +151,15 @@ def ci: check_state as $s
     elif (["PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "EXPECTED"] | index($s)) then "running"
     else "red" end;'
 
+# Accounts of type User that behave as bots, by exact name: a prefix also
+# matches vercelli. GitHub's own Bot flag is read first wherever it is given.
+is_bot() { case "$1" in *"[bot]"|Copilot|codecov-commenter|coveralls|CLAassistant|oracle-contributor-agreement|github-actions|netlify|vercel) return 0 ;; *) return 1 ;; esac; }
+
+# Whether an author_association is a role in the repository. The rest (NONE,
+# CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, MANNEQUIN) is anyone who
+# can type into the thread: read, never answered without the user's word.
+has_role() { case "$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')" in OWNER|MEMBER|COLLABORATOR) return 0 ;; *) return 1 ;; esac; }
+
 # Prints stdin as someone else's words: fenced and marked, each line prefixed so
 # nothing inside can pass for the script's own output or close the fence.
 fence() { # who indent
