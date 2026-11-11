@@ -1,7 +1,8 @@
 #!/bin/bash
 # test-verify-filed-pr.sh - scripts/verify-filed-pr.sh over a stub gh: the head,
 # the files and the verdict are reported, a head nobody stamped or named is a
-# problem, anything but green is not green, no checks yet and a run read that
+# problem, anything but green is not green, the watch ends at the first red
+# check unless --settle is given, no checks yet and a run read that
 # failed read NOT SETTLED, a failed read is never OK, GitHub's files and body are
 # compared to the stamp and the filed copy, and strangers' words are fenced.
 set -u
@@ -24,7 +25,7 @@ for i in "${!args[@]}"; do
   esac
 done
 case "$1 $2" in
-  "pr checks") exit 0 ;;
+  "pr checks") printf '%s\n' "$*" > "$STUB_DIR/checks.args"; exit 0 ;;
   "pr view") [ -f "$STUB_DIR/fail.$field" ] && exit 1; jq -r "$expr" "$STUB_DIR/pr.json" ;;
   "run list") [ -f "$STUB_DIR/fail.runs" ] && exit 1; jq -r "$expr" "$STUB_DIR/runs.json" ;;
   "api repos/o/r/actions/workflows") cat "$STUB_DIR/workflows" ;;
@@ -104,6 +105,29 @@ for running in '{"name":"t","conclusion":"","status":"IN_PROGRESS"}' '{"context"
 done
 rollup '[{"name":"t","conclusion":"SUCCESS"},{"name":"u","conclusion":"NEUTRAL"},{"name":"v","conclusion":"SKIPPED"}]'
 out=$(vrun) || fail "green, neutral and skipped were refused: $out"
+
+# the watch ends at the first red check, and --settle, wherever it stands, waits
+# for every one
+grep -q -- "--watch --fail-fast" "$stub/checks.args" || fail "the watch does not end at the first red check: $(cat "$stub/checks.args")"
+echo "$out" | grep -q "^-- checks (stops at the first red check; --settle waits for all)$" || fail "the heading does not say where the watch stops: $out"
+out=$(vrun --settle) || fail "--settle after the number was read as the sha: $out"
+out=$(STUB_DIR="$stub" PATH="$stub:$PATH" bash "$script" --settle o/r 1) || fail "--settle before the repository was read as the repository: $out"
+out=$(vrun --settle "$h") || fail "the sha after --settle was refused: $out"
+echo "$out" | grep -q "head matches expected  *yes" || fail "the sha after --settle was not compared: $out"
+grep -q -- "--watch" "$stub/checks.args" || fail "--settle did not watch: $(cat "$stub/checks.args")"
+grep -q -- "--fail-fast" "$stub/checks.args" && fail "--settle still ends at the first red check: $(cat "$stub/checks.args")"
+echo "$out" | grep -q "^-- checks (waits until every check has settled)$" || fail "the heading under --settle does not say it waits: $out"
+
+# a red check beside running ones says how many of each, so the log is read now
+rollup '[{"name":"t","conclusion":"FAILURE","status":"COMPLETED"},{"name":"u","conclusion":"","status":"IN_PROGRESS"},{"name":"v","conclusion":"","status":"IN_PROGRESS"}]'
+out=$(vrun); rc=$?
+[ "$rc" -eq 1 ] || fail "a red check beside running ones exited $rc: $out"
+echo "$out" | grep -q "^CHECKS NOT GREEN  *1 failed, 2 still running; read the failed log now (--settle waits for the rest)$" || fail "a red check beside running ones was not counted: $out"
+rollup '[{"name":"t","conclusion":"FAILURE","status":"COMPLETED"},{"name":"u","conclusion":"SUCCESS","status":"COMPLETED"}]'
+out=$(vrun); rc=$?
+[ "$rc" -eq 1 ] || fail "a red check with nothing running exited $rc: $out"
+echo "$out" | grep -q "^CHECKS NOT GREEN  *read the logs$" || fail "a red check with nothing running does not say to read the logs: $out"
+echo "$out" | grep -q "still running" && fail "nothing was running and the line says something is: $out"
 
 # no checks yet is not green, unless the repository has none to run
 rollup '[]'

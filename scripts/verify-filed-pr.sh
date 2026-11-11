@@ -7,11 +7,17 @@
 # body and comments are what was written. Written 2026-09-01 after console
 # PR #296 went red on CI and the maintainer saw it before the author did.
 # The check wait was added 2026-09-02, when Valinor #838 was left at "still
-# running" and its mutation job failed unseen.
+# running" and its mutation job failed unseen. Since 2026-11-11 the wait ends at
+# the first red check: a macOS job had failed eight minutes in and nothing was
+# said for 44 more, until the last job of the matrix finished.
 #
 # Usage:
-#   bash verify-filed-pr.sh owner/repo PR_NUMBER [expected-head-sha]
+#   bash verify-filed-pr.sh [--settle] owner/repo PR_NUMBER [expected-head-sha]
 #   bash verify-filed-pr.sh --help
+#
+#   --settle  wait until every check has finished. Without it the watch ends at
+#             the first check that fails, so that its log is read while the
+#             others still run; a check that fails late is caught either way
 #
 # Environment:
 #   none
@@ -36,13 +42,19 @@ case "${1:-}" in
   --help|-h) usage; exit 0 ;;
 esac
 
-if [ "$#" -lt 2 ]; then
+# --settle may stand anywhere; what is left is the repository, the number and the sha.
+settle=0
+args=()
+for a in "$@"; do
+  if [ "$a" = "--settle" ]; then settle=1; else args+=("$a"); fi
+done
+if [ "${#args[@]}" -lt 2 ]; then
   echo "usage: verify-filed-pr.sh owner/repo PR [sha]" >&2
   exit 2
 fi
-repo="$1"
-pr="$2"
-want="${3:-}"
+repo="${args[0]}"
+pr="${args[1]}"
+want="${args[2]:-}"
 fail=0
 unsettled=0
 note() { printf '%-26s %s\n' "$1" "$2"; }
@@ -108,10 +120,19 @@ else
 fi
 
 echo ""
-echo "-- checks (waits until every check has settled)"
-gh pr checks "$pr" --repo "$repo" --watch --interval 20 >/dev/null 2>&1 || true
+if [ "$settle" -eq 1 ]; then
+  echo "-- checks (waits until every check has settled)"
+  gh pr checks "$pr" --repo "$repo" --watch --interval 20 >/dev/null 2>&1 || true
+else
+  # The watch still runs until a check fails or all have finished, so a late
+  # failure is caught as before.
+  echo "-- checks (stops at the first red check; --settle waits for all)"
+  gh pr checks "$pr" --repo "$repo" --watch --fail-fast --interval 20 >/dev/null 2>&1 || true
+fi
 rollup=$(view statusCheckRollup "$ci_jq"'[.statusCheckRollup[] | check_state] | group_by(.) | map({k:.[0], n:length}) | .[] | .k + "=" + (.n|tostring)') || exit 1
-ci=$(view statusCheckRollup "$ci_jq"'[.statusCheckRollup[] | ci] | if any(. == "red") then "red" elif any(. == "running") then "running" else "green" end') || exit 1
+# How many checks read as red and how many as still running, in that order.
+counts=$(view statusCheckRollup "$ci_jq"'[.statusCheckRollup[] | ci] | "\(map(select(. == "red")) | length) \(map(select(. == "running")) | length)"') || exit 1
+read -r red running <<< "$counts"
 if [ -z "$rollup" ]; then
   # Straight after filing a fork's checks may not exist yet, and that is not green.
   if [ "$(gh api "repos/$repo/actions/workflows" --jq .total_count 2>/dev/null)" = "0" ]; then
@@ -122,10 +143,13 @@ if [ -z "$rollup" ]; then
   fi
 else
   echo "$rollup" | awk '{print "   " $0}'
-  case "$ci" in
-    red) note "CHECKS NOT GREEN" "read the logs"; fail=1 ;;
-    running) note "CHECKS DID NOT SETTLE" "watch timed out"; fail=1 ;;
-  esac
+  if [ "$red" -gt 0 ] && [ "$running" -gt 0 ]; then
+    note "CHECKS NOT GREEN" "$red failed, $running still running; read the failed log now (--settle waits for the rest)"; fail=1
+  elif [ "$red" -gt 0 ]; then
+    note "CHECKS NOT GREEN" "read the logs"; fail=1
+  elif [ "$running" -gt 0 ]; then
+    note "CHECKS DID NOT SETTLE" "watch timed out"; fail=1
+  fi
 fi
 # A fork's workflow that waits for a maintainer's approval has run nothing and
 # is absent from the rollup above.
