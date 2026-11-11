@@ -52,7 +52,8 @@ report it in one line and do not proceed to the next step.
    UNREAD means GitHub did not give every policy file: wait and run it
    again, never file on it; a repository too large for GitHub to list in
    full reads UNREAD until you have read its policy by hand and passed
-   `--accept-truncated`. The printout is required by step 9. If the project accepts pull
+   `--accept-truncated`. The printout is required by step 9. It ends with the
+   project's CI legs, which step 5 reads; they never change its reading. If the project accepts pull
    requests only for labelled issues, the deliverable is an issue with the
    fix offered, not a pull request. `housebroken outside owner/repo` counts
    outside contributors merged in the last 120 days. Zero means the project
@@ -147,6 +148,15 @@ report it in one line and do not proceed to the next step.
    to skip yours: run the linter over the changed files directly, and
    reproduce the global failure on a pristine base so the body says whose
    it is.
+   The policy printout of step 1 ends with the project's CI legs, and
+   `housebroken ci owner/repo` prints them again: the jobs of each workflow's
+   newest finished run. A leg marked NOT THIS MACHINE is a gate you did not
+   run: read the change for what differs there (the shell's version, path
+   separators, line endings, a case-insensitive file system) before filing.
+   A job marked RED ON MAIN cannot go green on your pull request, because it
+   is red without it: when it fails there the same way, say so in the body
+   and do not chase it. `CI-LEGS: UNREAD` means the legs were not read, never
+   that there are none; run it again.
 
 6. **Match the house style.**
    Run `housebroken notes owner/repo` before writing the pull request and
@@ -271,7 +281,9 @@ report it in one line and do not proceed to the next step.
     the intended commit, the files are the ones the branch stamp lists, the
     body is the one that was filed, and CI settled. It wants a stamp for the
     head, or the sha as a third argument; it reads NOT SETTLED until checks
-    have run, and a NOT SETTLED is not an OK. `housebroken sweep` lists every open pull request where the ball
+    have run, and a NOT SETTLED is not an OK. It stops at the first red check,
+    so the failed log is read at once and not when the last job ends;
+    `--settle` waits for the rest. `housebroken sweep` lists every open pull request where the ball
     is in your court, and prints a `TIDY` line for every merged or closed
     pull request whose fork branch still exists, on every run until
     `housebroken hygiene` has deleted it. `housebroken inbox` is the first thing a session does

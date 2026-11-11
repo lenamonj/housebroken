@@ -112,6 +112,7 @@ An upgrade moves the package and not those two copies, so after one run `housebr
 | `scripts/diff-defaults.sh` | default arguments and one-line wrappers added to keep call sites untouched |
 | `scripts/claim-check.sh` | every falsifiable claim in a body or a reply, listed to re-derive |
 | `scripts/proof.sh` | the red-first experiment, run and stamped: red on the base, green on the head |
+| `scripts/ci-legs.sh` | the jobs a project's CI runs: the ones this machine cannot run, and the ones already red on its default branch |
 | `scripts/declare.sh` | what was not tested and what was assumed, for the review to attack |
 | `scripts/ref-check.sh` | every issue, link, test, file and commit a body names, looked up |
 | `scripts/branch-check.sh` | the branch's mechanical facts: clean tree, live base, modes, artifacts, secrets, generated files, trailers, sign-offs, comments, suppressions, absolute claims |
