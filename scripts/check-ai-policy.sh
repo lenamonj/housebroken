@@ -41,6 +41,11 @@
 # silence. A word list reads no grammar, so MENTION is a hold, not a pass. Every
 # policy-named file is read; READMEs are capped at 40 per repository, the
 # shallowest first, and the cap is printed.
+# The printout ends with the project's CI legs, as ci-legs.sh prints them: the
+# jobs its CI runs, the ones on another operating system than this machine's,
+# and the ones already red on its default branch. They are read before the
+# branch exists because the filing requires this printout. They change neither
+# the RESULT line nor the exit status, whatever that read returns.
 # Exit 0 for CLEAN or MENTION, 1 for UNREAD or when the repository cannot be
 # read, 3 for DISCLOSE, 4 for BAN. With several repositories the exit is the
 # highest.
@@ -251,6 +256,12 @@ for repo in "${repos[@]}"; do
     *"RESULT: DISCLOSE"*) [ "$status" -lt 3 ] && status=3 ;;
     *"RESULT: UNREAD"*) [ "$status" -lt 1 ] && status=1 ;;
   esac
+  # The project's CI legs end the printout. They are read here, after the
+  # status is settled, and kept out of the report it was settled from: their
+  # names are a stranger's text, and a read that fails says so and no more.
+  legs=$(bash "$(dirname "$0")/ci-legs.sh" "$repo") || true
+  [ -n "$legs" ] || legs="CI-LEGS: UNREAD (ci-legs.sh printed nothing)"
+  printf '%s\n' "$legs"
   if [ "$out" -eq 1 ]; then
     mkdir -p "$home/policy"
     saved="$home/policy/policy-${repo%%/*}-${repo##*/}.md"
@@ -267,7 +278,7 @@ for repo in "${repos[@]}"; do
            fi ;;
       esac
     fi
-    printf '%s\n' "$report" > "$saved"
+    printf '%s\n' "$report" "$legs" > "$saved"
     echo "saved: $saved"
     # The pull request template, the repository's own or else its
     # organization's, is what file-pr.sh leaves out of the body's word count.

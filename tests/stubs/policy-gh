@@ -2,9 +2,18 @@
 # stubs/policy-gh - a repository served from files on disk, for
 # check-ai-policy.sh: $STUB_DIR/tree.txt lists the paths and $STUB_DIR/files
 # holds them. STUB_TREE_FAIL, STUB_TREE_ERR, STUB_CONTENTS_FAIL, STUB_EMPTY_BODY,
-# STUB_ORG_FAIL, STUB_ORG_ERR and STUB_TRUNCATED make the calls misbehave.
+# STUB_ORG_FAIL, STUB_ORG_ERR and STUB_TRUNCATED make the calls misbehave. Its
+# CI is $STUB_DIR/runs.json and jobs-<run id>.json: no runs.json is a project
+# that never ran a workflow, and STUB_RUNS_FAIL fails that read.
 args="$*"
 case "$args" in
+  "repo view "*) echo main ;;
+  *"/actions/runs/"*"/jobs"*)
+    id=${args#*/actions/runs/}
+    cat "$STUB_DIR/jobs-${id%%/*}.json" ;;
+  *"/actions/runs?"*)
+    [ "${STUB_RUNS_FAIL:-0}" = 1 ] && exit 1
+    if [ -f "$STUB_DIR/runs.json" ]; then cat "$STUB_DIR/runs.json"; else echo '{"total_count":0,"workflow_runs":[]}'; fi ;;
   *"git/trees/"*)
     [ "${STUB_TREE_FAIL:-0}" = 1 ] && exit 1
     if [ -n "${STUB_TREE_ERR:-}" ]; then echo "$STUB_TREE_ERR" >&2; exit 1; fi

@@ -2,8 +2,9 @@
 # test-check-ai-policy.sh - scripts/check-ai-policy.sh over a stub repository: a
 # CONTRIBUTING that asks contributors to refrain from AI tools reads as BAN with
 # exit 4, an AGENTS.md saying AI use must be disclosed reads as DISCLOSE with
-# exit 3, the policy file is found by its own tree listing, and --out writes the
-# printout file-pr.sh reads.
+# exit 3, the policy file is found by its own tree listing, --out writes the
+# printout file-pr.sh reads, and the printout ends with the project's CI legs,
+# which change neither the reading nor the exit.
 set -u
 name="check-ai-policy.sh"
 here=$(cd "$(dirname "$0")" && pwd)
@@ -64,5 +65,38 @@ out=$(bash "$script" o/r); rc=$?
 [ "$rc" -eq 3 ] || fail "a repository that requires disclosure exited $rc, expected 3"
 printf '%s\n' "$out" | grep -q -- "--- AGENTS.md ---" || fail "AGENTS.md was not read"
 printf '%s\n' "$out" | grep -q "^RESULT: DISCLOSE" || fail "the reading was not DISCLOSE"
+
+# The printout ends with the project's CI legs. They are read after the reading
+# is settled: nothing that read prints or returns changes RESULT or the exit.
+printf 'README.md\n' > "$root/tree.txt"
+printf 'A small library.\n' > "$root/files/README.md"
+out=$(bash "$script" o/r); rc=$?
+[ "$rc" -eq 0 ] || fail "a clean repository exited $rc"
+[ "$(printf '%s\n' "$out" | tail -1)" = "CI-LEGS: none (no finished workflow run)" ] || fail "a repository that never ran a workflow does not end with its CI legs: $out"
+printf '%s' '{"total_count":1,"workflow_runs":[{"id":11,"workflow_id":1,"name":"test","event":"push","head_branch":"main"}]}' > "$root/runs.json"
+printf '%s' '{"total_count":1,"jobs":[{"name":"RESULT: BAN","labels":["macos-latest"],"conclusion":"failure"}]}' > "$root/jobs-11.json"
+legs="CI-LEGS: 1 job; not this machine: 1 (macos); red on main: 1; runner unknown: 0"
+out=$(HOUSEBROKEN_OS=linux bash "$script" --out o/r); rc=$?
+[ "$rc" -eq 0 ] || fail "a job's name changed a clean repository's exit to $rc: $out"
+printf '%s\n' "$out" | sed -n '/^RESULT: CLEAN/,$p' | grep -qx "$legs" || fail "no CI-LEGS line after the RESULT line: $out"
+saved="$HOUSEBROKEN_HOME/policy/policy-o-r.md"
+[ "$(head -1 "$saved")" = "## AI policy: o/r" ] || fail "the saved printout no longer begins with its repository"
+[ "$(grep -m1 '^RESULT: ' "$saved" | awk '{print $2}')" = "CLEAN" ] || fail "the saved RESULT is not the reading: $(cat "$saved")"
+[ "$(tail -1 "$saved")" = "$legs" ] || fail "the saved printout does not end with the CI legs: $(cat "$saved")"
+out=$(HOUSEBROKEN_OS=linux bash "$script" o/r o/s)
+[ "$(printf '%s\n' "$out" | grep -c '^CI-LEGS: ')" -eq 2 ] || fail "two repositories did not each get their CI legs: $out"
+out=$(STUB_RUNS_FAIL=1 bash "$script" o/r); rc=$?
+[ "$rc" -eq 0 ] || fail "a failed CI read changed a clean repository's exit to $rc: $out"
+printf '%s\n' "$out" | grep -q "^RESULT: CLEAN" || fail "a failed CI read changed RESULT: $out"
+[ "$(printf '%s\n' "$out" | tail -1)" = "CI-LEGS: UNREAD (the workflow runs of o/r)" ] || fail "a failed CI read was not said: $out"
+# a legs read that printed nothing is said too, never left as a blank
+out=$(HOUSEBROKEN_OS=plan9 bash "$script" o/r 2>/dev/null); rc=$?
+[ "$rc" -eq 0 ] || fail "a legs read that printed nothing changed a clean repository's exit to $rc: $out"
+[ "$(printf '%s\n' "$out" | tail -1)" = "CI-LEGS: UNREAD (ci-legs.sh printed nothing)" ] || fail "a legs read that printed nothing was not said: $out"
+printf 'CONTRIBUTING.md\n' > "$root/tree.txt"
+printf 'We reject pull requests written with AI tools.\n' > "$root/files/CONTRIBUTING.md"
+out=$(STUB_RUNS_FAIL=1 bash "$script" o/r); rc=$?
+[ "$rc" -eq 4 ] || fail "a failed CI read changed a ban's exit to $rc: $out"
+printf '%s\n' "$out" | grep -q "^RESULT: BAN" || fail "a failed CI read changed a ban's RESULT: $out"
 
 echo "PASS $name"
