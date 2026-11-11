@@ -60,7 +60,7 @@ usage: housebroken <subcommand> [args...]
   9  file        the only way a pull request gets filed
   9  issue       the only way an issue gets filed
  10  edit        the only way a filed pull request's body or title is changed
- 10  verify      the filed pull request is what was meant, and CI settled
+ 10  verify      the filed pull request is what was meant, and CI is green
  10  sweep       every open pull request where the ball is in your court
  10  inbox       what GitHub has to tell you since you last looked, bodies included
  10  notes       what this repository's maintainers have asked for before

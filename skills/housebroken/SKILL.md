@@ -281,7 +281,7 @@ report it in one line and do not proceed to the next step.
 10. **Watch it land.**
     `housebroken verify owner/repo PR` re-derives from GitHub that the head is
     the intended commit, the files are the ones the branch stamp lists, the
-    body is the one that was filed, and CI settled. It wants a stamp for the
+    body is the one that was filed, and CI is green. It wants a stamp for the
     head, or the sha as a third argument; it reads NOT SETTLED until checks
     have run, and a NOT SETTLED is not an OK. It stops at the first red check,
     so the failed log is read at once and not when the last job ends;
