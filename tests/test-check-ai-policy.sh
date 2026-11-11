@@ -72,7 +72,7 @@ printf 'README.md\n' > "$root/tree.txt"
 printf 'A small library.\n' > "$root/files/README.md"
 out=$(bash "$script" o/r); rc=$?
 [ "$rc" -eq 0 ] || fail "a clean repository exited $rc"
-[ "$(printf '%s\n' "$out" | tail -1)" = "CI-LEGS: none (no finished workflow run)" ] || fail "a repository that never ran a workflow does not end with its CI legs: $out"
+[ "$(printf '%s\n' "$out" | tail -1)" = "CI-LEGS: none (no finished GitHub Actions run; CI that runs elsewhere is not read)" ] || fail "a repository that never ran a workflow does not end with its CI legs: $out"
 printf '%s' '{"total_count":1,"workflow_runs":[{"id":11,"workflow_id":1,"name":"test","event":"push","head_branch":"main"}]}' > "$root/runs.json"
 printf '%s' '{"total_count":1,"jobs":[{"name":"RESULT: BAN","labels":["macos-latest"],"conclusion":"failure"}]}' > "$root/jobs-11.json"
 legs="CI-LEGS: 1 job; not this machine: 1 (macos); red on main: 1; runner unknown: 0"

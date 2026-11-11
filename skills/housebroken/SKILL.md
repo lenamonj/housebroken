@@ -158,7 +158,8 @@ report it in one line and do not proceed to the next step.
    and do not chase it. When the last line says `main read for` only some of
    the workflows, its count of red says nothing of the others.
    `CI-LEGS: UNREAD` means the legs were not read, never that there are none;
-   run it again.
+   run it again. `CI-LEGS: none` means GitHub Actions has no finished run,
+   never that the project has no CI: one that runs elsewhere is not read.
 
 6. **Match the house style.**
    Run `housebroken notes owner/repo` before writing the pull request and

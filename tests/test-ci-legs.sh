@@ -139,11 +139,12 @@ out=$(legs o/r); rc=$?
 [ "$rc" -eq 1 ] || fail "runs that are not JSON exited $rc: $out"
 echo "$out" | grep -q "^CI-LEGS: UNREAD (" || fail "runs that are not JSON were not called UNREAD: $out"
 
-# a project with no finished run has nothing to read, and that is not a failure
+# a project with no finished run has nothing to read, and that is not a failure;
+# the line says whose runs it looked for, since CI on another service is not read
 runs
 out=$(legs o/r); rc=$?
 [ "$rc" -eq 0 ] || fail "no runs exited $rc: $out"
-[ "$out" = "CI-LEGS: none (no finished workflow run)" ] || fail "no runs: $out"
+[ "$out" = "CI-LEGS: none (no finished GitHub Actions run; CI that runs elsewhere is not read)" ] || fail "no runs: $out"
 
 # names are strangers' text: no escape sequence gets through and no name starts a line
 esc=$(printf '\033')

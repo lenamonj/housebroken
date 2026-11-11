@@ -36,7 +36,7 @@
 #
 # The last line is the reading:
 #   CI-LEGS: <n> jobs; not this machine: <n> (<families>); red on main: <n>; runner unknown: <n>
-#   CI-LEGS: none (no finished workflow run)
+#   CI-LEGS: none (no finished GitHub Actions run; CI that runs elsewhere is not read)
 #   CI-LEGS: UNREAD (<what could not be read>)
 # When the default branch was read for only some of the workflows, the count of
 # red is followed by "(main read for <n> of <n> workflows)": it says nothing of
@@ -108,7 +108,7 @@ picks=$(printf '%s' "$runs" | jq -r --arg d "$default" "$flat"'
   | .[] | [(.id | tostring), (if .main then "1" else "0" end), .event, .branch, .name] | join("\t")' 2>/dev/null) ||
   unread "the workflow runs of $repo"
 if [ -z "$picks" ]; then
-  echo "CI-LEGS: none (no finished workflow run)"
+  echo "CI-LEGS: none (no finished GitHub Actions run; CI that runs elsewhere is not read)"
   exit 0
 fi
 
