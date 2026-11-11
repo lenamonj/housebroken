@@ -123,6 +123,10 @@ rollup '[{"name":"t","conclusion":"FAILURE","status":"COMPLETED"},{"name":"u","c
 out=$(vrun); rc=$?
 [ "$rc" -eq 1 ] || fail "a red check beside running ones exited $rc: $out"
 echo "$out" | grep -q "^CHECKS NOT GREEN  *1 failed, 2 still running; read the failed log now (--settle waits for the rest)$" || fail "a red check beside running ones was not counted: $out"
+# under --settle the watch was to wait for them, and the line does not name the flag already given
+out=$(vrun --settle); rc=$?
+[ "$rc" -eq 1 ] || fail "a red check beside running ones exited $rc under --settle: $out"
+echo "$out" | grep -q "^CHECKS NOT GREEN  *1 failed, 2 still running; read the failed log now (the watch ended before the rest did)$" || fail "under --settle the line points at --settle: $out"
 rollup '[{"name":"t","conclusion":"FAILURE","status":"COMPLETED"},{"name":"u","conclusion":"SUCCESS","status":"COMPLETED"}]'
 out=$(vrun); rc=$?
 [ "$rc" -eq 1 ] || fail "a red check with nothing running exited $rc: $out"

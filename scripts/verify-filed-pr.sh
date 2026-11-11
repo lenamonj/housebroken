@@ -144,7 +144,10 @@ if [ -z "$rollup" ]; then
 else
   echo "$rollup" | awk '{print "   " $0}'
   if [ "$red" -gt 0 ] && [ "$running" -gt 0 ]; then
-    note "CHECKS NOT GREEN" "$red failed, $running still running; read the failed log now (--settle waits for the rest)"; fail=1
+    # Under --settle the watch was to wait for them, so it ended early.
+    rest="--settle waits for the rest"
+    [ "$settle" -eq 1 ] && rest="the watch ended before the rest did"
+    note "CHECKS NOT GREEN" "$red failed, $running still running; read the failed log now ($rest)"; fail=1
   elif [ "$red" -gt 0 ]; then
     note "CHECKS NOT GREEN" "read the logs"; fail=1
   elif [ "$running" -gt 0 ]; then
