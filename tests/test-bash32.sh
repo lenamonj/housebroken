@@ -29,6 +29,11 @@ scan() {
     /&>>/ { hit("&>>") }
     /[|]&([[:space:]]|$)/ { hit("|&") }
     /(^|[;&|[:space:]])coproc([[:space:]]|$)/ { hit("coproc") }
+    # These three parse under 3.2 and fail only when the line runs, so a parse
+    # with a real 3.2 does not find them either.
+    /(^|[;&|[:space:]])(declare|local|typeset)[[:space:]]+-[A-Za-z]*n/ { hit("a name reference") }
+    /[$][{][A-Za-z0-9_]+(\[[^]]*\])?@[A-Za-z][}]/ { hit("a transformation in an expansion") }
+    /[$][{][A-Za-z0-9_]+\[-[0-9]+\]/ { hit("a negative array index") }
   ' "$@"
 }
 
@@ -46,15 +51,19 @@ cmd |& tee log
 coproc worker { cat; }
 x=$(true; case a in a) echo 1 ;; esac)
 x=$(if true; then case a in a) echo 1 ;; esac; fi)
+declare -n ref=target
+local -n ref=target
+echo "${name@Q}"
+echo "${list[-1]}"
 BAD
 hits=$(scan "$tmp/bad.sh")
 i=1
-while [ "$i" -le 12 ]; do
+while [ "$i" -le 16 ]; do
   n=$(printf '%s\n' "$hits" | grep -c "bad.sh:$i: ")
   [ "$n" -eq 1 ] || fail "the scan flagged '$(sed -n "${i}p" "$tmp/bad.sh")' $n times"
   i=$((i + 1))
 done
-[ "$(printf '%s\n' "$hits" | grep -c .)" -eq 12 ] || fail "twelve constructs made more than twelve hits: $hits"
+[ "$(printf '%s\n' "$hits" | grep -c .)" -eq 16 ] || fail "sixteen constructs made more than sixteen hits: $hits"
 
 # and it leaves alone what only looks like one
 cat > "$tmp/fine.sh" <<'FINE'
@@ -66,6 +75,10 @@ name="${name:-none}"
 cmd > log 2>&1 &
 grep -A 3 pattern file
 kind=$(lowercase "$kind")
+local -i n=0
+read -n 1 key
+mail="${user}@Q"
+last="${list[${#list[@]}-1]}"
 FINE
 hits=$(scan "$tmp/fine.sh")
 [ -z "$hits" ] || fail "the scan flagged what bash 3.2 runs: $hits"
