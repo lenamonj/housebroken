@@ -19,7 +19,10 @@ scan() {
   awk '
     function hit(what) { print FILENAME ":" FNR ": " what }
     /^[[:space:]]*#/ { next }
-    /[$][(][[:space:]]*case[[:space:]]/ { hit("a case inside $(...)") }
+    # The case need not be the first word: 3.2 refuses it after a command, a
+    # then or a pipe as well. Anything short of a closing parenthesis may stand
+    # between the opening one and the word.
+    /[$][(]([^)]*[;&|({[:space:]])?case[[:space:]]/ { hit("a case inside $(...)") }
     /(^|[;&|[:space:]])(mapfile|readarray)([[:space:]]|$)/ { hit("mapfile or readarray") }
     /(^|[;&|[:space:]])(declare|local|typeset)[[:space:]]+-[A-Za-z]*A/ { hit("an associative array") }
     /[$][{][A-Za-z0-9_]+(\[[^]]*\])?[,^]/ { hit("a case conversion in an expansion") }
@@ -41,15 +44,17 @@ echo "${name^^}"
 cmd &>> log
 cmd |& tee log
 coproc worker { cat; }
+x=$(true; case a in a) echo 1 ;; esac)
+x=$(if true; then case a in a) echo 1 ;; esac; fi)
 BAD
 hits=$(scan "$tmp/bad.sh")
 i=1
-while [ "$i" -le 10 ]; do
+while [ "$i" -le 12 ]; do
   n=$(printf '%s\n' "$hits" | grep -c "bad.sh:$i: ")
   [ "$n" -eq 1 ] || fail "the scan flagged '$(sed -n "${i}p" "$tmp/bad.sh")' $n times"
   i=$((i + 1))
 done
-[ "$(printf '%s\n' "$hits" | grep -c .)" -eq 10 ] || fail "ten constructs made more than ten hits: $hits"
+[ "$(printf '%s\n' "$hits" | grep -c .)" -eq 12 ] || fail "twelve constructs made more than twelve hits: $hits"
 
 # and it leaves alone what only looks like one
 cat > "$tmp/fine.sh" <<'FINE'
@@ -60,6 +65,7 @@ local -a list
 name="${name:-none}"
 cmd > log 2>&1 &
 grep -A 3 pattern file
+kind=$(lowercase "$kind")
 FINE
 hits=$(scan "$tmp/fine.sh")
 [ -z "$hits" ] || fail "the scan flagged what bash 3.2 runs: $hits"
