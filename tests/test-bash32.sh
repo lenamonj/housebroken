@@ -4,7 +4,7 @@
 # 3.2 lacks or misparses, proven first on a file that holds every construct and
 # on a look-alike it must leave alone. And where a bash 3.2 is at hand, the one
 # HOUSEBROKEN_BASH32 names or the /bin/bash of a macOS, a parse of each of those
-# files and of every test. The rule was a note until 2026-11-11, when a `case`
+# files, every test and every stub. The rule was a note until 2026-11-11, when a `case`
 # inside `$(...)` went out in another project and only its macOS job refused it.
 set -u
 name=test-bash32
@@ -95,7 +95,8 @@ if [ -z "$b32" ] && /bin/bash --version 2>/dev/null | head -1 | grep -q 'version
 fi
 if [ -n "$b32" ]; then
   "$b32" --version 2>/dev/null | head -1 | grep -q 'version 3\.2' || fail "$b32 is not a bash 3.2"
-  for f in "${files[@]}" tests/*.sh; do
+  # The stubs have no extension and run under the /bin/bash of a macOS too.
+  for f in "${files[@]}" tests/*.sh tests/stubs/*; do
     err=$("$b32" -n "$f" 2>&1) || problems="${problems:+$problems
 }bash 3.2 cannot parse $f:
 $err"
