@@ -30,9 +30,9 @@ chmod +x "$stub/gh"
 
 # One finished run, one job, and the files the stub serves them from. Runs are
 # given newest first, as GitHub lists them.
-run() { # id workflow-id name event branch
-  jq -cn --argjson id "$1" --argjson wf "$2" --arg n "$3" --arg e "$4" --arg b "$5" \
-    '{id: $id, workflow_id: $wf, name: $n, event: $e, head_branch: $b, status: "completed", conclusion: "success"}'
+run() { # id workflow-id name event branch [conclusion]
+  jq -cn --argjson id "$1" --argjson wf "$2" --arg n "$3" --arg e "$4" --arg b "$5" --arg c "${6:-success}" \
+    '{id: $id, workflow_id: $wf, name: $n, event: $e, head_branch: $b, status: "completed", conclusion: $c}'
 }
 runs() { printf '%s\n' "$@" | jq -cs '{total_count: length, workflow_runs: .}' > "$stub/runs.json"; : > "$stub/calls.log"; }
 job() { # name labels,comma,separated conclusion
@@ -84,7 +84,8 @@ echo "$out" | grep -qE "^     stopped +ubuntu-latest +cancelled$" || fail "a can
 echo "$out" | sed -n '/^   pr-only /,/^   [^ ]/p' | grep -q "RED ON MAIN" && fail "a pull request's branch was called main: $out"
 echo "$out" | sed -n '/^   fork-main /,/^   [^ ]/p' | grep -q "RED ON MAIN" && fail "a fork's branch named main was called main: $out"
 echo "$out" | sed -n '/^   target /,/^   [^ ]/p' | grep -q "RED ON MAIN" && fail "a pull_request_target run was called main: $out"
-echo "$out" | grep -q "red on main: 3;" || fail "the red jobs were not counted: $out"
+# and the count says how far it reaches: two of the six ran there
+echo "$out" | grep -q "; red on main: 3 (main read for 2 of 6 workflows); " || fail "the red jobs were not counted, or the count does not say that it covers two workflows of six: $out"
 # the workflows that ran on the default branch come first
 [ "$(echo "$out" | grep -E '^   [^ (]' | awk '{print $1}' | tr '\n' ' ')" = "nightly test dispatch fork-main pr-only target " ] || fail "the order of the workflows: $out"
 
@@ -105,6 +106,22 @@ jobs 31 "$(job unit macos-latest failure)"
 out=$(legs o/r) || fail "a workflow that only ran on pull requests: $out"
 echo "$out" | grep -q "^   test  (pull_request, feature)$" || fail "a workflow with no default-branch run did not show its newest run: $out"
 echo "$out" | grep -qE "failure +NOT THIS MACHINE$" || fail "a pull request run's legs are not marked by machine: $out"
+[ "$(echo "$out" | tail -1)" = "CI-LEGS: 1 job; not this machine: 1 (macos); red on main: 0 (main read for 0 of 1 workflow); runner unknown: 0" ] || fail "a default branch that was never read counted as not red: $out"
+
+# a cancelled or skipped run on the default branch is no verdict: the newest
+# run there that has one is read, and its red is the default branch's
+for none in cancelled skipped; do
+  runs "$(run 12 1 test push main "$none")" "$(run 11 1 test push main failure)"
+  jobs 11 "$(job unit ubuntu-latest failure)"
+  jobs 12 "$(job unit ubuntu-latest "$none")"
+  out=$(legs o/r) || fail "a $none run over a failed one: $out"
+  grep -q "runs/11/jobs" "$stub/calls.log" || fail "a $none run on the default branch was read in place of the failed one before it: $(cat "$stub/calls.log")"
+  echo "$out" | grep -qE "^     unit +ubuntu-latest +failure +RED ON MAIN$" || fail "the red under a $none run was not marked: $out"
+done
+runs "$(run 12 1 test push main cancelled)"
+jobs 12 "$(job unit ubuntu-latest cancelled)"
+out=$(legs o/r) || fail "a default branch with only a cancelled run: $out"
+[ "$(echo "$out" | tail -1)" = "CI-LEGS: 1 job; not this machine: 0; red on main: 0 (main read for 0 of 1 workflow); runner unknown: 0" ] || fail "a default branch with only a cancelled run counted as not red: $out"
 
 # a failed read is said, and is never a count
 runs "$(run 11 1 test push main)"

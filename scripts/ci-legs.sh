@@ -10,8 +10,9 @@
 # a pull request met it on 2026-09-08.
 #
 # For each workflow this prints the jobs of its newest finished run that a push
-# or a schedule started on the default branch, or failing that of its newest
-# finished run anywhere, and marks each job:
+# or a schedule started on the default branch, a cancelled or skipped run
+# passed over, or failing that of its newest finished run anywhere, and marks
+# each job:
 #   NOT THIS MACHINE  its runner's family (linux, macos or windows, read from a
 #                     label beginning ubuntu, linux, macos or windows) is not
 #                     this machine's. Read the change for what differs there.
@@ -37,6 +38,9 @@
 #   CI-LEGS: <n> jobs; not this machine: <n> (<families>); red on main: <n>; runner unknown: <n>
 #   CI-LEGS: none (no finished workflow run)
 #   CI-LEGS: UNREAD (<what could not be read>)
+# When the default branch was read for only some of the workflows, the count of
+# red is followed by "(main read for <n> of <n> workflows)": it says nothing of
+# the others.
 # Exit 0 when read, 1 when a read failed, so that a failure is never a count,
 # and 2 on a usage error.
 #
@@ -91,11 +95,14 @@ default=$(gh repo view "$repo" --json defaultBranchRef --jq .defaultBranchRef.na
 runs=$(gh api "repos/$repo/actions/runs?status=completed&per_page=100" 2>/dev/null) || unread "the workflow runs of $repo"
 # A run is on the default branch when a push or a schedule started it there. A
 # pull_request_target, workflow_run or issue run can carry the same branch name
-# and is about someone else's change. Those on the default branch come first.
+# and is about someone else's change. A cancelled or skipped run is no verdict
+# on the branch, so an older run that has one is read before it. Those on the
+# default branch come first.
 picks=$(printf '%s' "$runs" | jq -r --arg d "$default" "$flat"'
   [.workflow_runs[] | {id, wf: .workflow_id, name: (.name // "" | flat), event: (.event // "" | flat),
      branch: (.head_branch // "" | flat),
-     main: (.head_branch == $d and (.event == "push" or .event == "schedule"))}]
+     main: (.head_branch == $d and (.event == "push" or .event == "schedule")
+            and .conclusion != "cancelled" and .conclusion != "skipped")}]
   | group_by(.wf) | map((map(select(.main)) | max_by(.id)) // max_by(.id))
   | sort_by([(.main | not), .name, .wf])
   | .[] | [(.id | tostring), (if .main then "1" else "0" end), .event, .branch, .name] | join("\t")' 2>/dev/null) ||
@@ -153,7 +160,7 @@ printf '%s\n' "$rows" | awk -F'\t' -v os="$os" -v max="$MAX_WORKFLOWS" '
   $1 == "R" { printf "   (only the newest %d of %d finished runs were read)\n", $2, $3; noruns = $3 - $2; next }
   $1 == "M" { printf "     (only the first %d of %d jobs were read)\n", $2, $3; nojobs += $3 - $2; next }
   $1 == "L" { printf "   not read: %s (only %d workflows are read)\n", $3, max; noflows = $2; next }
-  $1 == "W" { main = $3; printf "   %s  (%s, %s)\n", $6, $4, $5; next }
+  $1 == "W" { main = $3; flows++; onmain += main; printf "   %s  (%s, %s)\n", $6, $4, $5; next }
   $1 == "J" {
     jobs++; marks = ""; labels = $3
     if ($4 == "") { unknown++; labels = "runner unknown: " ($3 == "" ? "(no labels)" : $3) }
@@ -168,7 +175,9 @@ printf '%s\n' "$rows" | awk -F'\t' -v os="$os" -v max="$MAX_WORKFLOWS" '
     if (noflows) skipped = skipped ", " count(noflows, "workflow")
     if (nojobs) skipped = skipped ", " count(nojobs, "job")
     if (noruns) skipped = skipped ", " count(noruns, "older run")
-    printf "CI-LEGS: %s; not this machine: %d%s; red on main: %d; runner unknown: %d%s\n",
-      count(jobs + 0, "job"), other, (which == "" ? "" : " (" which ")"), red, unknown,
+    # A count of red says nothing of a workflow whose default branch was not read.
+    if (onmain < flows) reach = " (main read for " (onmain + 0) " of " count(flows, "workflow") ")"
+    printf "CI-LEGS: %s; not this machine: %d%s; red on main: %d%s; runner unknown: %d%s\n",
+      count(jobs + 0, "job"), other, (which == "" ? "" : " (" which ")"), red, reach, unknown,
       (skipped == "" ? "" : "; not read: " substr(skipped, 3))
   }' | clean_lines
