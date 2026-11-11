@@ -36,6 +36,9 @@ out=$(bash "$hb" sweep --help) || fail "sweep --help exited non-zero"
 printf '%s\n' "$out" | grep -q "pr-sweep.sh" || fail "pr-sweep usage not returned"
 out=$(bash "$hb" review --help) || fail "review --help exited non-zero"
 printf '%s\n' "$out" | grep -q "review.sh" || fail "review usage not returned"
+printf '%s\n' "$help" | grep -qE '^ *5 +ci ' || fail "ci is not step 5"
+out=$(bash "$hb" ci --help) || fail "ci --help exited non-zero"
+printf '%s\n' "$out" | grep -q "ci-legs.sh" || fail "ci-legs usage not returned"
 
 # install into a temporary HOME
 tmp=$(mktemp -d) || fail "mktemp failed"

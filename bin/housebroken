@@ -48,6 +48,7 @@ usage: housebroken <subcommand> [args...]
   1  outside     count outside contributors merged in the last 120 days
   2  prior-art   issues and pull requests on the touched files, rulings quoted
   4  proof       run the test on the base and the head, and stamp red then green
+  5  ci          their CI's jobs: those this machine cannot run, those red on main
   6  census      added code lines against added comment lines, per branch
   6  defaults    default arguments and wrappers added to keep call sites untouched
   6  comments    refuse a comment added to code nobody asked for
@@ -109,6 +110,7 @@ case "$cmd" in
   claims)    script=claim-check.sh ;;
   refs)      script=ref-check.sh ;;
   proof)     script=proof.sh ;;
+  ci)        script=ci-legs.sh ;;
   declare)   script=declare.sh ;;
   branch)    script=branch-check.sh ;;
   review)    script=review.sh ;;
