@@ -20,7 +20,9 @@
 #                     its branch is called: someone else's red branch says
 #                     nothing about main.
 # A runner whose labels name no family prints as "runner unknown" and is counted
-# on the last line; it is never taken for this machine.
+# on the last line. So does a self-hosted runner of this machine's family: its
+# labels say Linux and nothing of the distribution, the architecture or the
+# tools on it. Neither is ever taken for this machine.
 #
 # The read is bounded and says what it left out: the newest 100 finished runs,
 # 12 workflows, the first 100 jobs of a run. Names are the project's text,
@@ -121,12 +123,16 @@ while IFS= read -r pick; do
   fi
   id=${pick%%"$tab"*}
   jobs=$(gh api "repos/$repo/actions/runs/$id/jobs?per_page=100" 2>/dev/null) || unread "the jobs of run $id"
-  jobrows=$(printf '%s' "$jobs" | jq -r "$flat"'
+  # A self-hosted runner of this machine's family gets no family here, so it
+  # prints as unknown: of another family it is NOT THIS MACHINE all the same.
+  jobrows=$(printf '%s' "$jobs" | jq -r --arg os "$os" "$flat"'
     def family: [.[] | ascii_downcase
       | if test("^(ubuntu|linux)") then "linux" elif test("^macos") then "macos" elif test("^windows") then "windows" else empty end]
       | .[0] // "";
-    (.jobs[] | (.labels // [] | map(tostring)) as $labels
-     | ["J", (.name // "" | flat), ($labels | join(",") | flat), ($labels | family), (.conclusion // .status // "" | flat)]
+    (.jobs[] | (.labels // [] | map(tostring)) as $labels | ($labels | family) as $family
+     | ["J", (.name // "" | flat), ($labels | join(",") | flat),
+        (if $family == $os and ($labels | any(ascii_downcase == "self-hosted")) then "" else $family end),
+        (.conclusion // .status // "" | flat)]
      | join("\t")),
     (if (.total_count // 0) > (.jobs | length)
      then ["M", (.jobs | length | tostring), (.total_count | tostring)] | join("\t") else empty end)' 2>/dev/null) ||

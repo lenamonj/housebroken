@@ -145,15 +145,16 @@ out=$(legs o/r) || fail "a name with a backslash: $out"
 echo "$out" | grep -q "^READING" && fail "a backslash in a name became a line break: $out"
 echo "$out" | grep -qF "   $bs  (push, main)" || fail "a backslash in a name was not printed as it is: $out"
 
-# a runner with no family in its labels is unknown, never this machine
+# a runner with no family in its labels is unknown, and so is a self-hosted
+# runner of this machine's family: neither is ever taken for this machine
 runs "$(run 11 1 test push main)"
 jobs 11 "$(job gpu self-hosted,gpu success)" "$(job bare '' success)" "$(job own self-hosted,Linux,X64 success)" "$(job mac self-hosted,macOS,ARM64 success)"
 out=$(legs o/r) || fail "self-hosted runners: $out"
 echo "$out" | grep -qE "^     gpu +runner unknown: self-hosted,gpu +success$" || fail "labels with no family: $out"
 echo "$out" | grep -qE "^     bare +runner unknown: \(no labels\) +success$" || fail "no labels: $out"
-echo "$out" | grep -qE "^     own +self-hosted,Linux,X64 +success$" || fail "a self-hosted Linux runner on linux: $out"
+echo "$out" | grep -qE "^     own +runner unknown: self-hosted,Linux,X64 +success$" || fail "a self-hosted Linux runner was taken for this linux machine: $out"
 echo "$out" | grep -qE "^     mac +self-hosted,macOS,ARM64 +success +NOT THIS MACHINE$" || fail "a self-hosted macOS runner on linux: $out"
-[ "$(echo "$out" | tail -1)" = "CI-LEGS: 4 jobs; not this machine: 1 (macos); red on main: 0; runner unknown: 2" ] || fail "the last line with unknown runners: $out"
+[ "$(echo "$out" | tail -1)" = "CI-LEGS: 4 jobs; not this machine: 1 (macos); red on main: 0; runner unknown: 3" ] || fail "the last line with unknown runners: $out"
 
 # what was not read is named and counted: the thirteenth workflow, the jobs past
 # the first hundred, the runs older than the ones GitHub listed
