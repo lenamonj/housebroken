@@ -66,6 +66,7 @@ usage: housebroken <subcommand> [args...]
  10  notes       what this repository's maintainers have asked for before
  10  reply       the only way an answer on a thread gets posted
  10  push        the only way a rework reaches a filed pull request's branch
+ 10  close       the only way a pull request of yours is withdrawn
  11  hygiene     delete fork branches after merge or close, list orphan forks
 
   install-skill  put the skill where Claude Code loads it (pip, pipx and uv installs)
@@ -124,6 +125,7 @@ case "$cmd" in
   hygiene)   script=fork-hygiene.sh ;;
   reply)     script=reply.sh ;;
   push)      script=push.sh ;;
+  close)     script=close.sh ;;
   install-hook) script=gate-hook.sh; set -- --install ;;
   *)
     echo "housebroken: unknown subcommand: $cmd (try: housebroken help)" >&2

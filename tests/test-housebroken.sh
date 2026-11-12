@@ -21,6 +21,7 @@ order=$(printf '%s\n' "$help" |
 printf '%s\n' "$help" | grep -qE '^ *2 +prior-art' || fail "prior-art is not step 2"
 printf '%s\n' "$help" | grep -qE '^ *9 +review' || fail "review is not step 9"
 printf '%s\n' "$help" | grep -qE '^ *11 +hygiene' || fail "hygiene is not step 11"
+printf '%s\n' "$help" | grep -qE '^ *10 +close +the only way a pull request of yours is withdrawn$' || fail "close is not step 10"
 # verify ends its watch at the first red check, so the door does not say CI settled
 printf '%s\n' "$help" | grep -qE '^ *10 +verify .* and CI is green$' ||
   fail "the door's line for verify does not say CI is green: $(printf '%s\n' "$help" | grep -E '^ *10 +verify ')"
