@@ -14,8 +14,8 @@
 # pull request that is not yours, is not open, or could not be read; and a
 # close within ten minutes of your last reply or close on the repository.
 #
-# Then it closes the pull request with the note as its comment, logs it beside
-# the replies, records it in the repository's notes, and deletes the fork
+# Then it posts the note, logs it beside the replies the moment it is public,
+# closes the pull request, records it in the repository's notes, and deletes the fork
 # branch the way housebroken hygiene would: only on a fork of yours, and only
 # when no open pull request still uses it.
 #
@@ -104,12 +104,20 @@ if [ "${CLOSE_DRY:-0}" = "1" ]; then
   echo "DRY RUN, not closed: $repo#$num with $body"
   exit 0
 fi
-if ! gh pr close "$num" --repo "$repo" --comment "$(cat "$body")"; then
-  echo "FAILED: $repo#$num was not closed; nothing was recorded" >&2
+# The note goes out on its own, as the file's bytes, and is logged the moment it
+# is public: gh pr close --comment posts the comment before it closes, so a close
+# that failed there would leave the note up with nothing logged, and a retry
+# would post it twice.
+if ! gh api "repos/$repo/issues/$num/comments" -F "body=@$body" --jq .html_url; then
+  echo "FAILED: the note was not posted on $repo#$num, which is still open; nothing was recorded" >&2
   exit 2
 fi
 mkdir -p "$home/replies"
 printf '%s %s#%s\n' "$(date -u +%s)" "$repo" "$num" >> "$log"
+if ! gh pr close "$num" --repo "$repo"; then
+  echo "FAILED: the note is on $repo#$num but it is still open; read it before trying again" >&2
+  exit 2
+fi
 bash "$here/notes.sh" "$repo" add "we closed #$num: $(printf '%s' "$own" | clean_line | cut -c1-200)"
 
 rc=0

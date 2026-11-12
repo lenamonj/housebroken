@@ -20,10 +20,13 @@ pr() { # author state
 case "$*" in
   "pr view 9 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner"*) pr me OPEN ;;
   "pr view 5 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner"*) pr me OPEN ;;
+  "pr view 4 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner"*) pr me OPEN ;;
   "pr view 8 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner"*) pr other OPEN ;;
   "pr view 7 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner"*) pr me MERGED ;;
   "pr view 6 --repo octocat/Hello-World"*) exit 1 ;;
-  "pr close 5 "*) exit 1 ;;
+  "api repos/octocat/Hello-World/issues/5/comments "*) exit 1 ;;
+  "api repos/octocat/Hello-World/issues/"*"/comments -F body=@"*) printf '%s\n' "$*" >> "$STUB_WRITES"; echo "https://github.com/x" ;;
+  "pr close 4 "*) exit 1 ;;
   "pr close "*) printf '%s\n' "$*" >> "$STUB_WRITES" ;;
   "api graphql"*) [ -f "$STUB_DIR/graphql.fail" ] && exit 1; cat "$STUB_DIR/ref" ;;
   "api -X DELETE"*) printf '%s\n' "$*" >> "$STUB_WRITES" ;;
@@ -68,9 +71,11 @@ nothing_written "a dry run"
 # the close itself: the note as the comment, the log, the note, the branch
 fresh
 closepr 0 9 "$note"
-grep -qF "pr close 9 --repo octocat/Hello-World --comment $note" "$STUB_WRITES" || fail "the close did not carry the note: $(cat "$STUB_WRITES")"
+# the note goes out as the file's own bytes, then the pull request is closed
+grep -qxF "api repos/octocat/Hello-World/issues/9/comments -F body=@$tmp/n.md --jq .html_url" "$STUB_WRITES" || fail "the note was not posted from its file: $(cat "$STUB_WRITES")"
+sed -n 2p "$STUB_WRITES" | grep -qx "pr close 9 --repo octocat/Hello-World" || fail "the close did not follow the note: $(cat "$STUB_WRITES")"
 grep -q "api -X DELETE repos/me/Hello-World/git/refs/heads/fix-it" "$STUB_WRITES" || fail "the fork branch was not deleted"
-[ "$(grep -c . "$STUB_WRITES")" = 2 ] || fail "not exactly one close and one delete: $(cat "$STUB_WRITES")"
+[ "$(grep -c . "$STUB_WRITES")" = 3 ] || fail "not exactly one note, one close and one delete: $(cat "$STUB_WRITES")"
 grep -q "we closed #9: The same fix landed upstream" "$HOUSEBROKEN_HOME/notes/octocat-Hello-World.md" || fail "the close was not recorded in notes"
 grep -q " octocat/Hello-World#9$" "$HOUSEBROKEN_HOME/replies/octocat-Hello-World.log" || fail "the close was not logged for the spacing"
 tail -n 1 "$tmp/out" | grep -q "^closed octocat/Hello-World#9$" || fail "the last line is not the close: $(tail -n 1 "$tmp/out")"
@@ -130,10 +135,20 @@ grep -q "pr close 9" "$STUB_WRITES" || fail "the close did not go through before
 grep -q "housebroken hygiene deletes it on its next run" "$tmp/out" || fail "the failed branch read was not followed by what to do: $(cat "$tmp/out")"
 [ -f "$HOUSEBROKEN_HOME/replies/octocat-Hello-World.log" ] || fail "a close that went through was not logged"
 
-# a close that fails records nothing
+# a note that could not be posted records nothing
 fresh
 closepr 2 5 "$note"
-grep -q "^FAILED: octocat/Hello-World#5 was not closed; nothing was recorded" "$tmp/out" || fail "a failed close was not named: $(cat "$tmp/out")"
-nothing_written "a failed close"
+grep -q "^FAILED: the note was not posted on octocat/Hello-World#5, which is still open; nothing was recorded" "$tmp/out" || fail "a failed note was not named: $(cat "$tmp/out")"
+nothing_written "a failed note"
+
+# a close that fails after the note went out: the note is public, so the
+# spacing holds and the message says so
+fresh
+closepr 2 4 "$note"
+grep -q "^FAILED: the note is on octocat/Hello-World#4 but it is still open; read it before trying again" "$tmp/out" || fail "a close that failed after the note was not named: $(cat "$tmp/out")"
+grep -q " octocat/Hello-World#4$" "$HOUSEBROKEN_HOME/replies/octocat-Hello-World.log" || fail "the posted note was not logged for the spacing"
+[ ! -f "$HOUSEBROKEN_HOME/notes/octocat-Hello-World.md" ] || fail "a close that failed was recorded in notes"
+grep -q "DELETE" "$STUB_WRITES" && fail "the branch of a pull request still open was deleted"
+closepr 2 4 "$note"; grep -q "ten minutes" "$tmp/out" || fail "a retry right after a posted note was not refused"
 
 echo "PASS $name"
