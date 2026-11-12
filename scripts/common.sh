@@ -219,3 +219,36 @@ fence() { # who indent
 # A path for a URL, each segment encoded: a # in a branch name would otherwise end
 # the path, and DELETE would reach the branch whose name is what came before it.
 uri_path() { jq -rn --arg p "$1" '$p | split("/") | map(@uri) | join("/")' | tr -d '\r'; }
+
+# What a comment on a thread is held to, one reason per line on stdout, nothing
+# when it passes: no verdict on the reviewer as the opening, no thanks or
+# apology, no exclamation mark, bold, closing offer, dash or tool footer, and
+# one to three sentences unless LONG is 1. Code spans, fenced blocks and quoted
+# lines are evidence, not our words, and are left out of the tone and dash checks.
+tone_refusals() { # body-file long [sentence-limit text]
+  local body="$1" long="$2" limit="${3:-a reply is one to three (--long when the maintainer asked for detail)}"
+  local outside prose apostrophe first sentences
+  # shellcheck disable=SC2016  # the backticks are markdown, matched literally
+  outside=$(awk '/^(```|~~~)/ {f = !f; next} !f && !/^ *>/' "$body")
+  # shellcheck disable=SC2016  # the backticks are markdown, matched literally
+  prose=$(printf '%s\n' "$outside" | sed 's/`[^`]*`//g')
+  # An unclosed fence would hide the rest of the text from every check below.
+  [ $(( $(grep -cE '^(```|~~~)' "$body") % 2 )) -eq 0 ] || echo "it has an unclosed code fence, so the rest of it would not be read"
+  apostrophe=$(printf '\xe2\x80\x99')
+  first=$(printf '%s\n' "$prose" | grep -m1 -v '^[[:space:]]*$' | sed "s/^[[:space:]]*//; s/$apostrophe/'/g")
+  printf '%s' "$first" | grep -qiE "^(yes,?[[:space:]]+)?(you('| a)re ([a-z]+[[:space:]]+)?(right|correct)|good (catch|point|call)|great (catch|point|question)|nice catch|fair (point|enough)|agreed|makes sense|understood|noted|appreciated?)\b" &&
+    echo "it opens with a verdict on the reviewer; lead with the fact: $(printf '%s' "$first" | cut -c1-60)"
+  printf '%s' "$prose" | grep -qiE '\b(thanks|thank you|apologies|sorry|i apologi[sz]e)\b' && echo "it thanks or apologises; state the fact and what changed"
+  printf '%s' "$prose" | grep -q '!' && echo "it has an exclamation mark; quoted output belongs in a code span"
+  printf '%s' "$prose" | grep -qE '\*\*[^*]+\*\*|__[^_]+__' && echo "it has bold"
+  printf '%s' "$prose" | grep -qiE "\b(let me know|happy to (help|send|open|make|change)|feel free|hope (this|that) helps|in summary|to summari[sz]e)\b" &&
+    echo "it closes with an offer or a summary; stop when the content stops"
+  # A list number is not a sentence; a sentence that opens with a code span or a
+  # number is, so a span stays as a word for the count.
+  # shellcheck disable=SC2016  # the backticks are markdown, matched literally
+  sentences=$(printf '%s\n' "$outside" | sed -E 's/`[^`]*`/X/g; s/(^|[[:space:]])[0-9]+[.)][[:space:]]+/\1/g' | tr '\n' ' ' | grep -oE '[.?][[:space:]]+[A-Z0-9]|[.?][[:space:]]*$' | grep -c .)
+  [ "$long" -eq 1 ] || [ "$sentences" -le 3 ] || echo "it runs $sentences sentences; $limit"
+  printf '%s' "$prose" | grep -qiE "$dash_re" && echo "it has a typographic dash"
+  grep -qiE "$tool_re|claude\.ai/code" "$body" && echo "it carries a tool footer, a session link or a trailer"
+  return 0
+}
