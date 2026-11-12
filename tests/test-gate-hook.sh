@@ -118,6 +118,9 @@ hook 0 'git push -u origin fix'
 hook 0 'gh release create v1 --notes-file n.md'
 hook 0 'housebroken file a/b --title t --body-file b.md'
 hook 0 'housebroken reply a/b 5 --body-file r.md'
+hook 0 'housebroken close a/b 5 --body-file n.md'
+hook 2 'gh pr close 5 -R a/b --comment done'
+grep -q "withdraw one with housebroken close" "$tmp/err" || fail "the refused close did not name the gate: $(cat "$tmp/err")"
 printf '{"tool_name": "Read", "tool_input": {"file_path": "x"}}' | bash "$script" || fail "a non-Bash call was refused"
 
 # your own repositories pass once their owner is listed; a fork does not make a forced push yours

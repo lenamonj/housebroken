@@ -9,7 +9,7 @@
 # updating a pull request or an issue, a write through gh api (a writing
 # method, fields without -X GET, or a GraphQL mutation), and a forced git
 # push or a branch delete. The same action through its gate (housebroken
-# file, issue, reply, push or hygiene) passes, because the gate runs gh
+# file, issue, reply, close, push or hygiene) passes, because the gate runs gh
 # inside its own script, where this hook does not look. Reads, releases and
 # inside its own script, where this hook does not look. Reads, releases and
 # plain pushes are not touched, and nor is any other gh command: this is a
@@ -160,7 +160,7 @@ why=""; push=""
 judge() {
   why=""; push=""
   if [[ $1 =~ $pr_re ]]; then
-    why="it writes to a pull request outside the gate; open one with housebroken file, answer one with housebroken reply"
+    why="it writes to a pull request outside the gate; open one with housebroken file, answer one with housebroken reply, withdraw one with housebroken close"
   elif [[ $1 =~ $issue_re ]]; then
     why="it writes to an issue outside the gate; open one with housebroken issue, answer one with housebroken reply"
   elif [[ $1 =~ $graphql_re ]]; then

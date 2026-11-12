@@ -338,7 +338,11 @@ report it in one line and do not proceed to the next step.
     only the branch stamp: when both heads are stamped and the patch-id is
     unchanged, the review of the head the fork holds carries over. When the maintainer is
     right, concede in one sentence and let them close it. Never nudge a
-    silent maintainer without the user's explicit word. After answering a
+    silent maintainer without the user's explicit word. Withdraw a pull
+    request only on the user's word, with
+    `housebroken close owner/repo N --body-file note.md`: one to three
+    sentences, the reason and where the work went, if it went anywhere.
+    After answering a
     review, record what the maintainer asked for with
     `housebroken notes owner/repo add "..."`.
     Write the reply the way one maintainer writes to another. Lead with the
@@ -361,7 +365,8 @@ report it in one line and do not proceed to the next step.
     `housebroken hygiene` deletes the fork branch of every merged or closed
     pull request, unless an open one still uses it, and lists forks with no
     pull request left; delete those when
-    the work is over. No planning file, agent directory, journal or build
+    the work is over. A close through `housebroken close` deletes its own
+    branch. No planning file, agent directory, journal or build
     output ever enters a diff.
 
 12. **Three per repository, one finding each.**
