@@ -252,3 +252,49 @@ tone_refusals() { # body-file long [sentence-limit text]
   grep -qiE "$tool_re|claude\.ai/code" "$body" && echo "it carries a tool footer, a session link or a trailer"
   return 0
 }
+
+# Asked of the ref itself, so the answer covers every repository in the fork
+# network and no stranger's branch of the same name fills the page. Whether the
+# repository is a fork comes back with it: the head of a closed pull request can
+# be a repository of our own, and those are never touched.
+# shellcheck disable=SC2016  # GraphQL variables, not the shell's
+ref_query='query($o: String!, $r: String!, $q: String!) {
+  repository(owner: $o, name: $r) {
+    isFork
+    ref(qualifiedName: $q) {
+      associatedPullRequests(states: OPEN, first: 20) { nodes { number repository { nameWithOwner } } }
+    }
+  }
+}'
+
+# Deletes one branch of a fork of ours once no open pull request uses it, and
+# says so; a repository that is not a fork, or a branch already gone, is left
+# without a word. Returns 1 when the ref could not be read or the delete failed.
+drop_fork_branch() { # user fork branch what dry
+  local me="$1" fork="$2" branch="$3" what="$4" dry="$5" ref isfork exists users
+  if ! ref=$(gh api graphql -f query="$ref_query" -f o="$me" -f r="$fork" -f q="refs/heads/$branch" \
+    --jq '.data.repository | [(.isFork | tostring), (if .ref then "yes" else "no" end),
+          ([.ref.associatedPullRequests.nodes[]? | "\(.repository.nameWithOwner)#\(.number)"] | join(" "))] | @tsv' 2>/dev/null); then
+    echo "fork-hygiene.sh: cannot read $me/$fork $branch; kept" >&2
+    return 1
+  fi
+  IFS=$'\t' read -r isfork exists users <<< "$ref"
+  [ "$isfork" = "true" ] || return 0
+  [ "$exists" = "yes" ] || return 0
+  # A closed pull request refiled from the same branch still needs it, and
+  # deleting the branch would close the open one.
+  if [ -n "$users" ]; then
+    echo "kept $me/$fork $branch: open pull request $users still uses it"
+    return 0
+  fi
+  if [ "$dry" = 1 ]; then
+    echo "would delete $me/$fork $branch ($what)"
+    return 0
+  fi
+  if gh api -X DELETE "repos/$me/$fork/git/refs/heads/$(uri_path "$branch")" >/dev/null 2>&1; then
+    echo "deleted $me/$fork $branch ($what)"
+  else
+    echo "FAILED $me/$fork $branch" >&2
+    return 1
+  fi
+}
