@@ -11,7 +11,6 @@
 # push or a branch delete. The same action through its gate (housebroken
 # file, issue, reply, close, push or hygiene) passes, because the gate runs gh
 # inside its own script, where this hook does not look. Reads, releases and
-# inside its own script, where this hook does not look. Reads, releases and
 # plain pushes are not touched, and nor is any other gh command: this is a
 # list of what a filing can go around the gates with, not a deny-all.
 #

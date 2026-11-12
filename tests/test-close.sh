@@ -103,6 +103,11 @@ closepr 2 9 $'```\nlog line\n```'
 grep -q "carries no note of its own" "$tmp/out" || fail "a note that is only a code block was taken: $(cat "$tmp/out")"
 closepr 2 9 ""
 grep -q "carries no note of its own" "$tmp/out" || fail "an empty note was taken"
+for bare in "." "---" "* *"; do
+  closepr 2 9 "$bare"
+  grep -q "carries no note of its own" "$tmp/out" || fail "a note with no words was taken: $bare"
+done
+grep -q "carries no note of its own" "$tmp/out" || fail "an empty note was taken"
 # a quoted line is the maintainer's words, not ours
 CLOSE_DRY=1 closepr 0 9 $'> thanks!\n\nThe fix landed upstream in #1.'
 
@@ -133,7 +138,15 @@ touch "$STUB_DIR/graphql.fail"
 closepr 1 9 "$note"
 grep -q "pr close 9" "$STUB_WRITES" || fail "the close did not go through before the branch read"
 grep -q "housebroken hygiene deletes it on its next run" "$tmp/out" || fail "the failed branch read was not followed by what to do: $(cat "$tmp/out")"
+grep -q "^close.sh: cannot read me/Hello-World fix-it; kept" "$tmp/out" || fail "the failed branch read was not named by the script that ran: $(cat "$tmp/out")"
 [ -f "$HOUSEBROKEN_HOME/replies/octocat-Hello-World.log" ] || fail "a close that went through was not logged"
+
+# a close whose notes line could not be written says so in its exit
+fresh
+mkdir -p "$HOUSEBROKEN_HOME"; : > "$HOUSEBROKEN_HOME/notes"
+closepr 1 9 "$note"
+grep -q "pr close 9" "$STUB_WRITES" || fail "the close did not go through before the notes line"
+tail -n 1 "$tmp/out" | grep -q "^closed octocat/Hello-World#9$" || fail "the last line is not the close: $(tail -n 1 "$tmp/out")"
 
 # a note that could not be posted records nothing
 fresh

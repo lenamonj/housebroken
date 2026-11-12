@@ -59,7 +59,7 @@ ref true yes
 out=$(hyg 2>&1)
 rm -f "$stub/graphql.fail"
 [ ! -f "$stub/deleted" ] || fail "a ref that could not be read was deleted"
-echo "$out" | grep -q "cannot read u/r fix-it; kept" || fail "an unreadable ref was not named: $out"
+echo "$out" | grep -q "^fork-hygiene.sh: cannot read u/r fix-it; kept" || fail "an unreadable ref was not named: $out"
 
 ref true yes
 out=$(hyg)

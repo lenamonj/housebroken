@@ -275,7 +275,7 @@ drop_fork_branch() { # user fork branch what dry
   if ! ref=$(gh api graphql -f query="$ref_query" -f o="$me" -f r="$fork" -f q="refs/heads/$branch" \
     --jq '.data.repository | [(.isFork | tostring), (if .ref then "yes" else "no" end),
           ([.ref.associatedPullRequests.nodes[]? | "\(.repository.nameWithOwner)#\(.number)"] | join(" "))] | @tsv' 2>/dev/null); then
-    echo "fork-hygiene.sh: cannot read $me/$fork $branch; kept" >&2
+    echo "$(basename "$0"): cannot read $me/$fork $branch; kept" >&2
     return 1
   fi
   IFS=$'\t' read -r isfork exists users <<< "$ref"

@@ -31,8 +31,8 @@
 #                     writes nothing
 #
 # Exits 0 when closed (or on a dry run), 2 on a refusal, a usage error or a
-# close that failed, 1 when the close went through but the fork branch could
-# not be deleted.
+# close that failed, 1 when the close went through but the notes line could
+# not be written or the fork branch could not be deleted.
 set -u
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
@@ -61,9 +61,9 @@ refused=""
 refuse() { refused="$refused
     $*"; }
 
-# The first line of our own words: not code, not a quote.
+# The first line of our own words: not code, not a quote, and with a letter in it.
 # shellcheck disable=SC2016  # the backticks are markdown, matched literally
-own=$(awk '/^(```|~~~)/ {f = !f; next} !f && !/^ *>/' "$body" | sed 's/`[^`]*`//g' | grep -m1 -v '^[[:space:]]*$')
+own=$(awk '/^(```|~~~)/ {f = !f; next} !f && !/^ *>/' "$body" | sed 's/`[^`]*`//g' | grep -m1 '[[:alpha:]]')
 [ -n "$own" ] || refuse "it carries no note of its own; say why it is withdrawn and where the work went"
 while IFS= read -r r; do refuse "$r"; done < <(tone_refusals "$body" 0 "a close note is one to three")
 
@@ -118,9 +118,8 @@ if ! gh pr close "$num" --repo "$repo"; then
   echo "FAILED: the note is on $repo#$num but it is still open; read it before trying again" >&2
   exit 2
 fi
-bash "$here/notes.sh" "$repo" add "we closed #$num: $(printf '%s' "$own" | clean_line | cut -c1-200)"
-
 rc=0
+bash "$here/notes.sh" "$repo" add "we closed #$num: $(printf '%s' "$own" | clean_line | cut -c1-200)" || rc=1
 if [ "$fork_owner" = "$user" ] && [ -n "$fork" ] && [ -n "$branch" ]; then
   if ! drop_fork_branch "$user" "$fork" "$branch" "CLOSED $repo#$num" 0; then
     echo "housebroken hygiene deletes it on its next run" >&2
