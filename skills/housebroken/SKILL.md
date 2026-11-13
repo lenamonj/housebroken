@@ -41,7 +41,7 @@ report it in one line and do not proceed to the next step.
    the development branch too (`--branch dev`) when one exists; a BAN on one
    branch stands whatever the other reads. BAN means stop: a project
    that does not want AI-written contributions never gets one, whatever the
-   patch is worth. DISCLOSE means a sentence asks the contributor to say AI
+   patch is worth. DISCLOSE means a sentence reads as asking the contributor to say AI
    was used: the body says so, in one truthful sentence and in the
    template's own words where it has them, and names the tool. DISCLOSE and
    MENTION are both holds, because a word list reads no grammar and a
