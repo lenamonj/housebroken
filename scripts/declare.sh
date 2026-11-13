@@ -28,15 +28,17 @@
 # declaration passes, 1 when it was just written or does not pass, 2 on a
 # usage error.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 
 case "${1:-}" in
   --help|-h) usage; exit 0 ;;
-  -*) echo "REFUSED: unknown option $1" >&2; exit 2 ;;
+  -*) refused declare-unknown-option "unknown option $1" >&2; exit 2 ;;
 esac
 clone="${1:-.}"
-head=$(git -C "$clone" rev-parse HEAD 2>/dev/null) || { echo "REFUSED: $clone is not a git clone" >&2; exit 2; }
+head=$(git -C "$clone" rev-parse HEAD 2>/dev/null) || { refused declare-not-a-clone "$clone is not a git clone" >&2; exit 2; }
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 decl="$home/declarations/$head.md"
 
@@ -84,7 +86,7 @@ $as
 EOF
 
 if [ -n "$bad" ]; then
-  echo "REFUSED: $decl does not pass:$bad"
+  refused declare-does-not-pass "$decl does not pass:$bad"
   exit 1
 fi
 echo "declare: $decl passes ($(printf '%s\n' "$nt" | grep -c .) not tested, $(printf '%s\n' "$as" | grep -c .) assumptions)"
