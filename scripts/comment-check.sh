@@ -29,6 +29,8 @@
 # * is one only when a space follows, so *out = 0; is code. Docstrings, comments
 # that share a line with code, and files of any other kind are not measured.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 # shellcheck source=scripts/common.sh
@@ -89,14 +91,14 @@ siblings_open_with_comment() {
 work=$(mktemp -d) || exit 2
 trap 'rm -rf "$work"' EXIT
 
-refused=0
+found=0
 measured=0
 report() {
   if [ -n "$asked" ]; then
     echo "CHECK: $* (asked for in $asked)"
   else
-    echo "REFUSED: $*"
-    refused=1
+    refused comment-check-comment-added "$*"
+    found=1
   fi
 }
 
@@ -162,7 +164,7 @@ while IFS= read -r f; do
   done < "$work/hits"
 done < <(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $3} NF == 2 {print $2}')
 
-if [ "$refused" -ne 0 ]; then
+if [ "$found" -ne 0 ]; then
   echo "comment-check: refused. A comment goes into someone else's code only when its maintainer asks for it."
   exit 1
 fi
