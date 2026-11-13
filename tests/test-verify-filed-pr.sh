@@ -57,6 +57,11 @@ echo "$out" | grep -q "^PR-VERIFY: OK" || { echo "FAIL $name: a settled green he
 [ "$(printf '%s\n' "$out" | grep -c .)" = "1" ] || { echo "FAIL $name: a clean verify printed more than one line: $out"; exit 1; }
 [ "$out" = "PR-VERIFY: OK o/r#1 head 23893ddea900; 1 file(s), match the stamp; body not compared (no filed copy); checks SUCCESS=1" ] ||
   { echo "FAIL $name: the one line does not carry head, files, body and checks: $out"; exit 1; }
+# the watch can take minutes and the report is held until it ends, so what it
+# is waiting on is said at once, apart from the result
+err=$(STUB_DIR="$stub" PATH="$stub:$PATH" bash "$script" o/r 1 2>&1 >/dev/null)
+[ "$err" = "verify-filed-pr.sh: watching the checks on o/r#1; the result prints when the watch ends" ] ||
+  { echo "FAIL $name: the wait is not announced on stderr: $err"; exit 1; }
 
 # The files and body on GitHub are compared to the stamp and the filed copy.
 vrun() { STUB_DIR="$stub" PATH="$stub:$PATH" bash "$script" o/r 1 "$@"; }

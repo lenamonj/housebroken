@@ -140,6 +140,8 @@ else
 fi
 
 echo ""
+# The report is held until the watch ends, which can be minutes away.
+echo "verify-filed-pr.sh: watching the checks on $repo#$pr; the result prints when the watch ends" >&2
 if [ "$settle" -eq 1 ]; then
   echo "-- checks (waits until every check has settled)"
   gh pr checks "$pr" --repo "$repo" --watch --interval 20 >/dev/null 2>&1 || true
