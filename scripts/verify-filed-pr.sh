@@ -10,6 +10,9 @@
 # running" and its mutation job failed unseen. Since 2026-11-11 the wait ends at
 # the first red check: a macOS job had failed eight minutes in and nothing was
 # said for 44 more, until the last job of the matrix finished.
+# When all of it holds, one line says so and names the head, the files, the body
+# and the checks. The report is printed only when something does not hold, when
+# the body differs from the filed copy, or when a read fails on the way.
 #
 # Usage:
 #   bash verify-filed-pr.sh [--settle] owner/repo PR_NUMBER [expected-head-sha]
@@ -59,6 +62,17 @@ fail=0
 unsettled=0
 note() { printf '%-26s %s\n' "$1" "$2"; }
 
+# The report is kept, not printed, until the verdict is known. Whatever ends the
+# script prints it, unless the verdict is a plain OK, which is one line.
+buf=$(mktemp) || { echo "verify-filed-pr.sh: mktemp failed" >&2; exit 1; }
+quiet=0
+oneline=""
+files_said=""
+body_said=""
+checks_said=""
+exec 3>&1 >"$buf"
+trap 'exec >&3 3>&-; if [ "$quiet" -eq 1 ]; then printf "%s\n" "$oneline"; else cat "$buf"; fi; rm -f "$buf"' EXIT
+
 # Fails with the read: every $(view ...) below tests that, because an exit inside
 # a command substitution only ends the substitution.
 view() {
@@ -82,7 +96,9 @@ fi
 
 echo ""
 echo "-- files in the PR (what a reviewer sees)"
-view files '.files[] | "   " + .path + "  +" + (.additions|tostring) + "/-" + (.deletions|tostring)' || exit 1
+rows=$(view files '.files[] | "   " + .path + "  +" + (.additions|tostring) + "/-" + (.deletions|tostring)') || exit 1
+printf '%s\n' "$rows"
+nfiles=$(printf '%s\n' "$rows" | grep -c .)
 
 # The intended files are the branch-check stamp's, and the intended body is the
 # copy file-pr.sh kept; GitHub's versions are compared to both.
@@ -95,12 +111,14 @@ if [ -n "$intended" ]; then
   filed=$(printf '%s\n' "$filed" | sort)
   if [ "$intended" = "$filed" ]; then
     note "files match the stamp" "yes"
+    files_said="match the stamp"
   else
     note "FILES DIFFER FROM STAMP" "$(diff <(printf '%s\n' "$intended") <(printf '%s\n' "$filed") | grep '^[<>]' | tr '\n' ' ')"
     fail=1
   fi
 elif [ -n "$want" ]; then
   note "files" "no branch-check stamp listing files for ${head:0:12}; not compared"
+  files_said="not compared (no stamp lists them)"
 else
   note "HEAD NOT INTENDED" "no branch-check stamp for ${head:0:12} and no sha passed, so nothing says this head was meant"
   fail=1
@@ -111,12 +129,14 @@ if [ -f "$kept" ]; then
   norm() { tr -d '\r' | sed -e 's/[[:space:]]*$//' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'; }
   if [ "$(printf '%s\n' "$body" | norm)" = "$(norm < "$kept")" ]; then
     note "body matches what was filed" "yes"
+    body_said="matches what was filed"
   else
     note "BODY DIFFERS" "from $kept; read the diff, a maintainer may have edited it"
     diff <(norm < "$kept") <(printf '%s\n' "$body" | norm) | head -20 | clean_lines | sed 's/^/    /'
   fi
 else
   note "body" "no filed copy for ${head:0:12}; not compared"
+  body_said="not compared (no filed copy)"
 fi
 
 echo ""
@@ -137,12 +157,14 @@ if [ -z "$rollup" ]; then
   # Straight after filing a fork's checks may not exist yet, and that is not green.
   if [ "$(gh api "repos/$repo/actions/workflows" --jq .total_count 2>/dev/null)" = "0" ]; then
     note "checks" "none, and the repository has no workflows"
+    checks_said="none, and the repository has no workflows"
   else
     note "CHECKS NOT STARTED" "nothing has reported on this head yet"
     unsettled=1
   fi
 else
   echo "$rollup" | awk '{print "   " $0}'
+  checks_said=$(printf '%s\n' "$rollup" | tr -d '\r' | awk 'NR > 1 { printf ", " } { printf "%s", $0 }')
   if [ "$red" -gt 0 ] && [ "$running" -gt 0 ]; then
     # Under --settle the watch was to wait for them, so it ended early.
     rest="--settle waits for the rest"
@@ -176,6 +198,11 @@ comments=$(view comments '.comments[] | .author.login + ": " + (.body | gsub("\n
 [ -z "$comments" ] || printf '%s\n' "$comments" | fence "these commenters" "   "
 
 echo ""
+# A body that differs is shown, so it left body_said empty and the report prints.
+if [ "$fail" -eq 0 ] && [ "$unsettled" -eq 0 ] && [ -n "$files_said" ] && [ -n "$body_said" ] && [ -n "$checks_said" ]; then
+  quiet=1
+  oneline="PR-VERIFY: OK $repo#$pr head ${head:0:12}; $nfiles file(s), $files_said; body $body_said; checks $checks_said"
+fi
 if [ "$fail" -ne 0 ]; then echo "PR-VERIFY: PROBLEMS ABOVE"
 elif [ "${waiting:-0}" -gt 0 ]; then echo "PR-VERIFY: NOT SETTLED ($waiting workflow run(s) wait for a maintainer to approve them; nothing settles until one does, so move on)"
 elif [ "$unsettled" -ne 0 ]; then echo "PR-VERIFY: NOT SETTLED (CI has not run on this head, or its runs could not be read)"
