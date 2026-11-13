@@ -44,6 +44,8 @@
 # Exits 0 when the stamp is written, 1 when the experiment does not show the
 # fix, 2 on a usage error or when the clone cannot be swapped safely.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 # shellcheck source=scripts/common.sh
@@ -55,25 +57,25 @@ keeps=(); forces=(); basefiles=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
-    --test) cmd="${2:-}"; [ -n "$cmd" ] || { echo "REFUSED: --test needs the command" >&2; exit 2; }; shift ;;
-    --none) none="${2:-}"; [ -n "$none" ] || { echo "REFUSED: --none needs the reason" >&2; exit 2; }; shift ;;
-    --base) base="${2:-}"; [ -n "$base" ] || { echo "REFUSED: --base needs a ref" >&2; exit 2; }; shift ;;
-    --keep) [ -n "${2:-}" ] || { echo "REFUSED: --keep needs a path" >&2; exit 2; }; keeps+=("$2"); shift ;;
-    --fix) [ -n "${2:-}" ] || { echo "REFUSED: --fix needs a path" >&2; exit 2; }; forces+=("$2"); shift ;;
+    --test) cmd="${2:-}"; [ -n "$cmd" ] || { refused proof-test-no-command "--test needs the command" >&2; exit 2; }; shift ;;
+    --none) none="${2:-}"; [ -n "$none" ] || { refused proof-none-no-reason "--none needs the reason" >&2; exit 2; }; shift ;;
+    --base) base="${2:-}"; [ -n "$base" ] || { refused proof-base-no-ref "--base needs a ref" >&2; exit 2; }; shift ;;
+    --keep) [ -n "${2:-}" ] || { refused proof-keep-no-path "--keep needs a path" >&2; exit 2; }; keeps+=("$2"); shift ;;
+    --fix) [ -n "${2:-}" ] || { refused proof-fix-no-path "--fix needs a path" >&2; exit 2; }; forces+=("$2"); shift ;;
     --base-file)
-      case "${2:-}" in ?*=?*) ;; *) echo "REFUSED: --base-file needs PATH=FILE" >&2; exit 2 ;; esac
-      [ -f "${2#*=}" ] || { echo "REFUSED: --base-file: ${2#*=} does not exist" >&2; exit 2; }
+      case "${2:-}" in ?*=?*) ;; *) refused proof-base-file-form "--base-file needs PATH=FILE" >&2; exit 2 ;; esac
+      [ -f "${2#*=}" ] || { refused proof-base-file-missing "--base-file: ${2#*=} does not exist" >&2; exit 2; }
       # Made absolute here: the swap runs from the top of the clone.
       basefiles+=("${2%%=*}=$(cd "$(dirname "${2#*=}")" && pwd)/$(basename "${2#*=}")"); shift ;;
-    -*) echo "REFUSED: unknown option $1" >&2; exit 2 ;;
+    -*) refused proof-unknown-option "unknown option $1" >&2; exit 2 ;;
     *) clone="$1" ;;
   esac
   shift
 done
-[ -n "$cmd" ] || [ -n "$none" ] || { echo "REFUSED: pass --test 'COMMAND', or --none 'REASON'" >&2; exit 2; }
-[ -z "$cmd" ] || [ -z "$none" ] || { echo "REFUSED: --test and --none are exclusive" >&2; exit 2; }
+[ -n "$cmd" ] || [ -n "$none" ] || { refused proof-no-test-or-none "pass --test 'COMMAND', or --none 'REASON'" >&2; exit 2; }
+[ -z "$cmd" ] || [ -z "$none" ] || { refused proof-test-and-none "--test and --none are exclusive" >&2; exit 2; }
 if ! top=$(git -C "$clone" rev-parse --show-toplevel 2>/dev/null) || ! cd "$top"; then
-  echo "REFUSED: $clone is not a git clone" >&2
+  refused proof-not-a-clone "$clone is not a git clone" >&2
   exit 2
 fi
 head=$(git rev-parse HEAD)
@@ -87,7 +89,7 @@ if [ -n "$none" ]; then
   exit 0
 fi
 
-[ -z "$(git status --porcelain)" ] || { echo "REFUSED: the working tree is dirty, so the arms would not be the commits; after a proof run that was killed, git checkout -- . puts the head back" >&2; exit 2; }
+[ -z "$(git status --porcelain)" ] || { refused proof-tree-dirty "the working tree is dirty, so the arms would not be the commits; after a proof run that was killed, git checkout -- . puts the head back" >&2; exit 2; }
 # This run is the answer now, whichever way it goes.
 rm -f "$stamp"
 [ -n "$base" ] || base=$(sed -n 's/^base-ref: //p' "$home/branch-checks/$head" 2>/dev/null | tr -d '\r')
@@ -96,8 +98,8 @@ if [ -z "$base" ]; then
     if git rev-parse --verify -q "$candidate" >/dev/null 2>&1; then base="$candidate"; break; fi
   done
 fi
-[ -n "$base" ] || { echo "REFUSED: no --base, no branch-check stamp for ${head:0:12} to read it from, and no upstream or origin main or master" >&2; exit 2; }
-mb=$(git merge-base "$base" HEAD 2>/dev/null) || { echo "REFUSED: $base and HEAD share no history" >&2; exit 2; }
+[ -n "$base" ] || { refused proof-no-base-resolved "no --base, no branch-check stamp for ${head:0:12} to read it from, and no upstream or origin main or master" >&2; exit 2; }
+mb=$(git merge-base "$base" HEAD 2>/dev/null) || { refused proof-no-shared-history "$base and HEAD share no history" >&2; exit 2; }
 
 listed() { local n="$1" k; shift; for k in "$@"; do [ "$n" = "$k" ] && return 0; done; return 1; }
 base_file_for() { local e; for e in ${basefiles[@]+"${basefiles[@]}"}; do case "$e" in "$1="*) printf '%s' "${e#*=}"; return 0 ;; esac; done; return 1; }
@@ -106,7 +108,7 @@ mode_in() { git ls-tree "$1" -- "$2" | cut -c1-6; }
 # the old path back; quotePath off, so a non-ASCII path is the path.
 changed=$(git -c core.quotePath=false diff --name-only --no-renames "$mb" HEAD)
 for p in ${keeps[@]+"${keeps[@]}"} ${forces[@]+"${forces[@]}"} ${basefiles[@]+"${basefiles[@]%%=*}"}; do
-  printf '%s\n' "$changed" | grep -qxF -- "$p" || { echo "REFUSED: $p is not a file this branch changes (paths are as git diff --name-only prints them)" >&2; exit 2; }
+  printf '%s\n' "$changed" | grep -qxF -- "$p" || { refused proof-path-not-changed "$p is not a file this branch changes (paths are as git diff --name-only prints them)" >&2; exit 2; }
 done
 fixes=(); kept=()
 while IFS= read -r f; do
@@ -118,7 +120,7 @@ while IFS= read -r f; do
   for t in HEAD "$mb"; do
     case "$(mode_in "$t" "$f")" in
       100644|100755|"") ;;
-      *) echo "REFUSED: $f is not a regular file in $t (a symlink, a submodule or a directory); the experiment swaps regular files only" >&2; exit 2 ;;
+      *) refused proof-not-a-regular-file "$f is not a regular file in $t (a symlink, a submodule or a directory); the experiment swaps regular files only" >&2; exit 2 ;;
     esac
   done
   fixes+=("$f")
@@ -126,7 +128,7 @@ done <<EOF
 $changed
 EOF
 if [ "${#fixes[@]}" -eq 0 ]; then
-  echo "REFUSED: every changed file is a test or kept (${kept[*]}); there is no fix to take away - --fix PATH takes one away although its path says test" >&2
+  refused proof-no-fix-to-remove "every changed file is a test or kept (${kept[*]}); there is no fix to take away - --fix PATH takes one away although its path says test" >&2
   exit 2
 fi
 echo "proof: taking away ${#fixes[@]} file(s): ${fixes[*]}${kept[0]:+; keeping ${#kept[@]} at the head: ${kept[*]}}"
@@ -163,10 +165,10 @@ restore() {
 trap restore EXIT
 for f in "${fixes[@]}"; do
   if bf=$(base_file_for "$f"); then
-    cat "$bf" > "$f" || { echo "REFUSED: could not put $bf at $f, so the base arm would not be the base" >&2; exit 2; }
+    cat "$bf" > "$f" || { refused proof-base-file-not-placed "could not put $bf at $f, so the base arm would not be the base" >&2; exit 2; }
   elif git cat-file -e "$mb:./$f" 2>/dev/null; then
     { mkdir -p "$(dirname "$f")" && git cat-file --filters "$mb:./$f" > "$f"; } ||
-      { echo "REFUSED: could not put the base's $f in place, so the base arm would not be the base" >&2; exit 2; }
+      { refused proof-base-arm-not-placed "could not put the base's $f in place, so the base arm would not be the base" >&2; exit 2; }
     [ "$(mode_in "$mb" "$f")" != 100755 ] || chmod +x "$f"
   else
     rm -f -- "$f"
@@ -179,13 +181,13 @@ restore
 trap - EXIT
 
 if [ "$(hashes)" != "$head_hashes" ]; then
-  echo "REFUSED: the head did not come back byte for byte; check the clone before anything else:" >&2
+  refused proof-head-not-restored "the head did not come back byte for byte; check the clone before anything else:" >&2
   diff <(printf '%s\n' "$head_hashes") <(hashes) | sed 's/^/    /' >&2
   exit 2
 fi
 dirt=$(git status --porcelain --untracked-files=no)
 if [ -n "$dirt" ]; then
-  echo "REFUSED: the test command changed tracked files; restore them with git checkout -- <path>, then make the command leave the tree alone or commit what it generates:" >&2
+  refused proof-test-changed-tree "the test command changed tracked files; restore them with git checkout -- <path>, then make the command leave the tree alone or commit what it generates:" >&2
   printf '%s\n' "$dirt" | sed 's/^/    /' >&2
   exit 2
 fi
