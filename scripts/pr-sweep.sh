@@ -6,8 +6,9 @@
 # the newest comment or review is not ours (bots excluded), a review requests
 # changes, CI has a failing check, the PR is CONFLICTING (needs a rebase), or
 # GitHub made no CI run for the head in a repository that runs them, which only
-# a new push or a close and reopen starts. A check list that could not be read
-# is printed as ci-unread, never as clean. Read-only; acting is the operator's.
+# a new push or a close and reopen starts, or a stale bot's warning stands,
+# printed with the day it closes. A check list that could not be read is printed
+# as ci-unread, never as clean. Read-only; acting is the operator's.
 #
 # A merge or a close drops a PR out of the open list without a word, so each
 # run writes its open set to a state file and the next run reports what left
@@ -164,16 +165,14 @@ while IFS=$'\t' read -r repo num updated title; do
   [ -n "$repo" ] || continue
   n=$((n + 1))
   title="$(printf '%s' "$title" | clean_line)"
-  if ! j="$(gh pr view "$num" --repo "$repo" --json mergeable,reviewDecision,statusCheckRollup,headRefOid,comments,reviews,latestReviews)"; then
+  if ! j="$(gh pr view "$num" --repo "$repo" --json mergeable,reviewDecision,statusCheckRollup,headRefOid,labels,comments,reviews,latestReviews)"; then
     printf '%-40s #%-5s (gh pr view failed)\n' "$repo" "$num" >&2
     unreadable=$((unreadable + 1))
     continue
   fi
-  # Whole names only: gh gives no bot flag here, and a substring also matches
-  # the humans talbot and devinrsmith.
-  last_actor="$(printf '%s' "$j" | jq -r '
+  last_actor="$(printf '%s' "$j" | jq -r "$bot_login_jq"'
     [ (.comments[]? | {a: .author.login, t: .createdAt, r: .authorAssociation}), (.reviews[]? | {a: .author.login, t: .submittedAt, r: .authorAssociation}) ]
-    | map(select(.a != null and (.a | test("(\\[bot\\]|^app/.*|^github-actions|^dependabot|^codecov(-commenter)?|^coveralls|^claassistant|^cla-assistant|^coderabbitai|^devin-ai-integration|^vercel|^netlify|^sonarcloud|^copilot|^asf-ci|^apache-ci)$"; "i") | not)))
+    | map(select(.a != null and (.a | is_bot_login | not)))
     | sort_by(.t) | last | "\(.a // "-") \(.t // "-") \(.r // "-")"')"
   read -r la_user la_time la_role <<<"$last_actor"
   ci="$(printf '%s' "$j" | jq -r "$ci_jq"'[.statusCheckRollup[]?] | if length == 0 then "none" elif any(.[]; ci == "red" and check_state != "ACTION_REQUIRED") then "FAILING" elif any(.[]; check_state == "ACTION_REQUIRED") then "needs-approval" elif any(.[]; ci == "running") then "pending" else "green" end')"
@@ -193,9 +192,15 @@ while IFS=$'\t' read -r repo num updated title; do
   [ "$ci" = "no-ci-on-head" ] && why="$why no-ci-on-head"
   [ "$ci" = "ci-unread" ] && why="$why ci-unread"
   [ "$mergeable" = "CONFLICTING" ] && why="$why conflicting"
+  # A stale bot's warning is the one bot comment with a deadline.
+  stale="$(printf '%s' "$j" | jq -r "$stale_jq"'stale_mark' | tr -d '\r')"
+  [ -n "$stale" ] && why="$why $stale"
   if [ -n "$why" ]; then
     act=$((act + 1))
     printf 'ACT  %-38s #%-5s %s  [%s] %s\n' "$repo" "$num" "${title:0:60}" "${why# }" "https://github.com/$repo/pull/$num"
+    # Any comment resets the bot's timer, so what is checked first is whether
+    # the pull request still says what is true.
+    [ -n "$stale" ] && echo "     before any bump: re-derive the body's claims on the default branch, read ci on the head, and check whether upstream changed the touched files"
   elif [ "$ALL" = 1 ]; then
     printf 'ok   %-38s #%-5s %s  ci=%s mergeable=%s updated=%s\n' "$repo" "$num" "${title:0:60}" "$ci" "$mergeable" "${updated:0:10}"
   fi

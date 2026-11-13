@@ -228,6 +228,42 @@ empty_rollup_reading() { # repo sha
   echo none
 }
 
+# Whether a login in `gh pr view` output is a bot's, for jq. Whole names only:
+# gh gives no bot flag there, and a substring also matches the humans talbot and
+# devinrsmith.
+# shellcheck disable=SC2016,SC2034  # jq text, for the scripts that source this
+bot_login_jq='def is_bot_login: test("(\\[bot\\]|^app/.*|^github-actions|^dependabot|^codecov(-commenter)?|^coveralls|^claassistant|^cla-assistant|^coderabbitai|^devin-ai-integration|^vercel|^netlify|^sonarcloud|^copilot|^asf-ci|^apache-ci)$"; "i");'
+
+# Whether a stale bot's warning stands on a pull request, for jq, over what
+# `gh pr view --json labels,comments,reviews` returns. The warning is the newest
+# bot comment that names both stale and a close. Any comment or review after it
+# by someone who is not a bot resets the bot's timer, so nothing is marked then,
+# even while the label lingers until the bot runs again.
+#   stale:closes-YYYY-MM-DD  the warning stands and states its days
+#   stale:warned-YYYY-MM-DD  the warning stands and states none: its own date
+#   stale:label              no warning, and a label with the word stale
+#   (nothing)                otherwise
+# The days are read after the close ("closed in 7 days") before they are read
+# ahead of it ("within 14 days, it will be closed"), so "open 60 days" in the
+# sentence before is not taken for them.
+# shellcheck disable=SC2016,SC2034  # jq text, for the scripts that source this
+stale_jq="$bot_login_jq"'
+def stale_mark:
+  ([.comments[]? | select((.author.login // "") | is_bot_login)
+    | select(((.body // "") | test("stale"; "i")) and ((.body // "") | test("clos"; "i")))] | sort_by(.createdAt) | last) as $w
+  | ([(.comments[]? | select((.author.login // "") | is_bot_login | not) | .createdAt),
+      (.reviews[]? | select((.author.login // "") | is_bot_login | not) | .submittedAt)] | map(select(. != null)) | max) as $h
+  | if $w != null then
+      if $h != null and $h > $w.createdAt then ""
+      else
+        (([$w.body | match("clos[a-z]* [^.]{0,40}?([0-9]+) days?"; "i").captures[0].string] | first)
+          // ([$w.body | match("([0-9]+) days?[^.]{0,60}clos"; "i").captures[0].string] | first)) as $d
+        | if $d != null then "stale:closes-" + ((($w.createdAt | fromdateiso8601) + ($d | tonumber) * 86400) | strftime("%Y-%m-%d"))
+          else "stale:warned-" + $w.createdAt[0:10] end
+      end
+    elif any(.labels[]?; (.name // "") | test("(^|[^a-z])stale([^a-z]|$)"; "i")) then "stale:label"
+    else "" end;'
+
 # Accounts of type User that behave as bots, by exact name: a prefix also
 # matches vercelli. GitHub's own Bot flag is read first wherever it is given.
 is_bot() { case "$1" in *"[bot]"|Copilot|codecov-commenter|coveralls|CLAassistant|oracle-contributor-agreement|github-actions|netlify|vercel) return 0 ;; *) return 1 ;; esac; }

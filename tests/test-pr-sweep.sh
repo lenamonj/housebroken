@@ -46,8 +46,8 @@ sweep() { PATH="$tmp/bin:$PATH" HOUSEBROKEN_USER=me bash "$script" --state "$sta
 printf 'o/r\t1\t2026-11-01T10:00:00Z\tOpen one\n' > "$tmp/open"
 printf 'MERGED\n' > "$tmp/state2"
 printf 'there\n' > "$tmp/branch"
-pr() { # rollup comments
-  jq -n --argjson r "${1:-[]}" --argjson c "${2:-[]}" '{mergeable: "MERGEABLE", reviewDecision: "", headRefOid: "abc123", statusCheckRollup: $r, comments: $c, reviews: [], latestReviews: []}' > "$tmp/pr.json"
+pr() { # rollup comments labels
+  jq -n --argjson r "${1:-[]}" --argjson c "${2:-[]}" --argjson l "${3:-[]}" '{mergeable: "MERGEABLE", reviewDecision: "", headRefOid: "abc123", statusCheckRollup: $r, comments: $c, labels: $l, reviews: [], latestReviews: []}' > "$tmp/pr.json"
 }
 pr '[{"conclusion":"SUCCESS"}]'
 # What the Actions API says behind an empty check list: runs on the head as
@@ -144,6 +144,38 @@ runs "garbage" 5; ball '^ACT .*\[ci-unread\]' '[]' '[]'
 rm -f "$tmp/runs.head"; ball '^ACT .*\[ci-unread\]' '[]' '[]'
 # a check list that is not empty never asks
 ball '^ok .* ci=green ' '[{"conclusion":"SUCCESS"}]' '[]'
+runs "0 0" 0 0
+
+# a stale bot's warning that still stands is ours, with the day it closes
+green='[{"conclusion":"SUCCESS"}]'
+c() { jq -cn --arg a "$1" --arg t "$2" --arg b "$3" '{author: {login: $a}, authorAssociation: "NONE", createdAt: $t, body: $b}'; }
+labelled() { # comments labels: the row sweep prints for them
+  pr "$green" "$1" "$2"
+  out=$(sweep --all)
+}
+warn="$(c github-actions 2026-11-06T05:02:52Z 'This PR is stale because it has been open 60 days with no activity. Remove stale label or comment or this will be closed in 7 days.')"
+ball '^ACT .*\[stale:closes-2026-11-13\]' "$green" "[$warn]"
+echo "$out" | grep -qx '     before any bump: re-derive the body.s claims on the default branch, read ci on the head, and check whether upstream changed the touched files' || fail "no pre-bump line under a stale row: $out"
+# an answer resets the timer, even while the label lingers
+labelled "[$warn,$(c me 2026-11-06T09:05:36Z 'A correction.')]" '[{"name":"Stale"}]'
+echo "$out" | grep -q 'stale:' && fail "an answered warning was still flagged: $out"
+echo "$out" | grep -q 'before any bump' && fail "the pre-bump line printed with no stale row: $out"
+# the days may come before the close, and may not be stated at all
+ball 'stale:closes-2026-11-20' "$green" "[$(c 'stale[bot]' 2026-11-06T05:00:00Z 'Marked as stale. If no further activity occurs within 14 days, it will be closed.')]"
+ball 'stale:warned-2026-11-06' "$green" "[$(c github-actions 2026-11-06T05:00:00Z 'This is stale and will be closed if nothing happens.')]"
+# the newest warning is the one that counts
+ball 'stale:closes-2026-11-27' "$green" "[$warn,$(c me 2026-11-06T09:05:36Z 'A correction.'),$(c github-actions 2026-11-20T05:00:00Z 'This PR is stale. It will be closed in 7 days.')]"
+# a label alone is flagged, by the word and not by its letters
+labelled '[]' '[{"name":"lifecycle/stale"}]'
+echo "$out" | grep -q '^ACT .*\[stale:label\]' || fail "a stale label alone was not flagged: $out"
+labelled '[]' '[{"name":"stalemate"}]'
+echo "$out" | grep -q 'stale:' && fail "a label that only contains the letters was flagged: $out"
+# a bot that says something else, and a person who says the word
+ball '^ok ' "$green" "[$(c github-actions 2026-11-06T05:00:00Z 'Coverage is unchanged.')]"
+labelled "[$(c talbot 2026-11-06T05:00:00Z 'This looks stale, closing in 7 days.')]" '[]'
+echo "$out" | grep -q 'stale:' && fail "a person's comment was read as the bot's warning: $out"
+# both marks stand side by side
+runs "0 0" 5; ball '^ACT .*\[no-ci-on-head stale:closes-2026-11-13\]' '[]' "[$warn]"
 runs "0 0" 0 0
 
 # a pull request that cannot be read is not a clean one

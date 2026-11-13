@@ -178,4 +178,16 @@ rm -f "$tmp/runs.head"
 out=$(run --since 2026-11-01T09:00:00Z)
 echo "$out" | grep -q "^o/r#1: ci-unread" || fail "an unread run list read as quiet: $out"
 
+# a stale bot's warning that still stands is flagged with the day it closes, and
+# an answer after it clears the flag while the label lingers
+warn='{"author":{"login":"github-actions"},"createdAt":"2026-11-06T05:02:52Z","body":"This PR is stale because it has been open 60 days with no activity. Remove stale label or comment or this will be closed in 7 days."}'
+stale() { # comments
+  jq -n --argjson c "$1" '{mergeable: "MERGEABLE", reviewDecision: "", headRefOid: "abc123", statusCheckRollup: [{conclusion: "SUCCESS"}], labels: [{name: "Stale"}], comments: $c, reviews: []}' > "$tmp/pr.json"
+  out=$(run --since 2026-11-01T09:00:00Z)
+}
+stale "[$warn]"
+echo "$out" | grep -q "^o/r#1: stale:closes-2026-11-13" || fail "a standing stale warning was not flagged: $out"
+stale "[$warn,{\"author\":{\"login\":\"me\"},\"createdAt\":\"2026-11-06T09:05:36Z\",\"body\":\"A correction.\"}]"
+echo "$out" | grep -q "^0 of 1 open pull requests flagged" || fail "an answered stale warning was still flagged: $out"
+
 echo "PASS $name"
