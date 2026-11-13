@@ -21,6 +21,10 @@ mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/bin/bash
 serve() { [ -f "$STUB_DIR/$1.fail" ] && exit 1; cat "$STUB_DIR/$1.json"; }
+# The Actions reads are served as the API's JSON and put through the caller's
+# own --jq, so the program that classifies the runs is the one under test.
+expr="."; prev=""
+for a in "$@"; do [ "$prev" = "--jq" ] && expr="$a"; prev="$a"; done
 case "$*" in
   *notifications*) cat "$STUB_DIR/feed.json" ;;
   "pr view 1 --repo o/r --json state"*) echo OPEN ;;
@@ -30,9 +34,9 @@ case "$*" in
   *"pulls/1/reviews"*) serve rv ;;
   "search prs"*) echo "o/r 1 false" ;;
   *search/issues*) echo 1 ;;
-  "api repos/o/r/actions/runs?head_sha=abc123"*) cat "$STUB_DIR/runs.head" ;;
-  "api repos/o/r/actions/runs?event=pull_request_target"*) cat "$STUB_DIR/runs.target" ;;
-  "api repos/o/r/actions/runs?event=pull_request&"*) cat "$STUB_DIR/runs.pr" ;;
+  "api repos/o/r/actions/runs?head_sha=abc123&per_page=100 "*) jq -r "$expr" "$STUB_DIR/runs.head.json" ;;
+  "api repos/o/r/actions/runs?event=pull_request_target&per_page=1 "*) jq -r "$expr" "$STUB_DIR/runs.target.json" ;;
+  "api repos/o/r/actions/runs?event=pull_request&per_page=1 "*) jq -r "$expr" "$STUB_DIR/runs.pr.json" ;;
   *) exit 1 ;;
 esac
 STUB
@@ -161,22 +165,25 @@ case "$out" in *"$esc"*) fail "an escape sequence in a check name reached the ou
 # an empty check list is read, not passed over: a head no run was created for,
 # runs awaiting approval and a read that failed each say what they are, and a
 # repository whose pull requests run nothing stays quiet
-census() { # runs-on-head pull_request-runs [pull_request_target-runs]
-  printf '%s\n' "$1" > "$tmp/runs.head"; printf '%s\n' "$2" > "$tmp/runs.pr"; printf '%s\n' "${3:-0}" > "$tmp/runs.target"
+census() { # runs-on-head as status/conclusion words, pull_request-runs [pull_request_target-runs]
+  jq -n --arg r "$1" '($r | split(" ") | map(select(length > 0) | split("/") | {status: .[0], conclusion: (if (.[1] // "") == "" then null else .[1] end)})) as $w
+    | {total_count: ($w | length), workflow_runs: $w}' > "$tmp/runs.head.json"
+  jq -n --argjson n "$2" '{total_count: $n}' > "$tmp/runs.pr.json"
+  jq -n --argjson n "${3:-0}" '{total_count: $n}' > "$tmp/runs.target.json"
   out=$(run --since 2026-11-01T09:00:00Z)
 }
 jq -n '{mergeable: "MERGEABLE", reviewDecision: "", headRefOid: "abc123", statusCheckRollup: []}' > "$tmp/pr.json"
-census "0 0 0 0" 5
+census "" 5
 echo "$out" | grep -q "^o/r#1: no-ci-on-head" || fail "a head with no run was not flagged: $out"
-census "0 0 0 0" 0 0
+census "" 0 0
 echo "$out" | grep -q "^0 of 1 open pull requests flagged" || fail "a repository with no pull request CI was flagged: $out"
-census "3 3 0 0" 5
+census "completed/action_required completed/action_required completed/action_required" 5
 echo "$out" | grep -q "^o/r#1: needs-run-approval" || fail "runs awaiting approval behind an empty check list were not flagged: $out"
-census "1 0 1 0" 5
+census "in_progress/" 5
 echo "$out" | grep -q "^0 of 1 open pull requests flagged" || fail "runs that have not reported yet were flagged: $out"
-census "2 0 0 2" 5
+census "completed/failure completed/failure" 5
 echo "$out" | grep -q "^o/r#1: ci-never-started" || fail "runs that finished badly without a job were not flagged: $out"
-rm -f "$tmp/runs.head"
+rm -f "$tmp/runs.head.json"
 out=$(run --since 2026-11-01T09:00:00Z)
 echo "$out" | grep -q "^o/r#1: ci-unread" || fail "an unread run list read as quiet: $out"
 
