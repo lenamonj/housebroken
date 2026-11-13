@@ -166,14 +166,16 @@ census() { # runs-on-head pull_request-runs [pull_request_target-runs]
   out=$(run --since 2026-11-01T09:00:00Z)
 }
 jq -n '{mergeable: "MERGEABLE", reviewDecision: "", headRefOid: "abc123", statusCheckRollup: []}' > "$tmp/pr.json"
-census "0 0" 5
+census "0 0 0 0" 5
 echo "$out" | grep -q "^o/r#1: no-ci-on-head" || fail "a head with no run was not flagged: $out"
-census "0 0" 0 0
+census "0 0 0 0" 0 0
 echo "$out" | grep -q "^0 of 1 open pull requests flagged" || fail "a repository with no pull request CI was flagged: $out"
-census "3 3" 5
+census "3 3 0 0" 5
 echo "$out" | grep -q "^o/r#1: needs-run-approval" || fail "runs awaiting approval behind an empty check list were not flagged: $out"
-census "1 0" 5
+census "1 0 1 0" 5
 echo "$out" | grep -q "^0 of 1 open pull requests flagged" || fail "runs that have not reported yet were flagged: $out"
+census "2 0 0 2" 5
+echo "$out" | grep -q "^o/r#1: ci-never-started" || fail "runs that finished badly without a job were not flagged: $out"
 rm -f "$tmp/runs.head"
 out=$(run --since 2026-11-01T09:00:00Z)
 echo "$out" | grep -q "^o/r#1: ci-unread" || fail "an unread run list read as quiet: $out"

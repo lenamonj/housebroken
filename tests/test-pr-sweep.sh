@@ -51,10 +51,11 @@ pr() { # rollup comments labels
 }
 pr '[{"conclusion":"SUCCESS"}]'
 # What the Actions API says behind an empty check list: runs on the head as
-# "TOTAL WAITING", then how many runs the repository has for each pull request
-# event. A missing file is a read that failed.
+# "TOTAL WAITING RUNNING DEAD" (all of them, those awaiting approval, those not
+# finished, those that finished badly), then how many runs the repository has
+# for each pull request event. A missing file is a read that failed.
 runs() { printf '%s\n' "$1" > "$tmp/runs.head"; printf '%s\n' "$2" > "$tmp/runs.pr"; printf '%s\n' "${3:-0}" > "$tmp/runs.target"; }
-runs "0 0" 0 0
+runs "0 0 0 0" 0 0
 
 out=$(sweep --all); rc=$?
 [ "$rc" -eq 0 ] || fail "--all exited $rc: $out"
@@ -133,18 +134,26 @@ ball 'ci=green' '[{"conclusion":"SUCCESS"},{"conclusion":"SKIPPED"},{"state":"SU
 # an empty check list is read: a head no run was created for is ours to act on,
 # a run awaiting approval is the maintainer's click, and a repository whose pull
 # requests run nothing is quiet
-runs "0 0" 5;   ball '^ACT .*\[no-ci-on-head\]' '[]' '[]'
-runs "0 0" 0 3; ball '^ACT .*\[no-ci-on-head\]' '[]' '[]'
-runs "0 0" 0 0; ball '^ok .* ci=none ' '[]' '[]'
-runs "2 2" 5;   ball '^ok .* ci=needs-approval ' '[]' '[]'
-runs "1 0" 5;   ball '^ok .* ci=pending ' '[]' '[]'
-# a read that failed, or an answer that is not a count, is not quiet
-runs "0 0" 5; rm -f "$tmp/runs.pr"; ball '^ACT .*\[ci-unread\]' '[]' '[]'
+runs "0 0 0 0" 5;   ball '^ACT .*\[no-ci-on-head\]' '[]' '[]'
+runs "0 0 0 0" 0 3; ball '^ACT .*\[no-ci-on-head\]' '[]' '[]'
+runs "0 0 0 0" 0 0; ball '^ok .* ci=none ' '[]' '[]'
+runs "2 2 0 0" 5;   ball '^ok .* ci=needs-approval ' '[]' '[]'
+runs "1 0 1 0" 5;   ball '^ok .* ci=pending ' '[]' '[]'
+# a run that finished badly without reporting a check never started a job: an
+# approval nobody gave before it lapsed, or a failure at startup. It is not a
+# pending one, and it outranks a run that is still going.
+runs "1 0 0 1" 5;   ball '^ACT .*\[ci-never-started\]' '[]' '[]'
+runs "3 0 1 2" 5;   ball '^ACT .*\[ci-never-started\]' '[]' '[]'
+# a run that finished well and reported nothing is nothing to act on
+runs "1 0 0 0" 5;   ball '^ok .* ci=none ' '[]' '[]'
+# a read that failed, or an answer that is not four counts, is not quiet
+runs "0 0 0 0" 5; rm -f "$tmp/runs.pr"; ball '^ACT .*\[ci-unread\]' '[]' '[]'
 runs "garbage" 5; ball '^ACT .*\[ci-unread\]' '[]' '[]'
+runs "0 0" 5; ball '^ACT .*\[ci-unread\]' '[]' '[]'
 rm -f "$tmp/runs.head"; ball '^ACT .*\[ci-unread\]' '[]' '[]'
 # a check list that is not empty never asks
 ball '^ok .* ci=green ' '[{"conclusion":"SUCCESS"}]' '[]'
-runs "0 0" 0 0
+runs "0 0 0 0" 0 0
 
 # a stale bot's warning that still stands is ours, with the day it closes
 green='[{"conclusion":"SUCCESS"}]'
@@ -175,8 +184,8 @@ ball '^ok ' "$green" "[$(c github-actions 2026-11-06T05:00:00Z 'Coverage is unch
 labelled "[$(c talbot 2026-11-06T05:00:00Z 'This looks stale, closing in 7 days.')]" '[]'
 echo "$out" | grep -q 'stale:' && fail "a person's comment was read as the bot's warning: $out"
 # both marks stand side by side
-runs "0 0" 5; ball '^ACT .*\[no-ci-on-head stale:closes-2026-11-13\]' '[]' "[$warn]"
-runs "0 0" 0 0
+runs "0 0 0 0" 5; ball '^ACT .*\[no-ci-on-head stale:closes-2026-11-13\]' '[]' "[$warn]"
+runs "0 0 0 0" 0 0
 
 # a pull request that cannot be read is not a clean one
 touch "$tmp/view1.fail"

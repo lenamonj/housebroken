@@ -205,21 +205,32 @@ def ci: check_state as $s
 # to approve, so only a new push or a close and reopen starts CI there. A pull
 # request filed seconds ago can read no-ci-on-head until its runs exist.
 #   needs-run-approval  a run on the head waits for a maintainer's approval
-#   pending             runs exist on the head and none has reported a check
+#   ci-never-started    a run on the head finished badly and no check was ever
+#                       reported, so no job started: seen where an approval was
+#                       not given before the run lapsed. Like no-ci-on-head,
+#                       only a new push or a close and reopen runs CI
+#   pending             a run on the head has not finished
 #   no-ci-on-head       no run on the head, in a repository that runs workflows
 #                       on pull requests
-#   none                no run on the head, in a repository that runs none
+#   none                nothing to report: the runs on the head finished well,
+#                       or there is none in a repository that runs none
 #   ci-unread           a read failed, which is not the same as none
+# A finished run reads well only as success, neutral or skipped: a conclusion
+# nobody listed is not a pass.
 empty_rollup_reading() { # repo sha
-  local total waiting n ev
+  local total waiting running dead n ev
   [ -n "$2" ] || { echo ci-unread; return 0; }
   # shellcheck disable=SC2016  # jq text
-  read -r total waiting <<< "$(gh api "repos/$1/actions/runs?head_sha=$2&per_page=100" \
-    --jq '"\(.total_count) \([.workflow_runs[] | select(.conclusion == "action_required")] | length)"' 2>/dev/null | tr -d '\r')"
-  case "$total" in ''|*[!0-9]*) echo ci-unread; return 0 ;; esac
-  case "$waiting" in ''|*[!0-9]*) echo ci-unread; return 0 ;; esac
+  read -r total waiting running dead <<< "$(gh api "repos/$1/actions/runs?head_sha=$2&per_page=100" \
+    --jq '[.workflow_runs[] | if .conclusion == "action_required" then "waiting" elif .status != "completed" then "running" elif ((.conclusion // "") as $c | ["success", "neutral", "skipped"] | index($c)) then "fine" else "dead" end] as $r
+      | "\(.total_count) \($r | map(select(. == "waiting")) | length) \($r | map(select(. == "running")) | length) \($r | map(select(. == "dead")) | length)"' 2>/dev/null | tr -d '\r')"
+  for n in "$total" "$waiting" "$running" "$dead"; do
+    case "$n" in ''|*[!0-9]*) echo ci-unread; return 0 ;; esac
+  done
   if [ "$waiting" -gt 0 ]; then echo needs-run-approval; return 0; fi
-  if [ "$total" -gt 0 ]; then echo pending; return 0; fi
+  if [ "$dead" -gt 0 ]; then echo ci-never-started; return 0; fi
+  if [ "$running" -gt 0 ]; then echo pending; return 0; fi
+  if [ "$total" -gt 0 ]; then echo none; return 0; fi
   for ev in pull_request pull_request_target; do
     n="$(gh api "repos/$1/actions/runs?event=$ev&per_page=1" --jq .total_count 2>/dev/null | tr -d '\r')"
     case "$n" in ''|*[!0-9]*) echo ci-unread; return 0 ;; esac

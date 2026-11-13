@@ -5,10 +5,11 @@
 # depends on remembering which PR was touched. Ball in our court means any of:
 # the newest comment or review is not ours (bots excluded), a review requests
 # changes, CI has a failing check, the PR is CONFLICTING (needs a rebase), or
-# GitHub made no CI run for the head in a repository that runs them, which only
-# a new push or a close and reopen starts, or a stale bot's warning stands,
-# printed with the day it closes. A check list that could not be read is printed
-# as ci-unread, never as clean. Read-only; acting is the operator's.
+# no CI job ever started on the head in a repository that runs them (GitHub made
+# no run, or the run it made finished without one), which only a new push or a
+# close and reopen changes, or a stale bot's warning stands, printed with the
+# day it closes. A check list that could not be read is printed as ci-unread,
+# never as clean. Read-only; acting is the operator's.
 #
 # A merge or a close drops a PR out of the open list without a word, so each
 # run writes its open set to a state file and the next run reports what left
@@ -190,6 +191,7 @@ while IFS=$'\t' read -r repo num updated title; do
   [ "$decision" = "CHANGES_REQUESTED" ] && why="$why changes-requested"
   [ "$ci" = "FAILING" ] && why="$why ci-failing"
   [ "$ci" = "no-ci-on-head" ] && why="$why no-ci-on-head"
+  [ "$ci" = "ci-never-started" ] && why="$why ci-never-started"
   [ "$ci" = "ci-unread" ] && why="$why ci-unread"
   [ "$mergeable" = "CONFLICTING" ] && why="$why conflicting"
   # A stale bot's warning is the one bot comment with a deadline.
