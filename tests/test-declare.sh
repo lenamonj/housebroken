@@ -40,8 +40,7 @@ done
 write "$good_nt" "- <assumption> | if wrong: <what breaks, for whom> | checked by: <command and result, or unchecked>"
 out=$(bash "$script" "$root/repo") && fail "the template's assumption line passed"
 printf '%s' "$out" | grep -q "still the template line" || fail "the template line was not named: $out"
-printf '%s
-' "$out" | head -n 1 | grep -q ' does not pass: \[declare-does-not-pass\]$' || fail "the name does not end the line that says REFUSED: $out"
+printf '%s\n' "$out" | head -n 1 | grep -q ' does not pass: \[declare-does-not-pass\]$' || fail "the name does not end the line that says REFUSED: $out"
 write "$good_nt" "- callers pass their comparer"
 out=$(bash "$script" "$root/repo") && fail "an assumption without if wrong and checked by passed"
 printf '%s' "$out" | grep -q "lacks '| if wrong" || fail "the bare assumption was not named: $out"

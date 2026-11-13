@@ -44,8 +44,7 @@ bash "$scripts/push.sh" --help >/dev/null || fail "--help failed"
 first() { # script name-expected args...
   local s="$1" want="$2" got; shift 2
   got=$(bash "$scripts/$s.sh" "$@" 2>&1)
-  printf '%s
-' "$got" | grep -q "^REFUSED: .* \[$want\]\$" || fail "$s.sh: its first refusal is not named $want: $got"
+  printf '%s\n' "$got" | grep -q "^REFUSED: .* \[$want\]\$" || fail "$s.sh: its first refusal is not named $want: $got"
 }
 first branch-check branch-check-base-no-ref . --base
 first claim-check claim-check-no-file-named

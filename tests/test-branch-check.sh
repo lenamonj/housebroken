@@ -162,8 +162,7 @@ fires "adds comments to code that nobody asked for" || { echo "FAIL $name: added
 out=$(bash "$script" "$repo" --base origin/main 2>/dev/null)
 echo "$out" | grep -qx 'REFUSED: the branch adds comments to code that nobody asked for \[branch-check-comments-added\]' || { echo "FAIL $name: the comment refusal is not on stdout under its name: $out"; exit 1; }
 echo "$out" | grep -q '^    src/e.test.ts:1 adds a comment: .* \[comment-check-comment-added\]$' || { echo "FAIL $name: the relayed line lost the name of its check: $out"; exit 1; }
-[ "$(tail -n 2 "$HOUSEBROKEN_HOME/refusals.tsv" | cut -f2 | tr '
-' ' ')" = "comment-check-comment-added branch-check-comments-added " ] || { echo "FAIL $name: the log does not hold both names: $(tail -n 2 "$HOUSEBROKEN_HOME/refusals.tsv")"; exit 1; }
+[ "$(tail -n 2 "$HOUSEBROKEN_HOME/refusals.tsv" | cut -f2 | tr '\n' ' ')" = "comment-check-comment-added branch-check-comments-added " ] || { echo "FAIL $name: the log does not hold both names: $(tail -n 2 "$HOUSEBROKEN_HOME/refusals.tsv")"; exit 1; }
 [ -f "$HOUSEBROKEN_HOME/branch-checks/$(cd "$repo" && git rev-parse HEAD)" ] && { echo "FAIL $name: a refused branch left a stamp"; exit 1; }
 out=$(bash "$script" "$repo" --base origin/main --asked https://example.com/pr/9 2>&1)
 echo "$out" | grep -q "adds comments to code that nobody asked for" && { echo "FAIL $name: --asked did not lift the comment refusal: $out"; exit 1; }
