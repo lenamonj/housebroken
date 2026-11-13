@@ -284,9 +284,9 @@ report it in one line and do not proceed to the next step.
     the intended commit, the files are the ones the branch stamp lists, the
     body is the one that was filed, and CI is green. When all of that holds
     it prints one line; the report prints only when something does not. It
-    wants a stamp for the
-    head, or the sha as a third argument; it reads NOT SETTLED until checks
-    have run, and a NOT SETTLED is not an OK. It stops at the first red check,
+    wants a stamp for the head, or the sha as a third argument; it reads
+    NOT SETTLED until checks have run, and a NOT SETTLED is not an OK. It
+    stops at the first red check,
     so the failed log is read at once and not when the last job ends;
     `--settle` waits for the rest. `housebroken sweep` lists every open pull request where the ball
     is in your court, and prints a `TIDY` line for every merged or closed
@@ -294,12 +294,17 @@ report it in one line and do not proceed to the next step.
     `housebroken hygiene` has deleted it. Both `sweep` and the inbox census
     name two states that look quiet. A head no CI job ever started on reads
     `no-ci-on-head` when GitHub made no run for it and `ci-never-started`
-    when the run it made finished without one: only a new push or a close
-    and reopen runs CI there, and doing either is the user's call. A stale
-    bot's warning that still stands reads `stale:closes-` and the day. It is
+    when the run it made finished without one. A new push or a close and
+    reopen makes a new run, which may again wait for approval, and doing
+    either is the user's call; a workflow filtered off the change makes no
+    run and reads the same, so read the workflow before calling it a
+    problem. A stale bot's notice that still stands reads `stale:closes-`
+    and the day when it states its days, `stale:warned-` and its own date
+    when it does not, and `stale:label` when only the label says so. It is
     a deadline to bring to the user, never a reason to comment on your own,
     and before any bump the body's claims are re-derived on the default
-    branch. `housebroken inbox` is the first thing a session does
+    branch. A check list or a notice that could not be read says
+    `ci-unread` or `stale:unread`, never nothing. `housebroken inbox` is the first thing a session does
     and the only way you learn a thread's state: it prints every event on
     your threads since the last acknowledged cursor with the full body, the
     thread's state, and a census of failing, blocked and conflicting checks
