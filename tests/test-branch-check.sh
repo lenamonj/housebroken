@@ -158,6 +158,12 @@ done
 # 11. a comment added to code is refused, leaves no stamp, and --asked turns it into a check
 (cd "$repo" && printf '// e is four\nexport const e = 4;\n' > src/e.test.ts && $G add -A && $G commit -q -m "add e with a comment")
 fires "adds comments to code that nobody asked for" || { echo "FAIL $name: added comment not refused"; exit 1; }
+# the refusal is on stdout under its own name, and the line it relays keeps the name of the check that made it
+out=$(bash "$script" "$repo" --base origin/main 2>/dev/null)
+echo "$out" | grep -qx 'REFUSED: the branch adds comments to code that nobody asked for \[branch-check-comments-added\]' || { echo "FAIL $name: the comment refusal is not on stdout under its name: $out"; exit 1; }
+echo "$out" | grep -q '^    src/e.test.ts:1 adds a comment: .* \[comment-check-comment-added\]$' || { echo "FAIL $name: the relayed line lost the name of its check: $out"; exit 1; }
+[ "$(tail -n 2 "$HOUSEBROKEN_HOME/refusals.tsv" | cut -f2 | tr '
+' ' ')" = "comment-check-comment-added branch-check-comments-added " ] || { echo "FAIL $name: the log does not hold both names: $(tail -n 2 "$HOUSEBROKEN_HOME/refusals.tsv")"; exit 1; }
 [ -f "$HOUSEBROKEN_HOME/branch-checks/$(cd "$repo" && git rev-parse HEAD)" ] && { echo "FAIL $name: a refused branch left a stamp"; exit 1; }
 out=$(bash "$script" "$repo" --base origin/main --asked https://example.com/pr/9 2>&1)
 echo "$out" | grep -q "adds comments to code that nobody asked for" && { echo "FAIL $name: --asked did not lift the comment refusal: $out"; exit 1; }

@@ -61,6 +61,8 @@ out=$(run); rc=$?
 [ "$rc" = "1" ] || { echo "FAIL $name: reword-plus-add exited $rc, expected 1: $out"; exit 1; }
 [ "$(echo "$out" | grep -c '^REFUSED: ')" = "1" ] || { echo "FAIL $name: expected one refusal: $out"; exit 1; }
 echo "$out" | grep -q "It never fails" || { echo "FAIL $name: the wrong line was refused: $out"; exit 1; }
+echo "$out" | grep '^REFUSED: ' | grep -q ' \[comment-check-comment-added\]$' || { echo "FAIL $name: the refusal does not end with its name: $out"; exit 1; }
+[ "$(bash "$script" . --base main 2>/dev/null | grep -c '^REFUSED: ')" = "1" ] || { echo "FAIL $name: the refusal is not on stdout, where branch-check and a reader expect it"; exit 1; }
 
 # 5. a new file opening with the header its neighbours carry passes; a comment below it does not
 $G reset -q --hard main
