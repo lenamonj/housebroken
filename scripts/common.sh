@@ -65,6 +65,7 @@ disclosure_call() { # policy-printout
     r { exit }' "$1"
 }
 
+# shellcheck disable=SC2034  # disclosure_owed is read by the gate that called
 read_printouts() {
   local repo="$1" home="$2" age
   art="$home/prior-art/prior-art-${repo%%/*}-${repo##*/}.md"
@@ -104,7 +105,7 @@ read_printouts() {
     # and so does a disclosure rule, which seldom stands alone in a policy.
     DISCLOSE|MENTION)
       if ! grep -q '^READING: .' "$policy"; then
-        refused common-policy-no-reading "$policy names AI without a recorded reading - read its lines, then rerun check-ai-policy.sh $repo --out --reading 'what they mean for this change'" >&2
+        refused common-policy-no-reading "$policy names AI without a recorded reading - read its lines, then rerun check-ai-policy.sh $repo --out --reading 'what they mean for this change' --disclosure owed or none" >&2
         exit 2
       fi
       case "$(disclosure_call "$policy")" in

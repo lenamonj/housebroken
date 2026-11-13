@@ -6,7 +6,8 @@
 # $HOUSEBROKEN_HOME/prior-art/ and is under 24 hours old.
 # Gate two is the policy: policy-<owner>-<repo>.md exists under
 # $HOUSEBROKEN_HOME/policy/ (check-ai-policy.sh --out), is under 24 hours old,
-# does not read BAN, and when it reads DISCLOSE the body discloses.
+# does not read BAN, and when its recorded reading says a disclosure is owed
+# the body discloses.
 # Gate three is the prose: no tool footer, session trailer, co-author trailer,
 # em dash or en dash in the body or the title.
 # Gate four is the link: a body that offers a fix, a patch or a pull request

@@ -75,7 +75,7 @@ prose_gate "$repo" "$bodyfile" "$home"
 case "$(disclosure_call "$policy")" in
   owed) disclosure_owed=1 ;;
   none) disclosure_owed=0 ;;
-  *) disclosure_owed=0; [ "$policy_result" = "DISCLOSE" ] && disclosure_owed=1 ;;
+  *) if [ "$policy_result" = "DISCLOSE" ]; then disclosure_owed=1; else disclosure_owed=0; fi ;;
 esac
 if [ "$disclosure_owed" -eq 1 ] && ! discloses "$bodyfile" "$template"; then
   refused edit-pr-disclosure-missing "$repo requires AI use to be disclosed ($policy) and the body does not name it" >&2

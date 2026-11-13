@@ -86,8 +86,9 @@ BAN_RE="(\b(not|never|cannot)|n.t)( be)? (accept|allow|permit|welcome|merg|revie
 # you use AI, comments must be correct") mostly read MENTION now. The list reads
 # no grammar and still misreads some: a heading "AI Disclosure" over a credit, a
 # lone maintainer's "I used AI", "disclosure" of something other than AI use. So
-# DISCLOSE is held for a recorded reading as MENTION is, and what the list
-# misses reads MENTION, which holds the filing too.
+# DISCLOSE is held for a recorded reading as MENTION is, what the list misses
+# reads MENTION, which holds the filing too, and whether the body owes a
+# disclosure is the reader's call (--disclosure), never the list's.
 DISCLOSE_RE='disclos|(\bAI\b|\bLLMs?\b)[a-z -]{0,12}disclaimer|declar[a-z]* [^.;]{0,40}\b(use|usage|using|assistance|involvement)\b|(must|should|need to|have to|required to|please|make sure to|be sure to) [^.;]{0,20}reveal|(must|should|please|need to|have to|required to) (state|say|indicate|mention|specify)|(please|must|should|need to|have to|expected to) be transparent|label(l)?ed as|clearly (state|indicate|mark)|\bI (have )?used (AI\b|an AI\b|generative AI\b|LLMs?\b)|which (ai|llm) tool|ai transcript|let us know [^.;]{0,50}(\bAI\b|\bLLMs?\b)|tell us [^.;]{0,50}(\bAI\b|\bLLMs?\b)|assisted-by|generated-by|\bmark(ed)? (ai|llm)|(\bAI\b|\bLLM)[a-z -]{0,30}(must|should) be (clearly )?(marked|labell?ed)'
 # Disclosure of a vulnerability is not disclosure of AI use: those phrases are
 # taken out of a sentence, every one of them, before the list above is tried.
