@@ -202,16 +202,18 @@ def ci: check_state as $s
 # What an empty statusCheckRollup means, in one word. GitHub lists no check both
 # for a repository whose pull requests run nothing and for a head it never made
 # a run for, and only the second is a problem: there is nothing for a maintainer
-# to approve, so only a new push or a close and reopen starts CI there. A pull
-# request filed seconds ago can read no-ci-on-head until its runs exist.
+# to approve. A new push or a close and reopen makes a new run there, which may
+# again wait for approval. A pull request filed seconds ago can read
+# no-ci-on-head until its runs exist.
 #   needs-run-approval  a run on the head waits for a maintainer's approval
 #   ci-never-started    a run on the head finished badly and no check was ever
 #                       reported, so no job started: seen where an approval was
-#                       not given before the run lapsed. Like no-ci-on-head,
-#                       only a new push or a close and reopen runs CI
+#                       not given in the thirty days before the run lapsed
 #   pending             a run on the head has not finished
 #   no-ci-on-head       no run on the head, in a repository that runs workflows
-#                       on pull requests
+#                       on pull requests. A workflow whose path or branch
+#                       filter leaves this change out makes no run either, and
+#                       reads the same
 #   none                nothing to report: the runs on the head finished well,
 #                       or there is none in a repository that runs none
 #   ci-unread           a read failed, which is not the same as none
@@ -241,38 +243,47 @@ empty_rollup_reading() { # repo sha
 
 # Whether a login in `gh pr view` output is a bot's, for jq. Whole names only:
 # gh gives no bot flag there, and a substring also matches the humans talbot and
-# devinrsmith.
+# devinrsmith. An app's login is printed without its [bot]: probot's stale bot
+# is plain `stale`.
 # shellcheck disable=SC2016,SC2034  # jq text, for the scripts that source this
-bot_login_jq='def is_bot_login: test("(\\[bot\\]|^app/.*|^github-actions|^dependabot|^codecov(-commenter)?|^coveralls|^claassistant|^cla-assistant|^coderabbitai|^devin-ai-integration|^vercel|^netlify|^sonarcloud|^copilot|^asf-ci|^apache-ci)$"; "i");'
+bot_login_jq='def is_bot_login: test("(\\[bot\\]|^app/.*|^github-actions|^dependabot|^codecov(-commenter)?|^coveralls|^claassistant|^cla-assistant|^coderabbitai|^devin-ai-integration|^vercel|^netlify|^sonarcloud|^copilot|^asf-ci|^apache-ci|^stale)$"; "i");'
 
-# Whether a stale bot's warning stands on a pull request, for jq, over what
-# `gh pr view --json labels,comments,reviews` returns. The warning is the newest
-# bot comment that names both stale and a close. Any comment or review after it
-# by someone who is not a bot resets the bot's timer, so nothing is marked then,
-# even while the label lingers until the bot runs again.
-#   stale:closes-YYYY-MM-DD  the warning stands and states its days
-#   stale:warned-YYYY-MM-DD  the warning stands and states none: its own date
-#   stale:label              no warning, and a label with the word stale
+# Whether a stale bot's notice stands on a pull request, for jq, over what
+# `gh pr view --json labels,comments,reviews,commits` returns. The notice is the
+# newest bot comment that speaks of stale or inactive together with a close or
+# with activity: the bots do not all say "stale". A comment or review after it
+# by someone who is not a bot, or a commit after it, resets the bot's timer, so
+# nothing is marked then, even while the label lingers until the bot runs again.
+#   stale:closes-YYYY-MM-DD  the notice stands and says "closed in N days" or
+#                            "within N days". Gone two days after that day: a
+#                            pull request still open then was not closed by it
+#   stale:warned-YYYY-MM-DD  the notice stands and states no such days: its own
+#                            date. A number that is spelled, counted in hours or
+#                            not tied to the close is not guessed at
+#   stale:label              no notice, and a label with the word stale that is
+#                            not an exemption from it
 #   (nothing)                otherwise
-# The days are read after the close ("closed in 7 days") before they are read
-# ahead of it ("within 14 days, it will be closed"), so "open 60 days" in the
-# sentence before is not taken for them.
+# A notice whose time cannot be read stops jq, and the callers print
+# stale:unread: a read that failed is not a pull request with no notice.
 # shellcheck disable=SC2016,SC2034  # jq text, for the scripts that source this
 stale_jq="$bot_login_jq"'
 def stale_mark:
   ([.comments[]? | select((.author.login // "") | is_bot_login)
-    | select(((.body // "") | test("stale"; "i")) and ((.body // "") | test("clos"; "i")))] | sort_by(.createdAt) | last) as $w
+    | select(((.body // "") | test("stale|inactive"; "i")) and ((.body // "") | test("clos|activity"; "i")))] | sort_by(.createdAt) | last) as $n
   | ([(.comments[]? | select((.author.login // "") | is_bot_login | not) | .createdAt),
-      (.reviews[]? | select((.author.login // "") | is_bot_login | not) | .submittedAt)] | map(select(. != null)) | max) as $h
-  | if $w != null then
-      if $h != null and $h > $w.createdAt then ""
+      (.reviews[]? | select((.author.login // "") | is_bot_login | not) | .submittedAt),
+      (.commits[]? | .committedDate)] | map(select(. != null)) | max) as $h
+  | if $n != null then
+      if $h != null and $h > $n.createdAt then ""
       else
-        (([$w.body | match("clos[a-z]* [^.]{0,40}?([0-9]+) days?"; "i").captures[0].string] | first)
-          // ([$w.body | match("([0-9]+) days?[^.]{0,60}clos"; "i").captures[0].string] | first)) as $d
-        | if $d != null then "stale:closes-" + ((($w.createdAt | fromdateiso8601) + ($d | tonumber) * 86400) | strftime("%Y-%m-%d"))
-          else "stale:warned-" + $w.createdAt[0:10] end
+        ([$n.body | match("clos[a-z]* (in|within) ([0-9]+) days?"; "i").captures[1].string] | first) as $d
+        | if $d == null then "stale:warned-" + $n.createdAt[0:10]
+          else (($n.createdAt | fromdateiso8601) + ($d | tonumber) * 86400) as $c
+            | if now > $c + 172800 then "" else "stale:closes-" + ($c | strftime("%Y-%m-%d")) end
+          end
       end
-    elif any(.labels[]?; (.name // "") | test("(^|[^a-z])stale([^a-z]|$)"; "i")) then "stale:label"
+    elif any(.labels[]?; (.name // "") | (test("(^|[^a-z])stale([^a-z]|$)"; "i")
+        and (test("(^|[^a-z])(no|not|never|exempt)[^a-z]?stale|stale[^a-z]?(exempt|free)"; "i") | not))) then "stale:label"
     else "" end;'
 
 # Accounts of type User that behave as bots, by exact name: a prefix also

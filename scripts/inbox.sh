@@ -166,7 +166,7 @@ if [ "$do_ci" -eq 1 ]; then
   unreadable_list=""
   while read -r repo num draft; do
     [ -n "$repo" ] || continue
-    j="$(gh pr view "$num" --repo "$repo" --json mergeable,reviewDecision,statusCheckRollup,headRefOid,labels,comments,reviews 2>/dev/null)"
+    j="$(gh pr view "$num" --repo "$repo" --json mergeable,reviewDecision,statusCheckRollup,headRefOid,labels,commits,comments,reviews 2>/dev/null)"
     if [ -z "$j" ]; then
       # A pull request we could not read is not a clean one: say so rather than skipping in silence.
       unreadable=$((unreadable + 1)); unreadable_list="$unreadable_list $repo#$num"; continue
@@ -181,8 +181,10 @@ if [ "$do_ci" -eq 1 ]; then
       empty="$(empty_rollup_reading "$repo" "$(jq -r '.headRefOid // ""' <<<"$j" | tr -d '\r')")"
       case "$empty" in none|pending) ;; *) why="$empty${why:+ $why}" ;; esac
     fi
-    # A stale bot's warning is the one bot comment with a deadline.
-    stale="$(jq -r "$stale_jq"'stale_mark' <<<"$j" | tr -d '\r')"
+    # A stale bot's notice is the one bot comment with a deadline. A notice
+    # that could not be read is said, not passed over.
+    if ! stale="$(jq -r "$stale_jq"'stale_mark' <<<"$j" 2>/dev/null)"; then stale="stale:unread"; fi
+    stale="$(printf '%s' "$stale" | tr -d '\r')"
     [ -z "$stale" ] || why="${why:+$why }$stale"
     if [ -n "$why" ]; then
       flagged=$((flagged + 1))

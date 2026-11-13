@@ -6,10 +6,12 @@
 # the newest comment or review is not ours (bots excluded), a review requests
 # changes, CI has a failing check, the PR is CONFLICTING (needs a rebase), or
 # no CI job ever started on the head in a repository that runs them (GitHub made
-# no run, or the run it made finished without one), which only a new push or a
-# close and reopen changes, or a stale bot's warning stands, printed with the
-# day it closes. A check list that could not be read is printed as ci-unread,
-# never as clean. Read-only; acting is the operator's.
+# no run, or the run it made finished without one), or a stale bot's notice
+# stands, printed with the day it closes. A new push or a close and reopen makes
+# a new run, which may again wait for approval; a workflow filtered off the
+# change makes none, and reads the same. A check list or a notice that could
+# not be read is printed as ci-unread or stale:unread, never as clean.
+# Read-only; acting is the operator's.
 #
 # A merge or a close drops a PR out of the open list without a word, so each
 # run writes its open set to a state file and the next run reports what left
@@ -166,7 +168,7 @@ while IFS=$'\t' read -r repo num updated title; do
   [ -n "$repo" ] || continue
   n=$((n + 1))
   title="$(printf '%s' "$title" | clean_line)"
-  if ! j="$(gh pr view "$num" --repo "$repo" --json mergeable,reviewDecision,statusCheckRollup,headRefOid,labels,comments,reviews,latestReviews)"; then
+  if ! j="$(gh pr view "$num" --repo "$repo" --json mergeable,reviewDecision,statusCheckRollup,headRefOid,labels,commits,comments,reviews,latestReviews)"; then
     printf '%-40s #%-5s (gh pr view failed)\n' "$repo" "$num" >&2
     unreadable=$((unreadable + 1))
     continue
@@ -194,15 +196,20 @@ while IFS=$'\t' read -r repo num updated title; do
   [ "$ci" = "ci-never-started" ] && why="$why ci-never-started"
   [ "$ci" = "ci-unread" ] && why="$why ci-unread"
   [ "$mergeable" = "CONFLICTING" ] && why="$why conflicting"
-  # A stale bot's warning is the one bot comment with a deadline.
-  stale="$(printf '%s' "$j" | jq -r "$stale_jq"'stale_mark' | tr -d '\r')"
+  # A stale bot's notice is the one bot comment with a deadline. A notice that
+  # could not be read is said, not passed over.
+  if ! stale="$(printf '%s' "$j" | jq -r "$stale_jq"'stale_mark' 2>/dev/null)"; then stale="stale:unread"; fi
+  stale="$(printf '%s' "$stale" | tr -d '\r')"
   [ -n "$stale" ] && why="$why $stale"
   if [ -n "$why" ]; then
     act=$((act + 1))
     printf 'ACT  %-38s #%-5s %s  [%s] %s\n' "$repo" "$num" "${title:0:60}" "${why# }" "https://github.com/$repo/pull/$num"
     # Any comment resets the bot's timer, so what is checked first is whether
     # the pull request still says what is true.
-    [ -n "$stale" ] && echo "     before any bump: re-derive the body's claims on the default branch, read ci on the head, and check whether upstream changed the touched files"
+    case "$stale" in
+      stale:closes-*|stale:warned-*|stale:label)
+        echo "     before any bump: re-derive the body's claims on the default branch, read ci on the head, and check whether upstream changed the touched files" ;;
+    esac
   elif [ "$ALL" = 1 ]; then
     printf 'ok   %-38s #%-5s %s  ci=%s mergeable=%s updated=%s\n' "$repo" "$num" "${title:0:60}" "$ci" "$mergeable" "${updated:0:10}"
   fi

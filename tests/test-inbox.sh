@@ -187,16 +187,28 @@ rm -f "$tmp/runs.head.json"
 out=$(run --since 2026-11-01T09:00:00Z)
 echo "$out" | grep -q "^o/r#1: ci-unread" || fail "an unread run list read as quiet: $out"
 
-# a stale bot's warning that still stands is flagged with the day it closes, and
-# an answer after it clears the flag while the label lingers
-warn='{"author":{"login":"github-actions"},"createdAt":"2026-11-06T05:02:52Z","body":"This PR is stale because it has been open 60 days with no activity. Remove stale label or comment or this will be closed in 7 days."}'
-stale() { # comments
-  jq -n --argjson c "$1" '{mergeable: "MERGEABLE", reviewDecision: "", headRefOid: "abc123", statusCheckRollup: [{conclusion: "SUCCESS"}], labels: [{name: "Stale"}], comments: $c, reviews: []}' > "$tmp/pr.json"
+# a stale bot's notice that still stands is flagged with the day it closes; an
+# answer or a push after it clears the flag while the label lingers; and a
+# notice that cannot be dated is not read as none. The notice is dated a day
+# ago, so the day it names is still ahead.
+t0=$(jq -rn 'now - 86400 | floor')
+at() { jq -rn --argjson t "$t0" --argjson h "$1" '$t + $h * 3600 | strftime("%Y-%m-%dT%H:%M:%SZ")'; }
+day() { jq -rn --argjson t "$t0" --argjson d "$1" '$t + $d * 86400 | strftime("%Y-%m-%d")'; }
+voice() { jq -cn --arg a "$1" --arg t "$2" --arg b "$3" '{author: {login: $a}, createdAt: $t, body: $b}'; }
+stale() { # comments [commits]
+  jq -n --argjson c "$1" --argjson m "${2:-[]}" '{mergeable: "MERGEABLE", reviewDecision: "", headRefOid: "abc123", statusCheckRollup: [{conclusion: "SUCCESS"}], labels: [{name: "Stale"}], comments: $c, commits: $m, reviews: []}' > "$tmp/pr.json"
   out=$(run --since 2026-11-01T09:00:00Z)
 }
+warn="$(voice github-actions "$(at 0)" 'This PR is stale because it has been open 60 days with no activity. Remove stale label or comment or this will be closed in 7 days.')"
 stale "[$warn]"
-echo "$out" | grep -q "^o/r#1: stale:closes-2026-11-13" || fail "a standing stale warning was not flagged: $out"
-stale "[$warn,{\"author\":{\"login\":\"me\"},\"createdAt\":\"2026-11-06T09:05:36Z\",\"body\":\"A correction.\"}]"
-echo "$out" | grep -q "^0 of 1 open pull requests flagged" || fail "an answered stale warning was still flagged: $out"
+echo "$out" | grep -q "^o/r#1: stale:closes-$(day 7)" || fail "a standing stale notice was not flagged: $out"
+stale "[$(voice stale "$(at 0)" 'This pull request has been automatically marked as inactive because it has not had recent activity. It will be closed within 3 days if no further activity occurs.')]"
+echo "$out" | grep -q "^o/r#1: stale:closes-$(day 3)" || fail "probot's notice was not flagged: $out"
+stale "[$warn,$(voice me "$(at 4)" 'A correction.')]"
+echo "$out" | grep -q "^0 of 1 open pull requests flagged" || fail "an answered stale notice was still flagged: $out"
+stale "[$warn]" "[{\"committedDate\":\"$(at 5)\"}]"
+echo "$out" | grep -q "^0 of 1 open pull requests flagged" || fail "a push after the notice did not clear it: $out"
+stale "[$(voice github-actions 'not-a-time' 'This PR is stale with no activity. It will be closed in 7 days.')]"
+echo "$out" | grep -q "^o/r#1: stale:unread" || fail "a notice that could not be dated read as none: $out"
 
 echo "PASS $name"
