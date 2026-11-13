@@ -27,11 +27,11 @@
 #
 # Exits 0 when pushed (or on a dry run), 2 on a refusal or a usage error.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 case "${1:-}" in --help|-h) usage; exit 0 ;; esac
-# shellcheck source=scripts/refuse.sh
-. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 repo="${1:-}"
 case "$repo" in */*) ;; *) refused push-repo-form "name the upstream repository as owner/repo" >&2; exit 2 ;; esac
