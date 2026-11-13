@@ -53,45 +53,45 @@ read_printouts() {
   local repo="$1" home="$2" age
   art="$home/prior-art/prior-art-${repo%%/*}-${repo##*/}.md"
   if [ ! -f "$art" ]; then
-    echo "REFUSED: no prior art at $art - run prior-art.sh $repo <terms> --out first" >&2
+    refused common-no-prior-art "no prior art at $art - run prior-art.sh $repo <terms> --out first" >&2
     exit 2
   fi
-  age=$(file_age "$art") || { echo "REFUSED: cannot read the age of $art" >&2; exit 2; }
+  age=$(file_age "$art") || { refused common-prior-art-age-unreadable "cannot read the age of $art" >&2; exit 2; }
   if [ "$age" -gt 86400 ]; then
-    echo "REFUSED: prior art $art is $(( age / 3600 ))h old - rerun prior-art.sh --out" >&2
+    refused common-prior-art-stale "prior art $art is $(( age / 3600 ))h old - rerun prior-art.sh --out" >&2
     exit 2
   fi
   policy="$home/policy/policy-${repo%%/*}-${repo##*/}.md"
   if [ ! -f "$policy" ]; then
-    echo "REFUSED: no policy printout at $policy - run check-ai-policy.sh $repo --out first" >&2
+    refused common-no-policy "no policy printout at $policy - run check-ai-policy.sh $repo --out first" >&2
     exit 2
   fi
-  age=$(file_age "$policy") || { echo "REFUSED: cannot read the age of $policy" >&2; exit 2; }
+  age=$(file_age "$policy") || { refused common-policy-age-unreadable "cannot read the age of $policy" >&2; exit 2; }
   if [ "$age" -gt 86400 ]; then
-    echo "REFUSED: policy printout $policy is $(( age / 3600 ))h old - rerun check-ai-policy.sh --out" >&2
+    refused common-policy-stale "policy printout $policy is $(( age / 3600 ))h old - rerun check-ai-policy.sh --out" >&2
     exit 2
   fi
   local f who
   for f in "$art" "$policy"; do
     who=$(head -1 "$f" | tr -d '\r' | awk '{print $4}')
     if [ "$who" != "$repo" ]; then
-      echo "REFUSED: $f is the printout of $who, not $repo - rerun it for $repo" >&2
+      refused common-printout-other-repo "$f is the printout of $who, not $repo - rerun it for $repo" >&2
       exit 2
     fi
   done
   policy_result=$(grep -m1 '^RESULT: ' "$policy" | awk '{print $2}')
   case "$policy_result" in
-    BAN) echo "REFUSED: $repo forbids AI-written contributions ($policy); never file here" >&2; exit 2 ;;
+    BAN) refused common-policy-ban "$repo forbids AI-written contributions ($policy); never file here" >&2; exit 2 ;;
     CLEAN) ;;
     # A word list reads no grammar. A mention holds until its lines are read,
     # and so does a disclosure rule, which seldom stands alone in a policy.
     DISCLOSE|MENTION)
       if ! grep -q '^READING: .' "$policy"; then
-        echo "REFUSED: $policy names AI without a recorded reading - read its lines, then rerun check-ai-policy.sh $repo --out --reading 'what they mean for this change'" >&2
+        refused common-policy-no-reading "$policy names AI without a recorded reading - read its lines, then rerun check-ai-policy.sh $repo --out --reading 'what they mean for this change'" >&2
         exit 2
       fi ;;
-    UNREAD) echo "REFUSED: $policy reads UNREAD - GitHub did not give every policy file; rerun check-ai-policy.sh --out" >&2; exit 2 ;;
-    *) echo "REFUSED: $policy has no RESULT line - rerun check-ai-policy.sh --out" >&2; exit 2 ;;
+    UNREAD) refused common-policy-unread "$policy reads UNREAD - GitHub did not give every policy file; rerun check-ai-policy.sh --out" >&2; exit 2 ;;
+    *) refused common-policy-no-result "$policy has no RESULT line - rerun check-ai-policy.sh --out" >&2; exit 2 ;;
   esac
 }
 
@@ -106,7 +106,7 @@ check_text() {
   local what="$1" text="$2" hit
   hit=$(printf '%s' "$text" | grep -ioE "$banned_re" | head -1) || true
   if [ -n "$hit" ]; then
-    echo "REFUSED: $what contains '$hit' - strip it before filing" >&2
+    refused common-text-footer-or-dash "$what contains '$hit' - strip it before filing" >&2
     exit 2
   fi
 }
@@ -146,15 +146,15 @@ prose_gate() { # repo body-file home
       ours += split(l, w) }
     END { print ours + 0, ai + 0, kept + 0, wanted + 0 }' "$bodyfile")
   if [ "$wanted" -gt 0 ] && [ "$kept" -eq 0 ]; then
-    echo "REFUSED: the body keeps none of $repo's pull request template ($template) - fill it in rather than replacing it" >&2
+    refused common-template-dropped "the body keeps none of $repo's pull request template ($template) - fill it in rather than replacing it" >&2
     exit 2
   fi
   if [ "$words" -gt 120 ]; then
-    echo "REFUSED: the body is $words words outside the project's template - say what was wrong, what the change does and how it was verified in 120 or fewer" >&2
+    refused common-body-too-long "the body is $words words outside the project's template - say what was wrong, what the change does and how it was verified in 120 or fewer" >&2
     exit 2
   fi
   if [ "$ai_words" -gt 50 ]; then
-    echo "REFUSED: the answer to the template's AI question is $ai_words words - name the tool and what it did in 50 or fewer" >&2
+    refused common-ai-answer-too-long "the answer to the template's AI question is $ai_words words - name the tool and what it did in 50 or fewer" >&2
     exit 2
   fi
 }
@@ -183,7 +183,7 @@ spacing_gate() { # repo home
   last=$(tail -1 "$log" | awk '{print $1}')
   since=$(( $(date -u +%s) - ${last:-0} ))
   if [ "$since" -lt 600 ]; then
-    echo "REFUSED: your last filing on $1 went out ${since}s ago - wait until ten minutes have passed" >&2
+    refused common-filing-too-soon "your last filing on $1 went out ${since}s ago - wait until ten minutes have passed" >&2
     exit 2
   fi
 }
