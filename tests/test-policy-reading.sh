@@ -2,8 +2,8 @@
 # test-policy-reading.sh - the reading of a policy file. Ordinary ban and
 # disclosure wording reads BAN and DISCLOSE in any case and across wrapped
 # lines, a sentence that only sits near a prohibition does not, a policy kept
-# where projects really keep it is opened, and a MENTION is a hold until a
-# reading is recorded. Local, through a stub gh.
+# where projects really keep it is opened, and a MENTION or a DISCLOSE is a hold
+# until a reading is recorded. Local, through a stub gh.
 set -u
 name=test-policy-reading
 here=$(cd "$(dirname "$0")" && pwd)
@@ -157,6 +157,23 @@ bash "$script" --out --reading "AI tools are allowed and nothing is asked of the
 grep -q '^READING: AI tools are allowed' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "the reading was not saved"
 msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file /dev/null 2>&1)
 printf '%s\n' "$msg" | grep -q "without a recorded reading" && fail "a recorded reading did not lift the hold: $msg"
+
+# DISCLOSE is a hold as well: a disclosure rule seldom stands alone, so its
+# lines are read and a reading recorded before the body's disclosure is asked for
+printf 'AI use must be disclosed in the description.\n' > "$root/files/CONTRIBUTING.md"
+out=$(bash "$script" --out o/r)
+printf '%s\n' "$out" | grep -q "^RESULT: DISCLOSE (.*rerun with --reading " || fail "the DISCLOSE line does not ask for a reading: $out"
+grep -q '^READING: ' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" && fail "a printout made with no --reading carries one"
+msg=$(FILE_ISSUE_DRY=1 bash "$here/../scripts/file-issue.sh" o/r --title t --body-file /dev/null 2>&1)
+printf '%s\n' "$msg" | grep -q "names AI without a recorded reading" || fail "file-issue.sh did not hold a DISCLOSE: $msg"
+msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file /dev/null 2>&1)
+printf '%s\n' "$msg" | grep -q "names AI without a recorded reading" || fail "file-pr.sh did not hold a DISCLOSE: $msg"
+bash "$script" --out --reading "say which tool wrote it; nothing else is asked" o/r >/dev/null
+grep -q '^READING: say which tool wrote it' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "the reading of a DISCLOSE was not saved"
+msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file /dev/null 2>&1)
+printf '%s\n' "$msg" | grep -q "without a recorded reading" && fail "a recorded reading did not lift the hold on a DISCLOSE: $msg"
+msg=$(FILE_ISSUE_DRY=1 bash "$here/../scripts/file-issue.sh" o/r --title t --body-file /dev/null 2>&1)
+printf '%s\n' "$msg" | grep -q "without a recorded reading" && fail "a recorded reading did not lift file-issue.sh's hold on a DISCLOSE: $msg"
 
 # a printout made for another repository does not pass, though the names collide
 printf '## AI policy: foo/bar-baz\nRESULT: CLEAN\n' > "$HOUSEBROKEN_HOME/policy/policy-foo-bar-baz.md"

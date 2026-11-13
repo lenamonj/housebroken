@@ -25,9 +25,9 @@
 #   --accept-truncated  read a repository whose tree GitHub truncates (over
 #                    100,000 entries) after its policy was read by hand; the
 #                    printout records that it was
-#   --reading <text> what a MENTION means for this change, read by a person or
-#                    an agent; saved with --out, and the filing gates hold a
-#                    MENTION until one is there
+#   --reading <text> what a MENTION or a DISCLOSE means for this change, read by
+#                    a person or an agent; saved with --out, and the filing
+#                    gates hold either until one is there
 #
 # Lines are joined into paragraphs before they are read, because a hard-wrapped
 # ban names AI on one line and forbids it on the next, and a paragraph is read
@@ -38,7 +38,8 @@
 # a sentence requires that AI use be disclosed, MENTION when AI is named without
 # either, CLEAN when no policy file names it, UNREAD when GitHub refused,
 # throttled or truncated any listing or file, so a failure is never read as
-# silence. A word list reads no grammar, so MENTION is a hold, not a pass. Every
+# silence. A word list reads no grammar, so MENTION is a hold, not a pass, and
+# so is DISCLOSE: a disclosure rule seldom stands alone in a policy. Every
 # policy-named file is read; READMEs are capped at 40 per repository, the
 # shallowest first, and the cap is printed.
 # The printout ends with the project's CI legs, as ci-legs.sh prints them: the
@@ -256,7 +257,9 @@ for repo in "${repos[@]}"; do
     if [ "$ban" -eq 1 ]; then echo "RESULT: BAN (a policy file forbids or closes AI-written contributions; never file here)"
     elif [ "$unread" -gt 0 ]; then echo "RESULT: UNREAD ($unread policy file(s) or listing(s) could not be fetched; rerun when GitHub answers)"
     elif [ "$truncated" -eq 1 ]; then echo "RESULT: UNREAD (GitHub truncated the file listing; read the policy by hand, then rerun with --accept-truncated)"
-    elif [ "$disclose" -eq 1 ]; then echo "RESULT: DISCLOSE (a policy file requires AI use to be disclosed; say so in the body)"
+    elif [ "$disclose" -eq 1 ]; then
+      echo "RESULT: DISCLOSE (a policy file requires AI use to be disclosed; say so in the body; read the lines above, then rerun with --reading 'what they mean for this change')"
+      [ -z "$reading" ] || echo "READING: $reading"
     elif [ "$found" -eq 1 ]; then
       echo "RESULT: MENTION (a policy file names AI and no sentence reads as a ban or a disclosure rule; read the lines above, then rerun with --reading 'what they mean for this change')"
       [ -z "$reading" ] || echo "READING: $reading"

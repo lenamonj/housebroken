@@ -63,8 +63,14 @@ printf '%s' "$out" | grep -q "REFUSED" || fail "em dash body file printed no ref
 clean="$HOUSEBROKEN_HOME/clean.md"
 printf 'one finding, one test\n' > "$clean"
 
-# gate two, disclosure: a DISCLOSE policy refuses a body that says nothing about AI and accepts one that does
+# gate two, disclosure: a DISCLOSE policy is held until a reading of its lines is
+# recorded, then refuses a body that says nothing about AI and accepts one that does
 policy "DISCLOSE (a policy file requires AI use to be disclosed)"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a DISCLOSE policy with no reading exited $rc, expected 2"
+printf '%s' "$out" | grep -q "names AI without a recorded reading" || fail "a DISCLOSE policy with no reading was not held: $out"
+printf '%s' "$out" | grep -q "requires AI use to be disclosed" && fail "the body was judged before the lines were read: $out"
+printf 'READING: say which tool wrote it; nothing else is asked\n' >> "$policyfile"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "a DISCLOSE policy with a silent body exited $rc, expected 2"
 printf '%s' "$out" | grep -q "requires AI use to be disclosed" || fail "a DISCLOSE policy printed no refusal"

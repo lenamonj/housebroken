@@ -40,6 +40,10 @@ out=$(run --title t --body-file "$bodyfile"); rc=$?
 printf '%s' "$out" | grep -q "forbids AI-written contributions" || fail "a BAN policy printed no refusal"
 policy "DISCLOSE (a policy file asks for disclosure)"
 out=$(run --title t --body-file "$bodyfile"); rc=$?
+[ "$rc" -eq 2 ] || fail "a DISCLOSE policy with no reading exited $rc, expected 2"
+printf '%s' "$out" | grep -q "names AI without a recorded reading" || fail "a DISCLOSE policy with no reading was not held: $out"
+printf 'READING: say which tool wrote it; nothing else is asked\n' >> "$policyfile"
+out=$(run --title t --body-file "$bodyfile"); rc=$?
 [ "$rc" -eq 2 ] || fail "an undisclosed body under DISCLOSE exited $rc, expected 2"
 printf '%s' "$out" | grep -q "requires AI use to be disclosed" || fail "an undisclosed body under DISCLOSE printed no refusal"
 printf 'The Home Assistant loader drops the last field.\n' > "$HOUSEBROKEN_HOME/assist.md"

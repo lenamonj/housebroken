@@ -48,7 +48,8 @@ gates:
               exist and be under 24 hours old
   policy      $HOUSEBROKEN_HOME/policy/policy-<owner>-<repo>.md must exist,
               be under 24 hours old and not read RESULT: BAN; when it reads
-              RESULT: DISCLOSE the body must name the AI use
+              RESULT: DISCLOSE the body must name the AI use, and
+              RESULT: MENTION or DISCLOSE needs a recorded --reading
   prose       no tool footer, session trailer, co-author trailer, em dash or
               en dash, in any case, in the --body-file or the --title
   link        a body that offers or describes a fix, a patch or a pull

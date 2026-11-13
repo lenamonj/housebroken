@@ -82,8 +82,10 @@ read_printouts() {
   policy_result=$(grep -m1 '^RESULT: ' "$policy" | awk '{print $2}')
   case "$policy_result" in
     BAN) echo "REFUSED: $repo forbids AI-written contributions ($policy); never file here" >&2; exit 2 ;;
-    DISCLOSE|CLEAN) ;;
-    MENTION)
+    CLEAN) ;;
+    # A word list reads no grammar. A mention holds until its lines are read,
+    # and so does a disclosure rule, which seldom stands alone in a policy.
+    DISCLOSE|MENTION)
       if ! grep -q '^READING: .' "$policy"; then
         echo "REFUSED: $policy names AI without a recorded reading - read its lines, then rerun check-ai-policy.sh $repo --out --reading 'what they mean for this change'" >&2
         exit 2
