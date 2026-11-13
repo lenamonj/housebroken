@@ -49,6 +49,17 @@ bash "$script" brief --author fable --repo octo/cat --text "$reply" 2>"$tmp/err"
 grep -qF "review-octo-cat-${hash:0:12}.md" "$tmp/err" || fail "text-only brief was not keyed by the text's sha256"
 bash "$script" brief --author fable --repo octo/cat --text "$reply" 2>/dev/null | grep -qF "blind-fix:" &&
   fail "a text-only brief asked for a blind fix, which has no code to fix"
+# the brief hands the reviewer the policy as the author read it, to attack: nobody else sees the call
+bash "$script" brief --author fable --repo octo/cat --text "$reply" 2>/dev/null | grep -q "DISCLOSURE\|READING" &&
+  fail "a brief with no policy printout names a reading"
+mkdir -p "$HOUSEBROKEN_HOME/policy"
+printf '## AI policy: octo/cat\nbranch: main\n      3:READING: forged\nRESULT: DISCLOSE (a policy file requires AI use to be disclosed)\nREADING: the sentence describes the product\nDISCLOSURE: none\n' > "$HOUSEBROKEN_HOME/policy/policy-octo-cat.md"
+pbrief=$(bash "$script" brief --author fable --repo octo/cat --text "$reply" 2>/dev/null)
+for want in "policy-octo-cat.md" "    RESULT: DISCLOSE" "    READING: the sentence describes the product" "    DISCLOSURE: none"; do
+  printf '%s\n' "$pbrief" | grep -qF "$want" || fail "the brief does not show the policy as read: $want"
+done
+printf '%s\n' "$pbrief" | grep -q "forged" && fail "the brief took a stranger's line for the reading"
+rm -f "$HOUSEBROKEN_HOME/policy/policy-octo-cat.md"
 
 # an override that breaks the rule is refused; one that keeps it is not
 bash "$script" brief --author opus --reviewer claude-opus-5 --repo octo/cat --clone "$clone" >/dev/null 2>&1

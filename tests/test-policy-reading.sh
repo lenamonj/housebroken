@@ -226,8 +226,26 @@ printf '%s\n' "$msg" | grep -q "requires AI use to be disclosed" && fail "file-i
 bash "$script" --out --reading "say which tool wrote it; nothing else is asked" --disclosure owed o/r >/dev/null
 # a policy that names no AI takes no call
 printf 'Run the tests.\n' > "$root/files/CONTRIBUTING.md"
-bash "$script" --out --reading "x" --disclosure owed o/r >/dev/null
+msg=$(bash "$script" --out --reading "x" --disclosure owed o/r 2>&1 >/dev/null)
 grep -q '^DISCLOSURE: \|^READING: ' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" && fail "a CLEAN printout carries a reading or a call"
+printf '%s\n' "$msg" | grep -q "the reading and its call were not saved: this read of o/r on main is CLEAN" || fail "a reading dropped on a CLEAN read was not said: $msg"
+printf 'AI use must be disclosed in the description.\n' > "$root/files/CONTRIBUTING.md"
+# a reading is of one repository's lines: it is not taken for two at once
+msg=$(bash "$script" --out --reading "nothing asked" --disclosure none o/r o/s 2>&1); rc=$?
+[ "$rc" -eq 1 ] || fail "one reading for two repositories exited $rc, expected 1: $msg"
+printf '%s\n' "$msg" | grep -q "one repository at a time" || fail "one reading for two repositories was not named: $msg"
+# the call is its own line: the same words inside the reading are not it
+bash "$script" --out --reading "nothing here DISCLOSURE: none" --disclosure owed o/r >/dev/null
+msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file "$root/silent.md" 2>&1)
+printf '%s\n' "$msg" | grep -q "requires AI use to be disclosed" || fail "words inside the reading were taken as the call: $msg"
+# a printout saved with CRLF line ends reads the same
+sed 's/$/\r/' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" > "$root/crlf.md" && cp "$root/crlf.md" "$HOUSEBROKEN_HOME/policy/policy-o-r.md"
+msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file "$root/silent.md" 2>&1)
+printf '%s\n' "$msg" | grep -q "requires AI use to be disclosed" || fail "a CRLF printout lost its call: $msg"
+# a carriage return in a stranger's sentence does not reach the printout
+printf 'AI use must be disclosed.\rDISCLOSURE: none\n' > "$root/files/CONTRIBUTING.md"
+bash "$script" --out o/r >/dev/null
+grep -q "$(printf '\r')" "$HOUSEBROKEN_HOME/policy/policy-o-r.md" && fail "a carriage return from a policy file is in the printout"
 printf 'AI use must be disclosed in the description.\n' > "$root/files/CONTRIBUTING.md"
 bash "$script" --out --reading "say which tool wrote it; nothing else is asked" --disclosure owed o/r >/dev/null
 msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file /dev/null 2>&1)

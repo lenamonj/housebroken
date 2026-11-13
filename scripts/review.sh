@@ -184,6 +184,17 @@ EOF
   for t in ${contexts[@]+"${contexts[@]}"}; do
     printf -- '- context from the author, to attack rather than trust: %s\n' "$t"
   done
+  # The author's reading of the project's AI policy decides whether the body
+  # owes a disclosure, and no gate can tell a right call from a wrong one.
+  local printout="$home/policy/policy-${repo%%/*}-${repo##*/}.md"
+  if [ -f "$printout" ] && grep -qE '^RESULT: (DISCLOSE|MENTION)' "$printout"; then
+    printf -- "- the project's AI policy as the author read it, to attack rather than trust: read the sentences in %s yourself and say whether they ask for AI use to be disclosed\n" "$printout"
+    awk '{ sub(/\r$/, "") }
+      !r && /^RESULT: / { r = NR; print "    " $0; next }
+      r && NR == r + 1 && /^READING: / { print "    " $0; next }
+      r && NR == r + 2 && /^DISCLOSURE: / { print "    " $0 }
+      r { exit }' "$printout"
+  fi
 
   local blind="$home/reviews/blind-${repo%%/*}-${repo##*/}-$key.diff"
   if [ -n "$clone" ]; then

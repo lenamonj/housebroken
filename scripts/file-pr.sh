@@ -51,9 +51,10 @@ gates:
   prior art   $HOUSEBROKEN_HOME/prior-art/prior-art-<owner>-<repo>.md must
               exist and be under 24 hours old
   policy      $HOUSEBROKEN_HOME/policy/policy-<owner>-<repo>.md must exist,
-              be under 24 hours old and not read RESULT: BAN or UNREAD; when
-              it reads RESULT: DISCLOSE the body must name the AI use, and
-              RESULT: MENTION or DISCLOSE needs a recorded --reading
+              be under 24 hours old and not read RESULT: BAN or UNREAD;
+              RESULT: MENTION or DISCLOSE needs a recorded --reading and
+              --disclosure, and when that says DISCLOSURE: owed the body
+              must name the AI use
   prose       no tool footer, session trailer, co-author trailer, em dash or
               en dash, in any case, in the --body-file or the --title; a
               body of at most 120 words of its own, the answer to the

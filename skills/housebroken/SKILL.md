@@ -50,7 +50,9 @@ report it in one line and do not proceed to the next step.
    on a contribution, meet it or stop. Then record what they mean and
    whether they ask for AI use to be disclosed, with `housebroken policy
    owner/repo --out --reading '<what they mean for this change>'
-   --disclosure owed` or `--disclosure none`; the filing refuses a
+   --disclosure owed` or `--disclosure none`, one repository at a time
+   and with the `--branch` whose lines you read, since a read that comes
+   out CLEAN saves neither; the filing refuses a
    DISCLOSE or a MENTION without both. Where a disclosure is owed the body
    says so, in one truthful sentence and in the template's own words where
    it has them, and names the tool. Never record `none` to spare the body

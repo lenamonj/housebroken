@@ -13,7 +13,8 @@
 #
 # Usage:
 #   bash check-ai-policy.sh [--branch <name>] [--out] [--accept-truncated]
-#                           [--reading '<what it means>'] owner/repo [owner/repo ...]
+#                           [--reading '<what it means>' --disclosure owed|none]
+#                           owner/repo [owner/repo ...]
 #   bash check-ai-policy.sh --help
 #
 #   --branch <name>  read this branch instead of the default; some projects
@@ -30,7 +31,10 @@
 #                    gates hold either until one is there
 #   --disclosure owed|none  goes with --reading: whether the lines ask for AI
 #                    use to be disclosed. The filing gates hold the body to
-#                    this call, whichever of the two the word list read
+#                    this call, whichever of the two the word list read.
+#                    One repository at a time, and on the --branch whose
+#                    lines were read: a read that comes out CLEAN, BAN or
+#                    UNREAD saves neither and says so
 #
 # Lines are joined into paragraphs before they are read, because a hard-wrapped
 # ban names AI on one line and forbids it on the next, and a paragraph is read
@@ -129,6 +133,10 @@ done
 [ "${#repos[@]}" -gt 0 ] || { usage >&2; exit 1; }
 if [ -n "$reading" ] && [ -z "$disclosure" ]; then
   echo "check-ai-policy.sh: a reading says whether the lines ask for AI use to be disclosed: add --disclosure owed or --disclosure none" >&2
+  exit 1
+fi
+if [ -n "$reading" ] && [ "${#repos[@]}" -gt 1 ]; then
+  echo "check-ai-policy.sh: a reading is of one repository's lines: record it for one repository at a time" >&2
   exit 1
 fi
 if [ -z "$reading" ] && [ -n "$disclosure" ]; then
@@ -288,6 +296,9 @@ for repo in "${repos[@]}"; do
   rc=$?
   printf '%s\n' "$report"
   if [ "$rc" -ne 0 ]; then status=1; continue; fi
+  if [ -n "$reading" ] && ! printf '%s\n' "$report" | grep -q '^DISCLOSURE: '; then
+    echo "check-ai-policy.sh: the reading and its call were not saved: this read of $repo on $(printf '%s\n' "$report" | sed -n 's/^branch: //p' | head -n 1) is $(printf '%s\n' "$report" | grep -m1 '^RESULT: ' | awk '{print $2}'); record them on the read, and the --branch, whose lines they are of" >&2
+  fi
   case "$report" in
     *"RESULT: BAN"*) [ "$status" -lt 4 ] && status=4 ;;
     *"RESULT: DISCLOSE"*) [ "$status" -lt 3 ] && status=3 ;;

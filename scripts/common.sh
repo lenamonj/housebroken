@@ -45,14 +45,11 @@ file_age() {
 
 # Text a stranger wrote, on stdin, safe to print: control characters out, so an
 # escape sequence cannot redraw a line, and line breaks kept.
-clean_lines() { LC_ALL=C tr -d '\000-\010\013\014\016-\037\177'; }
+clean_lines() { LC_ALL=C tr -d '\000-\010\013-\037\177'; }
 # The same on one line, for a title, a path or a check name in the script's own
 # output.
 clean_line() { printf '%s' "$(cat)" | LC_ALL=C tr '\r\n\t' '   ' | clean_lines; }
 
-# What both filing gates read first: the prior-art and policy printouts for this
-# repository, each present, under a day old and written for this repository, not
-# for one whose name joins to the same file. Sets art, policy and policy_result.
 # Whether the reader of a policy's lines found that a disclosure is owed:
 # "owed", "none", or nothing when the printout carries no call. The call is the
 # line check-ai-policy.sh writes after the reading, which follows the RESULT
@@ -65,6 +62,10 @@ disclosure_call() { # policy-printout
     r { exit }' "$1"
 }
 
+# What both filing gates read first: the prior-art and policy printouts for this
+# repository, each present, under a day old and written for this repository, not
+# for one whose name joins to the same file. Sets art, policy, policy_result
+# and disclosure_owed.
 # shellcheck disable=SC2034  # disclosure_owed is read by the gate that called
 read_printouts() {
   local repo="$1" home="$2" age
