@@ -19,6 +19,8 @@
 #
 # Assumes gh is installed and authenticated. Read-only: GET calls only.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 
@@ -26,14 +28,14 @@ case "${1:-}" in
   --help|-h) usage; exit 0 ;;
 esac
 repo="${1:-}"; file="${2:-}"
-case "$repo" in */*) ;; *) echo "REFUSED: name the repository as owner/repo" >&2; exit 2 ;; esac
-[ -f "$file" ] || { echo "REFUSED: $file does not exist" >&2; exit 2; }
+case "$repo" in */*) ;; *) refused ref-check-repo-form "name the repository as owner/repo" >&2; exit 2 ;; esac
+[ -f "$file" ] || { refused ref-check-file-missing "$file does not exist" >&2; exit 2; }
 shift 2
 clone=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --clone) clone="${2:-}"; [ -d "$clone" ] || { echo "REFUSED: --clone needs a directory" >&2; exit 2; }; shift ;;
-    *) echo "REFUSED: unknown argument $1" >&2; exit 2 ;;
+    --clone) clone="${2:-}"; [ -d "$clone" ] || { refused ref-check-clone-not-a-directory "--clone needs a directory" >&2; exit 2; }; shift ;;
+    *) refused ref-check-unknown-argument "unknown argument $1" >&2; exit 2 ;;
   esac
   shift
 done
