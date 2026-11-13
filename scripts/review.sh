@@ -41,9 +41,11 @@
 #
 # Assumes git, and sha256sum or shasum.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
-refuse() { echo "REFUSED: $1" >&2; exit 1; }
+refuse() { refused "$1" "$2" >&2; exit 1; }
 bad_usage() { echo "review.sh: $1" >&2; exit 2; }
 
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
@@ -73,13 +75,13 @@ default_reviewer() {
 # Prints why REVIEWER may not review AUTHOR's work, or nothing when it may.
 objection() {
   if [ -z "$2" ]; then
-    echo "no reviewer model named"
+    reason review-no-reviewer-named "no reviewer model named"
   elif [ "$2" = "$1" ]; then
-    echo "the reviewer is the model that wrote the change ($1)"
+    reason review-reviewer-is-author "the reviewer is the model that wrote the change ($1)"
   elif [ "$2" = haiku ]; then
-    echo "haiku is below the floor: a reviewer has to be able to check a standard citation or a CI matrix"
+    reason review-reviewer-below-floor "haiku is below the floor: a reviewer has to be able to check a standard citation or a CI matrix"
   elif [ "$2" != fable ] && [ "$2" != opus ] && [ "$2" != sonnet ]; then
-    echo "'$2' cannot be placed against the Sonnet floor: name a fable, opus or sonnet model"
+    reason review-reviewer-unplaced "'$2' cannot be placed against the Sonnet floor: name a fable, opus or sonnet model"
   fi
 }
 
@@ -128,15 +130,15 @@ cmd_brief() {
   local fa fr why
   fa=$(family "$author")
   if [ -n "$reviewer" ]; then fr=$(family "$reviewer"); else fr=$(default_reviewer "$fa"); fi
-  [ -n "$fr" ] || refuse "no default reviewer for '$author'; name one with --reviewer"
+  [ -n "$fr" ] || refuse review-no-default-reviewer "no default reviewer for '$author'; name one with --reviewer"
   why=$(objection "$fa" "$fr")
-  [ -z "$why" ] || refuse "$why"
+  [ -z "$why" ] || { refused_reason "$why" >&2; exit 1; }
   reviewer="${reviewer:-$fr}"
 
   if [ -n "$clone" ]; then
     head=$(git -C "$clone" rev-parse HEAD 2>/dev/null) || bad_usage "$clone is not a git clone"
     [ -z "$(git -C "$clone" status --porcelain)" ] ||
-      refuse "$clone has uncommitted changes, so the reviewer would read files that are not in ${head:0:12}: commit or stash them first"
+      refuse review-tree-dirty "$clone has uncommitted changes, so the reviewer would read files that are not in ${head:0:12}: commit or stash them first"
     # The base the branch was measured against, so the reviewer reads the diff the
     # maintainer will: a project may take pull requests on dev.
     [ -n "$base" ] || base=$(sed -n 's/^base-ref: //p' "$home/branch-checks/$head" 2>/dev/null | tr -d '\r')
@@ -249,7 +251,7 @@ cmd_check() {
     esac
     shift
   done
-  [ -f "$report" ] || refuse "no review report at $report"
+  [ -f "$report" ] || refuse review-no-report "no review report at $report"
 
   # Only the header counts: the lines from the top of the report to the first
   # blank one. A verdict quoted further down, or a second round appended to
@@ -262,21 +264,21 @@ cmd_check() {
   reviewer=$(field reviewer-model)
   verdict=$(field verdict | tr '[:lower:]' '[:upper:]')
   head=$(field head)
-  [ -n "$author" ] || refuse "$report names no author-model in its header, the lines above the first blank line"
+  [ -n "$author" ] || refuse review-no-author-model "$report names no author-model in its header, the lines above the first blank line"
   why=$(objection "$(family "$author")" "$(family "$reviewer")")
-  [ -z "$why" ] || refuse "$why"
+  [ -z "$why" ] || { refused_reason "$why" >&2; exit 1; }
   [ "$verdict" = "POST AS IS" ] ||
-    refuse "the verdict is '${verdict:-missing}' and only POST AS IS clears the gate: fix what the review found and review the new version"
+    refuse review-verdict-not-post-as-is "the verdict is '${verdict:-missing}' and only POST AS IS clears the gate: fix what the review found and review the new version"
 
   # A reviewer that read our diff first critiques our design; shouldly #1335
   # went out with a fix the maintainer replaced, because nobody wrote another.
   if [ -n "$head" ]; then
     local blind
     blind=$(field blind-fix)
-    [ -n "$blind" ] || refuse "$report reviews code at ${head:0:12} and names no blind-fix: the reviewer's own fix, written before reading ours"
-    [ -f "$blind" ] || refuse "the blind fix $blind named in $report does not exist"
+    [ -n "$blind" ] || refuse review-no-blind-fix "$report reviews code at ${head:0:12} and names no blind-fix: the reviewer's own fix, written before reading ours"
+    [ -f "$blind" ] || refuse review-blind-fix-missing "the blind fix $blind named in $report does not exist"
     if ! grep -qE '^(diff --git |--- )' "$blind" || ! grep -q '^@@' "$blind"; then
-      refuse "the blind fix $blind is not a diff: it must carry the reviewer's own change, hunks and all"
+      refuse review-blind-fix-not-a-diff "the blind fix $blind is not a diff: it must carry the reviewer's own change, hunks and all"
     fi
   fi
 
@@ -285,28 +287,28 @@ cmd_check() {
   # attacked, is a header that disagrees with its own report.
   local skipped open
   skipped=$(field skipped)
-  [ -n "$skipped" ] || refuse "$report has no skipped: line in its header - 'none', or the items not attacked"
+  [ -n "$skipped" ] || refuse review-no-skipped-line "$report has no skipped: line in its header - 'none', or the items not attacked"
   printf '%s' "$skipped" | grep -qiE '^none\.?$' ||
-    refuse "the skipped: line must read exactly none for POST AS IS, or list the items not attacked ($skipped): attack them or review again"
+    refuse review-skipped-not-none "the skipped: line must read exactly none for POST AS IS, or list the items not attacked ($skipped): attack them or review again"
   # Numbered or bulleted in any case, and any other line whose label is a severity
   # in capitals: a heading, a table row, "Finding 1 (BLOCKING):". Prose that names
   # one, as "No BLOCKING finding remains", is not a label.
   local sev='(BLOCKING|SHOULD[- _]FIX)'
   open=$( { grep -iE "^[[:space:]#*]*([0-9]+[.)]|[-*])[[:space:]*[]*(severity:[[:space:]*]*)?$sev\b|^[[:space:]*-]*severity:[[:space:]*]*$sev\b" "$report"
             grep -E "^[[:space:]#*>|-]*(Finding[[:space:]]+[0-9]+[[:space:]]*[(:-]?[[:space:]]*|[0-9]+[[:space:]]*\|[[:space:]]*)?[(*[]*${sev}[])*]*[[:space:]]*[:|,-]" "$report"; } )
-  [ -z "$open" ] || refuse "the verdict is POST AS IS but the report lists open findings: $(printf '%s' "$open" | head -1 | cut -c1-120)"
+  [ -z "$open" ] || refuse review-open-findings "the verdict is POST AS IS but the report lists open findings: $(printf '%s' "$open" | head -1 | cut -c1-120)"
 
   if [ -n "$clone" ]; then
     now=$(git -C "$clone" rev-parse HEAD 2>/dev/null) || bad_usage "$clone is not a git clone"
-    [ -n "$head" ] || refuse "$report records no head, so it cannot clear a branch"
+    [ -n "$head" ] || refuse review-no-head "$report records no head, so it cannot clear a branch"
     if [ "${#head}" -lt 12 ] || [ "${now#"$head"}" = "$now" ]; then
-      refuse "the branch moved after the review: it attacked ${head:0:12}, the clone is at ${now:0:12}"
+      refuse review-branch-moved "the branch moved after the review: it attacked ${head:0:12}, the clone is at ${now:0:12}"
     fi
   fi
   for t in ${texts[@]+"${texts[@]}"}; do
     [ -f "$t" ] || bad_usage "$t does not exist"
     printf '%s\n' "$header" | awk -v want="sha256:$(sha256 "$t")" '$1 == "text:" && $2 == want {found = 1} END {exit !found}' ||
-      refuse "$t is not the text that was reviewed: its sha256 is not in the header of $report"
+      refuse review-text-not-reviewed "$t is not the text that was reviewed: its sha256 is not in the header of $report"
   done
   echo "review: POST AS IS by $reviewer on work by $author${head:+ at ${head:0:12}}"
 }

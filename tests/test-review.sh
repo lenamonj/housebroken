@@ -77,6 +77,8 @@ write_report sonnet "DO NOT POST" "$head"
 passes && fail "DO NOT POST cleared the gate"
 write_report claude-opus-5 "POST AS IS" "$head"
 passes && fail "the author's own model cleared the gate as its reviewer"
+bash "$script" check "$report" --clone "$clone" --text "$reply" 2>&1 >/dev/null | grep -q '^REFUSED: the reviewer is the model that wrote the change (opus) \[review-reviewer-is-author\]$' ||
+  fail "the reviewer rule does not end with its own name"
 write_report haiku "POST AS IS" "$head"
 passes && fail "a reviewer below the floor cleared the gate"
 write_report sonnet "POST AS IS | POST WITH CHANGES | DO NOT POST" "$head"
