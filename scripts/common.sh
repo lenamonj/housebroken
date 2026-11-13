@@ -199,6 +199,35 @@ def ci: check_state as $s
     elif (["PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "EXPECTED"] | index($s)) then "running"
     else "red" end;'
 
+# What an empty statusCheckRollup means, in one word. GitHub lists no check both
+# for a repository whose pull requests run nothing and for a head it never made
+# a run for, and only the second is a problem: there is nothing for a maintainer
+# to approve, so only a new push or a close and reopen starts CI there. A pull
+# request filed seconds ago can read no-ci-on-head until its runs exist.
+#   needs-run-approval  a run on the head waits for a maintainer's approval
+#   pending             runs exist on the head and none has reported a check
+#   no-ci-on-head       no run on the head, in a repository that runs workflows
+#                       on pull requests
+#   none                no run on the head, in a repository that runs none
+#   ci-unread           a read failed, which is not the same as none
+empty_rollup_reading() { # repo sha
+  local total waiting n ev
+  [ -n "$2" ] || { echo ci-unread; return 0; }
+  # shellcheck disable=SC2016  # jq text
+  read -r total waiting <<< "$(gh api "repos/$1/actions/runs?head_sha=$2&per_page=100" \
+    --jq '"\(.total_count) \([.workflow_runs[] | select(.conclusion == "action_required")] | length)"' 2>/dev/null | tr -d '\r')"
+  case "$total" in ''|*[!0-9]*) echo ci-unread; return 0 ;; esac
+  case "$waiting" in ''|*[!0-9]*) echo ci-unread; return 0 ;; esac
+  if [ "$waiting" -gt 0 ]; then echo needs-run-approval; return 0; fi
+  if [ "$total" -gt 0 ]; then echo pending; return 0; fi
+  for ev in pull_request pull_request_target; do
+    n="$(gh api "repos/$1/actions/runs?event=$ev&per_page=1" --jq .total_count 2>/dev/null | tr -d '\r')"
+    case "$n" in ''|*[!0-9]*) echo ci-unread; return 0 ;; esac
+    if [ "$n" -gt 0 ]; then echo no-ci-on-head; return 0; fi
+  done
+  echo none
+}
+
 # Accounts of type User that behave as bots, by exact name: a prefix also
 # matches vercelli. GitHub's own Bot flag is read first wherever it is given.
 is_bot() { case "$1" in *"[bot]"|Copilot|codecov-commenter|coveralls|CLAassistant|oracle-contributor-agreement|github-actions|netlify|vercel) return 0 ;; *) return 1 ;; esac; }

@@ -30,6 +30,9 @@ case "$*" in
   *"pulls/1/reviews"*) serve rv ;;
   "search prs"*) echo "o/r 1 false" ;;
   *search/issues*) echo 1 ;;
+  "api repos/o/r/actions/runs?head_sha=abc123"*) cat "$STUB_DIR/runs.head" ;;
+  "api repos/o/r/actions/runs?event=pull_request_target"*) cat "$STUB_DIR/runs.target" ;;
+  "api repos/o/r/actions/runs?event=pull_request&"*) cat "$STUB_DIR/runs.pr" ;;
   *) exit 1 ;;
 esac
 STUB
@@ -154,5 +157,25 @@ jq -n --arg n "$(printf 'build %s[2J' "$esc")" '{mergeable: "MERGEABLE", reviewD
 out=$(run --since 2026-11-01T09:00:00Z)
 echo "$out" | grep -q "^o/r#1: FAILING" || fail "a timed out check was not flagged: $out"
 case "$out" in *"$esc"*) fail "an escape sequence in a check name reached the output" ;; esac
+
+# an empty check list is read, not passed over: a head no run was created for,
+# runs awaiting approval and a read that failed each say what they are, and a
+# repository whose pull requests run nothing stays quiet
+census() { # runs-on-head pull_request-runs [pull_request_target-runs]
+  printf '%s\n' "$1" > "$tmp/runs.head"; printf '%s\n' "$2" > "$tmp/runs.pr"; printf '%s\n' "${3:-0}" > "$tmp/runs.target"
+  out=$(run --since 2026-11-01T09:00:00Z)
+}
+jq -n '{mergeable: "MERGEABLE", reviewDecision: "", headRefOid: "abc123", statusCheckRollup: []}' > "$tmp/pr.json"
+census "0 0" 5
+echo "$out" | grep -q "^o/r#1: no-ci-on-head" || fail "a head with no run was not flagged: $out"
+census "0 0" 0 0
+echo "$out" | grep -q "^0 of 1 open pull requests flagged" || fail "a repository with no pull request CI was flagged: $out"
+census "3 3" 5
+echo "$out" | grep -q "^o/r#1: needs-run-approval" || fail "runs awaiting approval behind an empty check list were not flagged: $out"
+census "1 0" 5
+echo "$out" | grep -q "^0 of 1 open pull requests flagged" || fail "runs that have not reported yet were flagged: $out"
+rm -f "$tmp/runs.head"
+out=$(run --since 2026-11-01T09:00:00Z)
+echo "$out" | grep -q "^o/r#1: ci-unread" || fail "an unread run list read as quiet: $out"
 
 echo "PASS $name"

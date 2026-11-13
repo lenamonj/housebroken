@@ -35,6 +35,9 @@ case "$*" in
       throttled) echo "gh: API rate limit exceeded (HTTP 403)" >&2; exit 1 ;;
       *) echo '{}' ;;
     esac ;;
+  "api repos/o/r/actions/runs?head_sha=abc123"*) cat "$STUB_DIR/runs.head" ;;
+  "api repos/o/r/actions/runs?event=pull_request_target"*) cat "$STUB_DIR/runs.target" ;;
+  "api repos/o/r/actions/runs?event=pull_request&"*) cat "$STUB_DIR/runs.pr" ;;
   *) exit 1 ;;
 esac
 STUB
@@ -44,9 +47,14 @@ printf 'o/r\t1\t2026-11-01T10:00:00Z\tOpen one\n' > "$tmp/open"
 printf 'MERGED\n' > "$tmp/state2"
 printf 'there\n' > "$tmp/branch"
 pr() { # rollup comments
-  jq -n --argjson r "${1:-[]}" --argjson c "${2:-[]}" '{mergeable: "MERGEABLE", reviewDecision: "", statusCheckRollup: $r, comments: $c, reviews: [], latestReviews: []}' > "$tmp/pr.json"
+  jq -n --argjson r "${1:-[]}" --argjson c "${2:-[]}" '{mergeable: "MERGEABLE", reviewDecision: "", headRefOid: "abc123", statusCheckRollup: $r, comments: $c, reviews: [], latestReviews: []}' > "$tmp/pr.json"
 }
 pr '[{"conclusion":"SUCCESS"}]'
+# What the Actions API says behind an empty check list: runs on the head as
+# "TOTAL WAITING", then how many runs the repository has for each pull request
+# event. A missing file is a read that failed.
+runs() { printf '%s\n' "$1" > "$tmp/runs.head"; printf '%s\n' "$2" > "$tmp/runs.pr"; printf '%s\n' "${3:-0}" > "$tmp/runs.target"; }
+runs "0 0" 0 0
 
 out=$(sweep --all); rc=$?
 [ "$rc" -eq 0 ] || fail "--all exited $rc: $out"
@@ -121,6 +129,22 @@ done
 ball 'ci=pending' '[{"conclusion":"","status":"IN_PROGRESS"}]' '[]'
 ball 'ci=needs-approval' '[{"conclusion":"ACTION_REQUIRED","status":"COMPLETED"}]' '[]'
 ball 'ci=green' '[{"conclusion":"SUCCESS"},{"conclusion":"SKIPPED"},{"state":"SUCCESS"}]' '[]'
+
+# an empty check list is read: a head no run was created for is ours to act on,
+# a run awaiting approval is the maintainer's click, and a repository whose pull
+# requests run nothing is quiet
+runs "0 0" 5;   ball '^ACT .*\[no-ci-on-head\]' '[]' '[]'
+runs "0 0" 0 3; ball '^ACT .*\[no-ci-on-head\]' '[]' '[]'
+runs "0 0" 0 0; ball '^ok .* ci=none ' '[]' '[]'
+runs "2 2" 5;   ball '^ok .* ci=needs-approval ' '[]' '[]'
+runs "1 0" 5;   ball '^ok .* ci=pending ' '[]' '[]'
+# a read that failed, or an answer that is not a count, is not quiet
+runs "0 0" 5; rm -f "$tmp/runs.pr"; ball '^ACT .*\[ci-unread\]' '[]' '[]'
+runs "garbage" 5; ball '^ACT .*\[ci-unread\]' '[]' '[]'
+rm -f "$tmp/runs.head"; ball '^ACT .*\[ci-unread\]' '[]' '[]'
+# a check list that is not empty never asks
+ball '^ok .* ci=green ' '[{"conclusion":"SUCCESS"}]' '[]'
+runs "0 0" 0 0
 
 # a pull request that cannot be read is not a clean one
 touch "$tmp/view1.fail"
