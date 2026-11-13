@@ -45,6 +45,18 @@ set -u
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 own="${HOUSEBROKEN_HOME:-$HOME/.housebroken}/own"
+
+# One line per refusal in the local log, in the shape refuse.sh writes: the UTC
+# time, the rule's name, and "-" where a gate puts the repository. The hook is
+# installed as one file with nothing beside it, so it carries its own writer.
+# A log that cannot be written is said and changes nothing.
+log_refusal() { # name
+  local home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
+  if ! { mkdir -p "$home" && printf '%s\t%s\t-\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >> "$home/refusals.tsv"; } 2>/dev/null; then
+    echo "housebroken: the refusal log at $home/refusals.tsv could not be written" >&2
+  fi
+  return 0
+}
 case "${1:-}" in
   --help|-h) usage; exit 0 ;;
   --install)
@@ -70,7 +82,9 @@ IFS= read -r -d '' input || true
 if ! command -v jq >/dev/null 2>&1; then
   write_re='gh[[:space:]]+(pr|issue)[[:space:]]+(create|comment|review|edit|close|merge|ready|reopen|update-branch)|gh[[:space:]]+api|git[[:space:]].*push'
   if [[ $input =~ $write_re ]]; then
-    echo "housebroken: refused: jq is not on PATH, so this command could not be checked; install jq." >&2
+    why_id=gate-jq-missing
+    echo "housebroken: refused: jq is not on PATH, so this command could not be checked; install jq. [$why_id]" >&2
+    log_refusal "$why_id"
     exit 2
   fi
   exit 0
@@ -155,25 +169,30 @@ get_method_re="(-X|--method)[[:space:]=]*${quote}GET$quote$end"
 fields_re='[[:space:]](-f|--field|--raw-field|--input)([[:space:]=]|$)|[[:space:]]-f[^[:space:]-]'
 force_re='[[:space:]](--force(-with-lease)?|--delete|--mirror|-[a-zA-Z]*[fd][a-zA-Z]*)([[:space:]=]|$)|[[:space:]][+:][^[:space:]]'
 
-why=""; push=""
+why=""; why_id=""; push=""
 judge() {
-  why=""; push=""
+  why=""; why_id=""; push=""
   if [[ $1 =~ $pr_re ]]; then
     why="it writes to a pull request outside the gate; open one with housebroken file, answer one with housebroken reply, withdraw one with housebroken close"
+    why_id=gate-pr-write
   elif [[ $1 =~ $issue_re ]]; then
     why="it writes to an issue outside the gate; open one with housebroken issue, answer one with housebroken reply"
+    why_id=gate-issue-write
   elif [[ $1 =~ $graphql_re ]]; then
-    if [[ $1 =~ $mutation_re ]]; then why="a GraphQL mutation changes GitHub outside the gate"; fi
+    if [[ $1 =~ $mutation_re ]]; then why="a GraphQL mutation changes GitHub outside the gate"; why_id=gate-graphql-mutation; fi
   elif [[ $1 =~ $api_re ]]; then
     # gh api reads unless it names a writing method, or sends fields without
     # saying GET.
     if [[ $1 =~ $write_method_re ]]; then
       why="gh api with a writing method changes GitHub outside the gate"
+      why_id=gate-api-write-method
     elif [[ $1 =~ $fields_re ]] && ! [[ $1 =~ $get_method_re ]]; then
       why="gh api with fields and no -X GET is a POST, which changes GitHub outside the gate"
+      why_id=gate-api-fields-post
     fi
   elif [[ $1 =~ $push_re ]] && [[ $1 =~ $force_re ]]; then
     why="a forced push or a branch delete rewrites what a maintainer may already have reviewed; push a rework with housebroken push"
+    why_id=gate-force-push
     push=1
   fi
 }
@@ -202,13 +221,14 @@ while IFS= read -r c; do
   [ -n "$why" ] || continue
   if [ -z "$push" ] && is_own "$c"; then continue; fi
   {
-    echo "housebroken: refused: $why."
+    echo "housebroken: refused: $why. [$why_id]"
     if [ -n "$push" ]; then
       echo "If the user asked for exactly this, they can run it themselves."
     else
       echo "If the user asked for exactly this, they can run it themselves; a repository of their own passes once its owner is listed in $own."
     fi
   } >&2
+  log_refusal "$why_id"
   exit 2
 done <<< "$commands"
 exit 0

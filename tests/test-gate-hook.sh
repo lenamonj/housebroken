@@ -162,4 +162,55 @@ entry=$(sed -n '/"matcher"/p' "$tmp/out" | jq -r '.hooks[0].command') || fail "t
 printf '{"tool_input": {"command": "gh pr create -R a/b --title x"}}' | bash -c "$entry" 2>/dev/null
 [ "$?" = 2 ] || fail "the printed entry did not refuse under a home with a space: $entry"
 
+# each refusal ends with the name of its rule and leaves one line in the local log
+log="$HOUSEBROKEN_HOME/refusals.tsv"
+tab=$(printf '\t')
+count() { if [ -f "$log" ]; then wc -l < "$log" | tr -d ' '; else echo 0; fi; }
+named() { # name command
+  hook 2 "$2"
+  grep -q "^housebroken: refused: .*\. \[$1\]\$" "$tmp/err" || fail "the refusal is not named $1: $(cat "$tmp/err")"
+  [ "$(tail -n 1 "$log" | cut -f2,3)" = "$1$tab-" ] || fail "the log's last line is not $1: $(tail -n 1 "$log" 2>&1)"
+}
+named gate-pr-write 'gh pr create -R a/b --title x --body y'
+named gate-issue-write 'gh issue create -R a/b --title t'
+named gate-graphql-mutation "gh api graphql -f query='mutation { addComment(input: {subjectId: \"x\", body: \"y\"}) { clientMutationId } }'"
+named gate-api-write-method 'gh api -X POST repos/a/b/issues/1/comments -f body=x'
+named gate-api-fields-post 'gh api repos/a/b/issues/1/comments -f body=x'
+named gate-force-push 'git push --force origin fix'
+# a command that runs writes nothing
+n=$(count)
+hook 0 'git status'
+hook 0 'gh pr view 5 -R a/b'
+hook 0 'gh pr create -R acme/widgets --title x --body y'
+[ "$(count)" = "$n" ] || fail "a command that was not refused wrote to the log"
+# the hook is installed alone: copied into an empty directory it still names its rule and writes its line
+mkdir "$tmp/alone" || fail "fixture failed"
+cp "$script" "$tmp/alone/housebroken-gate.sh" || fail "fixture failed"
+printf '{"tool_input": {"command": "gh pr create -R a/b --title x"}}' | bash "$tmp/alone/housebroken-gate.sh" 2>"$tmp/err"
+[ "$?" = 2 ] || fail "the hook alone did not refuse"
+grep -q ' \[gate-pr-write\]$' "$tmp/err" || fail "the hook alone did not name its rule: $(cat "$tmp/err")"
+[ "$(count)" = "$((n + 1))" ] || fail "the hook alone did not write its line"
+# without jq the refusal is named too, when the tools the line needs are there
+mkdir "$tmp/tools" || fail "fixture failed"
+for t in date mkdir; do ln -s "$(command -v "$t")" "$tmp/tools/$t" || fail "fixture failed"; done
+printf '{"tool_input": {"command": "gh pr create"}}' | PATH="$tmp/tools" "$BASH" "$script" 2>"$tmp/err"
+[ "$?" = 2 ] || fail "a write with jq missing was not refused"
+grep -q '^housebroken: refused: jq is not on PATH.* \[gate-jq-missing\]$' "$tmp/err" || fail "the missing jq is not named: $(cat "$tmp/err")"
+[ "$(tail -n 1 "$log" | cut -f2,3)" = "gate-jq-missing$tab-" ] || fail "the log's last line is not gate-jq-missing: $(tail -n 1 "$log")"
+# the hook's line and a gate's line are one shape: time, name, repository
+(
+  # shellcheck source=scripts/refuse.sh
+  . "$here/../scripts/refuse.sh"
+  repo="a/b"; refusal_log push-repo-form
+)
+[ "$(tail -n 1 "$log" | cut -f2,3)" = "push-repo-form${tab}a/b" ] || fail "the gate's line was not written beside the hook's"
+bad=$(awk -F'\t' '!(NF == 3 && $1 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$/ && $2 ~ /^[a-z0-9]+(-[a-z0-9]+)+$/ && ($3 == "-" || $3 ~ /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/))' "$log")
+[ -z "$bad" ] || fail "a log line is not time, name, repository: $bad"
+# a log that cannot be written changes nothing but one line on stderr
+printf 'x\n' > "$tmp/afile"
+printf '{"tool_input": {"command": "gh pr create -R a/b --title x"}}' | HOUSEBROKEN_HOME="$tmp/afile" bash "$script" 2>"$tmp/err"
+[ "$?" = 2 ] || fail "an unwritable log changed the hook's exit"
+grep -q '^housebroken: refused: it writes to a pull request outside the gate.* \[gate-pr-write\]$' "$tmp/err" || fail "an unwritable log changed the refusal: $(cat "$tmp/err")"
+[ "$(grep -c 'could not be written' "$tmp/err")" = 1 ] || fail "the unwritable log was not said: $(cat "$tmp/err")"
+
 echo "PASS $name"
