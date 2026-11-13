@@ -72,6 +72,19 @@ printf '%s' "$out" | grep -q "names AI without a recorded reading" || fail "a DI
 printf '%s' "$out" | grep -q "requires AI use to be disclosed" && fail "the body was judged before the lines were read: $out"
 printf 'READING: say which tool wrote it; nothing else is asked\n' >> "$policyfile"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a reading with no disclosure call exited $rc, expected 2"
+printf '%s' "$out" | grep -q "does not say whether a disclosure is owed.* \[common-policy-no-disclosure-call\]" || fail "a reading with no disclosure call was not held: $out"
+printf 'DISCLOSURE: none\n' >> "$policyfile"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q "requires AI use to be disclosed\|disclosure is owed" && fail "a DISCLOSE read as not owed held a silent body: $out"
+policy "MENTION (a policy file names AI)"
+printf 'READING: asks for a note on AI use\nDISCLOSURE: owed\n' >> "$policyfile"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "a MENTION read as owed with a silent body exited $rc, expected 2"
+printf '%s' "$out" | grep -q "requires AI use to be disclosed.* \[file-pr-disclosure-missing\]" || fail "a MENTION read as owed passed a silent body: $out"
+policy "DISCLOSE (a policy file requires AI use to be disclosed)"
+printf 'READING: say which tool wrote it; nothing else is asked\nDISCLOSURE: owed\n' >> "$policyfile"
+out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
 [ "$rc" -eq 2 ] || fail "a DISCLOSE policy with a silent body exited $rc, expected 2"
 printf '%s' "$out" | grep -q "requires AI use to be disclosed" || fail "a DISCLOSE policy printed no refusal"
 disclosed="$HOUSEBROKEN_HOME/disclosed.md"

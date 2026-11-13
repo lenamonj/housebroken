@@ -164,10 +164,43 @@ msg=$(FILE_ISSUE_DRY=1 bash "$here/../scripts/file-issue.sh" o/r --title t --bod
 printf '%s\n' "$msg" | grep -q "names AI without a recorded reading" || fail "file-issue.sh did not hold a MENTION: $msg"
 msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file /dev/null 2>&1)
 printf '%s\n' "$msg" | grep -q "names AI without a recorded reading" || fail "file-pr.sh did not hold a MENTION: $msg"
-bash "$script" --out --reading "AI tools are allowed and nothing is asked of the body" o/r >/dev/null
-grep -q '^READING: AI tools are allowed' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "the reading was not saved"
+# a reading says whether a disclosure is owed: without that call it is not taken, and nothing is saved
+saved="$HOUSEBROKEN_HOME/policy/policy-o-r.md"
+before=$(cat "$saved")
+msg=$(bash "$script" --out --reading "AI tools are allowed and nothing is asked of the body" o/r 2>&1); rc=$?
+[ "$rc" -eq 1 ] || fail "a reading with no --disclosure exited $rc, expected 1: $msg"
+printf '%s\n' "$msg" | grep -q -- "--disclosure owed" || fail "a reading with no --disclosure did not name the flag: $msg"
+[ "$(cat "$saved")" = "$before" ] || fail "a reading with no --disclosure changed the printout"
+msg=$(bash "$script" --out --reading "x" --disclosure maybe o/r 2>&1); rc=$?
+[ "$rc" -eq 1 ] || fail "--disclosure maybe exited $rc, expected 1: $msg"
+msg=$(bash "$script" --out --disclosure none o/r 2>&1); rc=$?
+[ "$rc" -eq 1 ] || fail "--disclosure with no --reading exited $rc, expected 1: $msg"
+out=$(bash "$script" --out --reading "AI tools are allowed and nothing is asked of the body" --disclosure none o/r); rc=$?
+[ "$rc" -eq 0 ] || fail "a MENTION with its reading exited $rc, expected 0"
+[ "$(result "$out")" = MENTION ] || fail "a reading changed the RESULT: $out"
+grep -q '^READING: AI tools are allowed' "$saved" || fail "the reading was not saved"
+[ "$(grep -A1 '^READING: ' "$saved" | tail -n 1)" = "DISCLOSURE: none" ] || fail "the call does not follow the reading: $(cat "$saved")"
 msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file /dev/null 2>&1)
 printf '%s\n' "$msg" | grep -q "without a recorded reading" && fail "a recorded reading did not lift the hold: $msg"
+# a mention read as a rule: the body is held to it, though the list read no rule
+printf 'one finding, one test\n' > "$root/silent.md"
+printf 'one finding, one test\n\nWritten with Claude.\n' > "$root/said.md"
+bash "$script" --out --reading "asks for a note on AI use in the description" --disclosure owed o/r >/dev/null
+[ "$(grep -A1 '^READING: ' "$saved" | tail -n 1)" = "DISCLOSURE: owed" ] || fail "an owed call was not saved: $(cat "$saved")"
+msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file "$root/silent.md" 2>&1)
+printf '%s\n' "$msg" | grep -q "requires AI use to be disclosed.* \[file-pr-disclosure-missing\]" || fail "file-pr.sh passed a silent body where the reading says a disclosure is owed: $msg"
+msg=$(FILE_ISSUE_DRY=1 bash "$here/../scripts/file-issue.sh" o/r --title t --body-file "$root/silent.md" 2>&1)
+printf '%s\n' "$msg" | grep -q "requires AI use to be disclosed.* \[file-issue-disclosure-missing\]" || fail "file-issue.sh passed a silent body where the reading says a disclosure is owed: $msg"
+msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file "$root/said.md" 2>&1)
+printf '%s\n' "$msg" | grep -q "requires AI use to be disclosed" && fail "file-pr.sh refused a body that discloses: $msg"
+# a printout with a reading and no call, as the last version saved it, holds the filing
+grep -v '^DISCLOSURE: ' "$saved" > "$root/old.md" && cp "$root/old.md" "$saved"
+msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file "$root/said.md" 2>&1)
+printf '%s\n' "$msg" | grep -q "does not say whether a disclosure is owed.* \[common-policy-no-disclosure-call\]" || fail "a reading with no call did not hold the filing: $msg"
+# the call is the line after the reading and nowhere else: a stray line a stranger's text could make is not it
+printf 'DISCLOSURE: none\n' >> "$saved"
+msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file "$root/said.md" 2>&1)
+printf '%s\n' "$msg" | grep -q "common-policy-no-disclosure-call" || fail "a stray DISCLOSURE line was taken as the call: $msg"
 
 # DISCLOSE is a hold as well: a disclosure rule seldom stands alone, so its
 # lines are read and a reading recorded before the body's disclosure is asked for
@@ -179,8 +212,24 @@ msg=$(FILE_ISSUE_DRY=1 bash "$here/../scripts/file-issue.sh" o/r --title t --bod
 printf '%s\n' "$msg" | grep -q "names AI without a recorded reading" || fail "file-issue.sh did not hold a DISCLOSE: $msg"
 msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file /dev/null 2>&1)
 printf '%s\n' "$msg" | grep -q "names AI without a recorded reading" || fail "file-pr.sh did not hold a DISCLOSE: $msg"
-bash "$script" --out --reading "say which tool wrote it; nothing else is asked" o/r >/dev/null
+out=$(bash "$script" --out --reading "say which tool wrote it; nothing else is asked" --disclosure owed o/r); rc=$?
+[ "$rc" -eq 3 ] || fail "a DISCLOSE with its reading exited $rc, expected 3"
 grep -q '^READING: say which tool wrote it' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "the reading of a DISCLOSE was not saved"
+msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file "$root/silent.md" 2>&1)
+printf '%s\n' "$msg" | grep -q "requires AI use to be disclosed" || fail "a DISCLOSE read as owed passed a silent body: $msg"
+# the list read a rule and the reader found none: the body is not held to a sentence nobody asked for
+bash "$script" --out --reading "the sentence describes the product; nothing is asked" --disclosure none o/r >/dev/null
+msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file "$root/silent.md" 2>&1)
+printf '%s\n' "$msg" | grep -q "requires AI use to be disclosed" && fail "a DISCLOSE read as not owed still held the body: $msg"
+msg=$(FILE_ISSUE_DRY=1 bash "$here/../scripts/file-issue.sh" o/r --title t --body-file "$root/silent.md" 2>&1)
+printf '%s\n' "$msg" | grep -q "requires AI use to be disclosed" && fail "file-issue.sh held a body under a DISCLOSE read as not owed: $msg"
+bash "$script" --out --reading "say which tool wrote it; nothing else is asked" --disclosure owed o/r >/dev/null
+# a policy that names no AI takes no call
+printf 'Run the tests.\n' > "$root/files/CONTRIBUTING.md"
+bash "$script" --out --reading "x" --disclosure owed o/r >/dev/null
+grep -q '^DISCLOSURE: \|^READING: ' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" && fail "a CLEAN printout carries a reading or a call"
+printf 'AI use must be disclosed in the description.\n' > "$root/files/CONTRIBUTING.md"
+bash "$script" --out --reading "say which tool wrote it; nothing else is asked" --disclosure owed o/r >/dev/null
 msg=$(FILE_PR_DRY=1 bash "$here/../scripts/file-pr.sh" o/r --title t --body-file /dev/null 2>&1)
 printf '%s\n' "$msg" | grep -q "without a recorded reading" && fail "a recorded reading did not lift the hold on a DISCLOSE: $msg"
 msg=$(FILE_ISSUE_DRY=1 bash "$here/../scripts/file-issue.sh" o/r --title t --body-file /dev/null 2>&1)

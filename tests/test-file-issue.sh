@@ -44,6 +44,19 @@ out=$(run --title t --body-file "$bodyfile"); rc=$?
 printf '%s' "$out" | grep -q "names AI without a recorded reading" || fail "a DISCLOSE policy with no reading was not held: $out"
 printf 'READING: say which tool wrote it; nothing else is asked\n' >> "$policyfile"
 out=$(run --title t --body-file "$bodyfile"); rc=$?
+[ "$rc" -eq 2 ] || fail "a reading with no disclosure call exited $rc, expected 2"
+printf '%s' "$out" | grep -q "common-policy-no-disclosure-call" || fail "a reading with no disclosure call was not held: $out"
+printf 'DISCLOSURE: none\n' >> "$policyfile"
+out=$(run --title t --body-file "$bodyfile")
+printf '%s' "$out" | grep -q "requires AI use to be disclosed\|disclosure is owed" && fail "a DISCLOSE read as not owed held a silent body: $out"
+policy "MENTION (a policy file names AI)"
+printf 'READING: asks for a note on AI use\nDISCLOSURE: owed\n' >> "$policyfile"
+out=$(run --title t --body-file "$bodyfile"); rc=$?
+[ "$rc" -eq 2 ] || fail "a MENTION read as owed with a silent body exited $rc, expected 2"
+printf '%s' "$out" | grep -q "requires AI use to be disclosed.* \[file-issue-disclosure-missing\]" || fail "a MENTION read as owed passed a silent body: $out"
+policy "DISCLOSE (a policy file asks for disclosure)"
+printf 'READING: say which tool wrote it; nothing else is asked\nDISCLOSURE: owed\n' >> "$policyfile"
+out=$(run --title t --body-file "$bodyfile"); rc=$?
 [ "$rc" -eq 2 ] || fail "an undisclosed body under DISCLOSE exited $rc, expected 2"
 printf '%s' "$out" | grep -q "requires AI use to be disclosed" || fail "an undisclosed body under DISCLOSE printed no refusal"
 printf 'The Home Assistant loader drops the last field.\n' > "$HOUSEBROKEN_HOME/assist.md"

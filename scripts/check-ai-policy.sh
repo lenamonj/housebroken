@@ -28,6 +28,9 @@
 #   --reading <text> what a MENTION or a DISCLOSE means for this change, read by
 #                    a person or an agent; saved with --out, and the filing
 #                    gates hold either until one is there
+#   --disclosure owed|none  goes with --reading: whether the lines ask for AI
+#                    use to be disclosed. The filing gates hold the body to
+#                    this call, whichever of the two the word list read
 #
 # Lines are joined into paragraphs before they are read, because a hard-wrapped
 # ban names AI on one line and forbids it on the next, and a paragraph is read
@@ -99,6 +102,7 @@ branch_opt=""
 out=0
 accept_truncated=0
 reading=""
+disclosure=""
 repos=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -110,6 +114,11 @@ while [ "$#" -gt 0 ]; do
     --accept-truncated) accept_truncated=1 ;;
     --reading) shift; [ -n "${1:-}" ] || { echo "check-ai-policy.sh: --reading needs what the lines mean" >&2; exit 1; }
                reading=$(printf '%s' "$1" | tr '\n' ' ') ;;
+    --disclosure) shift
+               case "${1:-}" in
+                 owed|none) disclosure="$1" ;;
+                 *) echo "check-ai-policy.sh: --disclosure takes owed or none" >&2; exit 1 ;;
+               esac ;;
     --*) usage >&2; echo "check-ai-policy.sh: unknown option $1" >&2; exit 1 ;;
     */*) repos+=("$1") ;;
     *) usage >&2; echo "check-ai-policy.sh: '$1' is not owner/repo" >&2; exit 1 ;;
@@ -117,6 +126,14 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 [ "${#repos[@]}" -gt 0 ] || { usage >&2; exit 1; }
+if [ -n "$reading" ] && [ -z "$disclosure" ]; then
+  echo "check-ai-policy.sh: a reading says whether the lines ask for AI use to be disclosed: add --disclosure owed or --disclosure none" >&2
+  exit 1
+fi
+if [ -z "$reading" ] && [ -n "$disclosure" ]; then
+  echo "check-ai-policy.sh: --disclosure goes with --reading 'what the lines mean for this change'" >&2
+  exit 1
+fi
 
 command -v gh >/dev/null 2>&1 || { echo "check-ai-policy.sh: gh is not on PATH" >&2; exit 1; }
 # shellcheck source=scripts/common.sh
@@ -259,11 +276,11 @@ for repo in "${repos[@]}"; do
     elif [ "$unread" -gt 0 ]; then echo "RESULT: UNREAD ($unread policy file(s) or listing(s) could not be fetched; rerun when GitHub answers)"
     elif [ "$truncated" -eq 1 ]; then echo "RESULT: UNREAD (GitHub truncated the file listing; read the policy by hand, then rerun with --accept-truncated)"
     elif [ "$disclose" -eq 1 ]; then
-      echo "RESULT: DISCLOSE (a policy file requires AI use to be disclosed; say so in the body; read the lines above, then rerun with --reading 'what they mean for this change')"
-      [ -z "$reading" ] || echo "READING: $reading"
+      echo "RESULT: DISCLOSE (a policy file requires AI use to be disclosed; read the lines above, then rerun with --reading 'what they mean for this change' and --disclosure owed or none)"
+      [ -z "$reading" ] || printf 'READING: %s\nDISCLOSURE: %s\n' "$reading" "$disclosure"
     elif [ "$found" -eq 1 ]; then
-      echo "RESULT: MENTION (a policy file names AI and no sentence reads as a ban or a disclosure rule; read the lines above, then rerun with --reading 'what they mean for this change')"
-      [ -z "$reading" ] || echo "READING: $reading"
+      echo "RESULT: MENTION (a policy file names AI and no sentence reads as a ban or a disclosure rule; read the lines above, then rerun with --reading 'what they mean for this change' and --disclosure owed or none)"
+      [ -z "$reading" ] || printf 'READING: %s\nDISCLOSURE: %s\n' "$reading" "$disclosure"
     else echo "RESULT: CLEAN (no policy file names AI)"
     fi
   )

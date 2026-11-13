@@ -127,7 +127,7 @@ fi
 check_text "body file $bodyfile" "$(cat "$bodyfile")"
 check_text "--title" "$title"
 prose_gate "$repo" "$bodyfile" "$home"
-if [ "$policy_result" = "DISCLOSE" ] && ! discloses "$bodyfile" "$template"; then
+if [ "$disclosure_owed" -eq 1 ] && ! discloses "$bodyfile" "$template"; then
   refused file-pr-disclosure-missing "$repo requires AI use to be disclosed ($policy) and the body does not name it" >&2
   exit 2
 fi

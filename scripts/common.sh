@@ -53,6 +53,18 @@ clean_line() { printf '%s' "$(cat)" | LC_ALL=C tr '\r\n\t' '   ' | clean_lines; 
 # What both filing gates read first: the prior-art and policy printouts for this
 # repository, each present, under a day old and written for this repository, not
 # for one whose name joins to the same file. Sets art, policy and policy_result.
+# Whether the reader of a policy's lines found that a disclosure is owed:
+# "owed", "none", or nothing when the printout carries no call. The call is the
+# line check-ai-policy.sh writes after the reading, which follows the RESULT
+# line; a line of that shape anywhere else in a printout is not it.
+disclosure_call() { # policy-printout
+  awk '{ sub(/\r$/, "") }
+    !r && /^RESULT: / { r = NR; next }
+    r && NR == r + 1 && /^READING: ./ { next }
+    r && NR == r + 2 && /^DISCLOSURE: (owed|none)$/ { print $2 }
+    r { exit }' "$1"
+}
+
 read_printouts() {
   local repo="$1" home="$2" age
   art="$home/prior-art/prior-art-${repo%%/*}-${repo##*/}.md"
@@ -84,6 +96,7 @@ read_printouts() {
     fi
   done
   policy_result=$(grep -m1 '^RESULT: ' "$policy" | awk '{print $2}')
+  disclosure_owed=0
   case "$policy_result" in
     BAN) refused common-policy-ban "$repo forbids AI-written contributions ($policy); never file here" >&2; exit 2 ;;
     CLEAN) ;;
@@ -93,7 +106,13 @@ read_printouts() {
       if ! grep -q '^READING: .' "$policy"; then
         refused common-policy-no-reading "$policy names AI without a recorded reading - read its lines, then rerun check-ai-policy.sh $repo --out --reading 'what they mean for this change'" >&2
         exit 2
-      fi ;;
+      fi
+      case "$(disclosure_call "$policy")" in
+        owed) disclosure_owed=1 ;;
+        none) ;;
+        *) refused common-policy-no-disclosure-call "$policy does not say whether a disclosure is owed - rerun check-ai-policy.sh $repo --out --reading 'what they mean for this change' --disclosure owed or none" >&2
+           exit 2 ;;
+      esac ;;
     UNREAD) refused common-policy-unread "$policy reads UNREAD - GitHub did not give every policy file; rerun check-ai-policy.sh --out" >&2; exit 2 ;;
     *) refused common-policy-no-result "$policy has no RESULT line - rerun check-ai-policy.sh --out" >&2; exit 2 ;;
   esac
