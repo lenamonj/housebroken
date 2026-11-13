@@ -31,6 +31,8 @@
 # Assumes gh is installed and authenticated. It writes to GitHub only after all
 # four gates pass, and only when FILE_ISSUE_DRY is not 1.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() {
   cat <<'EOF'
@@ -69,15 +71,15 @@ if [ "$#" -eq 0 ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   exit 0
 fi
 
-command -v gh >/dev/null 2>&1 || { echo "REFUSED: gh is not on PATH" >&2; exit 2; }
+command -v gh >/dev/null 2>&1 || { refused file-issue-gh-missing "gh is not on PATH" >&2; exit 2; }
 
 repo="$1"
 shift
 case "$repo" in
   */*) : ;;
-  *) echo "REFUSED: first argument must be owner/repo" >&2; exit 2 ;;
+  *) refused file-issue-repo-form "first argument must be owner/repo" >&2; exit 2 ;;
 esac
-[ "$#" -gt 0 ] || { echo "REFUSED: no gh issue create arguments given" >&2; exit 2; }
+[ "$#" -gt 0 ] || { refused file-issue-no-arguments "no gh issue create arguments given" >&2; exit 2; }
 
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 # shellcheck source=scripts/common.sh
@@ -99,27 +101,27 @@ while [ "$#" -gt 0 ]; do
     -l|--label|-a|--assignee|-m|--milestone|-p|--project) pass+=("$1" "${2:-}"); shift ;;
     --label=*|--assignee=*|--milestone=*|--project=*) pass+=("$1") ;;
     *)
-      echo "REFUSED: file-issue.sh does not pass $1 to gh issue create: the body comes from one --body-file, the repository is the first argument" >&2
+      refused file-issue-argument-not-passed "file-issue.sh does not pass $1 to gh issue create: the body comes from one --body-file, the repository is the first argument" >&2
       exit 2
       ;;
   esac
   shift
 done
-[ -n "$title" ] || { echo "REFUSED: pass --title" >&2; exit 2; }
-[ -n "$bodyfile" ] || { echo "REFUSED: pass the body as --body-file so the gates can read it" >&2; exit 2; }
+[ -n "$title" ] || { refused file-issue-no-title "pass --title" >&2; exit 2; }
+[ -n "$bodyfile" ] || { refused file-issue-no-body-file "pass the body as --body-file so the gates can read it" >&2; exit 2; }
 if [ "$bodyfile" = "-" ] || [ ! -f "$bodyfile" ]; then
-  echo "REFUSED: body file $bodyfile does not exist" >&2
+  refused file-issue-body-file-missing "body file $bodyfile does not exist" >&2
   exit 2
 fi
 body=$(cat "$bodyfile")
 check_text "body file $bodyfile" "$body"
 check_text "--title" "$title"
 if [ "$policy_result" = "DISCLOSE" ] && ! discloses "$bodyfile" /dev/null; then
-  echo "REFUSED: $repo requires AI use to be disclosed ($policy) and the body does not name it" >&2
+  refused file-issue-disclosure-missing "$repo requires AI use to be disclosed ($policy) and the body does not name it" >&2
   exit 2
 fi
 if ! refs=$(bash "$(dirname "$0")/ref-check.sh" "$repo" "$bodyfile" 2>&1); then
-  echo "REFUSED: the body names something that does not exist:" >&2
+  refused file-issue-reference-not-found "the body names something that does not exist:" >&2
   printf '%s\n' "$refs" | grep -E 'NOT FOUND|REFUSED' >&2
   exit 2
 fi
@@ -150,7 +152,7 @@ work_link() {
 }
 offer=$(printf '%s' "$body" | grep -ioE "$offer_re" | head -1) || true
 if [ -n "$offer" ] && ! work_link; then
-  echo "REFUSED: the body says '$offer' and links no branch or commit - push the work to your fork and link it, or take it out of the body" >&2
+  refused file-issue-offer-without-link "the body says '$offer' and links no branch or commit - push the work to your fork and link it, or take it out of the body" >&2
   exit 2
 fi
 
