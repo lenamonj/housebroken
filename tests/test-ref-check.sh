@@ -20,9 +20,13 @@ bash "$script" octocat/Hello-World "$tmp/none.md" >/dev/null 2>&1
 
 clone="$tmp/clone"
 mkdir -p "$clone/src" || fail "clone setup failed"
+# The commit is dated, so its hash is the same on every run. Twelve digits read
+# as a number and not as a commit, and a hash left to the clock is twelve digits
+# about one run in 280.
 (cd "$clone" && $G init -q && printf 'func TestParseRow(t *testing.T) {}\n' > src/row_test.go &&
-  $G add -A && $G commit -q -m base) || fail "clone setup failed"
+  $G add -A && GIT_AUTHOR_DATE=2026-01-01T00:00:00Z GIT_COMMITTER_DATE=2026-01-01T00:00:00Z $G commit -q -m base) || fail "clone setup failed"
 sha=$(git -C "$clone" rev-parse --short=12 HEAD)
+case "$sha" in *[a-f]*) ;; *) fail "the fixture hash $sha has no letter, so ref-check reads it as a number: change the fixture date" ;; esac
 
 body="$tmp/body.md"
 # shellcheck disable=SC2016  # the backticks are markdown, written literally
