@@ -16,15 +16,17 @@
 # Exits 1 when it finds claims to re-derive, 0 when it finds none, 2 on a usage
 # error. Exit 1 is not a refusal to send; it is a refusal to send unread.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 
 case "${1:-}" in
   --help|-h) usage; exit 0 ;;
-  "") echo "REFUSED: name the file holding the text" >&2; exit 2 ;;
+  "") refused claim-check-no-file-named "name the file holding the text" >&2; exit 2 ;;
 esac
 file="$1"
-[ -f "$file" ] || { echo "REFUSED: $file does not exist" >&2; exit 2; }
+[ -f "$file" ] || { refused claim-check-file-missing "$file does not exist" >&2; exit 2; }
 
 # Strip fenced code and quoted lines: a number inside pasted output is evidence,
 # not a claim being made. A table row is ours, and so is what it counts.
