@@ -76,6 +76,11 @@ reads DISCLOSE "## AI usage disclosure\n\nKeep the ones that apply, delete the r
 reads DISCLOSE "If you wish to include context from an interaction with AI in your comments, it must be in a quote block and disclosed as such."
 reads DISCLOSE "Contributors must declare any use of AI in the pull request."
 reads DISCLOSE "AI-generated code must be clearly marked."
+reads DISCLOSE "Code produced by an LLM must be labelled."
+reads DISCLOSE "Mark AI-written commits in the message."
+# "full" and "public" disclosure are as often about AI use as about anything else
+reads DISCLOSE "Full disclosure of AI use is required in every pull request."
+reads DISCLOSE "AI use requires public disclosure in the pull request."
 
 reads MENTION "You may use AI tools, but you must not submit code you cannot explain."
 reads MENTION "Do not paste massive AI generated explanations."
@@ -97,6 +102,12 @@ reads MENTION "If you used LLM tools during development, you may still submit - 
 reads MENTION "If you use LLM tools for your contributions, please read and follow our Generative AI Policy."
 reads MENTION "- [ ] I acknowledge this project's AI policy."
 reads MENTION "Security issues go through responsible disclosure; an AI tool may help you write the report."
+reads MENTION "Our vulnerability disclosure process is in SECURITY.md, and a Copilot summary is not a report."
+reads MENTION "See the security disclosure page before you paste any LLM output into an advisory."
+reads MENTION "Follow our security disclosure and coordinated disclosure process; an AI tool may help draft the report."
+# a product's own description of what its AI does is not a rule about marking AI work
+reads MENTION "The AI agent should be identified by its model name in the config file."
+reads MENTION "LLM outputs should be flagged as unsafe when the moderation API says so."
 reads MENTION "If you use AI, you are responsible for every line you submit."
 reads CLEAN "The cursor will be closed when the connection ends."
 reads CLEAN "Nothing about models here."

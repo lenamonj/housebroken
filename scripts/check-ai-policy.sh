@@ -77,20 +77,21 @@ AI='\bAIs?\b|\bA\.I\.|artificial intelligence|\bLLMs?\b|large language models?|\
 # object in the same clause is the work or the AI term: "a client rejects that
 # manifest" beside "Claude Code" is a README describing a tool.
 BAN_RE="(\b(not|never|cannot)|n.t)( be)? (accept|allow|permit|welcome|merg|review|consider)|prohibit|forbid|disallow|\bbans?\b|banned|unwelcome|unacceptable|not acceptable|zero tolerance|will be (closed|rejected|declined|refused)|closed without|\b(reject|decline|refuse)[sd]?\b[^,;:.]*(contribution|pull request|\bPRs?\b|patch|submission|merge request|$AI)|\b(are|is|get|gets) (rejected|declined|refused)\b|refrain from|\bno[- ](ai|llm|machine-generated|generative)s?([- ](use|usage|generated|written|assisted|tools?|code|contributions?|content|output|PRs?|patch|polic|rules?|ai|llms?)|[.!]|$)|(do not|don.t|never|must not|may not|should not|shouldn.t) (use|submit|send|open|contribute)[^,;:]*($AI)|avoid( using)?[^,;:]*($AI)|($AI)[^,;:]* (must|may|should|can) not be (used|submitted|contributed|sent)"
-# A disclosure word counts where it asks the contributor to say AI was used. A
-# credit, a thanks, the project speaking of itself ("we used AI", "to be
-# transparent about our usage") and a rule about something else ("if you use AI,
-# comments must be correct") each name AI beside such a word and ask for
-# nothing. What the list misses reads MENTION, which holds the filing until the
-# lines are read, so a miss fails safe.
-DISCLOSE_RE='disclos|(\bAI\b|\bLLMs?\b)[a-z -]{0,12}disclaimer|declar[a-z]* [^.;]{0,40}\b(use|usage|using|assistance|involvement)\b|(must|should|need to|have to|required to|please|make sure to|be sure to) [^.;]{0,20}reveal|(must|should|please|need to|have to|required to) (state|say|indicate|mention|specify)|(please|must|should|need to|have to|expected to) be transparent|label(l)?ed as|clearly (state|indicate|mark)|\bI (have )?used (AI\b|an AI\b|generative AI\b|LLMs?\b)|which (ai|llm) tool|ai transcript|let us know [^.;]{0,50}(\bAI\b|\bLLMs?\b)|tell us [^.;]{0,50}(\bAI\b|\bLLMs?\b)|assisted-by|generated-by|\bmark(ed)? (ai|llm)|(\bAI\b|\bLLM)[a-z -]{0,30}(must|should) be (clearly )?(marked|labell?ed|flagged|identified)'
+# A disclosure word counts where the sentence reads as asking the contributor to
+# say AI was used. A credit, a thanks, the project speaking of itself ("we used
+# AI", "to be transparent about our usage") and a rule about something else ("if
+# you use AI, comments must be correct") mostly read MENTION now. The list reads
+# no grammar and still misreads some: a heading "AI Disclosure" over a credit, a
+# lone maintainer's "I used AI", "disclosure" of something other than AI use. So
+# DISCLOSE is held for a recorded reading as MENTION is, and what the list
+# misses reads MENTION, which holds the filing too.
+DISCLOSE_RE='disclos|(\bAI\b|\bLLMs?\b)[a-z -]{0,12}disclaimer|declar[a-z]* [^.;]{0,40}\b(use|usage|using|assistance|involvement)\b|(must|should|need to|have to|required to|please|make sure to|be sure to) [^.;]{0,20}reveal|(must|should|please|need to|have to|required to) (state|say|indicate|mention|specify)|(please|must|should|need to|have to|expected to) be transparent|label(l)?ed as|clearly (state|indicate|mark)|\bI (have )?used (AI\b|an AI\b|generative AI\b|LLMs?\b)|which (ai|llm) tool|ai transcript|let us know [^.;]{0,50}(\bAI\b|\bLLMs?\b)|tell us [^.;]{0,50}(\bAI\b|\bLLMs?\b)|assisted-by|generated-by|\bmark(ed)? (ai|llm)|(\bAI\b|\bLLM)[a-z -]{0,30}(must|should) be (clearly )?(marked|labell?ed)'
 # Disclosure of a vulnerability is not disclosure of AI use: those phrases are
-# taken out of a sentence before the list above is tried. awk, because sed has
-# no portable way to ignore case.
+# taken out of a sentence, every one of them, before the list above is tried.
+# awk, because sed has no portable way to ignore case.
 aside_other_disclosure() {
-  awk '{ l = tolower($0)
-         while (match(l, /(vulnerabilit[a-z]*|security|coordinated|responsible|public|full)[ -]disclosure/)) {
-           $0 = substr($0, 1, RSTART - 1) substr($0, RSTART + RLENGTH); l = tolower($0) }
+  awk '{ while (match(tolower($0), /(vulnerabilit[a-z]*|security|coordinated|responsible)[ -]disclosure/))
+           $0 = substr($0, 1, RSTART - 1) substr($0, RSTART + RLENGTH)
          print }'
 }
 
