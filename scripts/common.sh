@@ -1,6 +1,10 @@
 # common.sh - what several gates share. Sourced, never run.
 # shellcheck shell=bash
 
+# Its refusals go through refuse.sh, whichever script sourced this one.
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/refuse.sh"
+
 # Git as these scripts read it, whatever the user's config says: paths as they
 # are and plain output. core.quotePath quotes a non-ASCII name, color.ui=always
 # hides every added line behind an escape, and an external diff driver prints
@@ -183,7 +187,7 @@ spacing_gate() { # repo home
   last=$(tail -1 "$log" | awk '{print $1}')
   since=$(( $(date -u +%s) - ${last:-0} ))
   if [ "$since" -lt 600 ]; then
-    refused common-filing-too-soon "your last filing on $1 went out ${since}s ago - wait until ten minutes have passed" >&2
+    refused common-filing-too-soon-after-last "your last filing on $1 went out ${since}s ago - wait until ten minutes have passed" >&2
     exit 2
   fi
 }

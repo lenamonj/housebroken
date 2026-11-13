@@ -55,6 +55,7 @@ own="${HOUSEBROKEN_HOME:-$HOME/.housebroken}/own"
 # A log that cannot be written is said and changes nothing.
 log_refusal() { # name
   local home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
+  [[ "$1" =~ ^[a-z0-9]+(-[a-z0-9]+)+$ ]] || return 0
   if ! { mkdir -p "$home" && printf '%s\t%s\t-\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >> "$home/refusals.tsv"; } 2>/dev/null; then
     echo "housebroken: the refusal log at $home/refusals.tsv could not be written" >&2
   fi
@@ -195,7 +196,7 @@ judge() {
     fi
   elif [[ $1 =~ $push_re ]] && [[ $1 =~ $force_re ]]; then
     why="a forced push or a branch delete rewrites what a maintainer may already have reviewed; push a rework with housebroken push"
-    why_id=gate-force-push
+    why_id=gate-push-force-or-delete
     push=1
   fi
 }

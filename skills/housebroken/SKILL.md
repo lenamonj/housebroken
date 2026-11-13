@@ -282,7 +282,8 @@ report it in one line and do not proceed to the next step.
    is under ten minutes old.
    A refusal is a result; fix the cause. Its first line ends with the rule's
    name in brackets, and `~/.housebroken/refusals.tsv` keeps one line for
-   each refusal: the time, the name and the repository.
+   each refusal and each reason it lists: the time, the name and the
+   repository.
 
 10. **Watch it land.**
     `housebroken verify owner/repo PR` re-derives from GitHub that the head is

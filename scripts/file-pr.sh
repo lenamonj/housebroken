@@ -203,7 +203,7 @@ if [ "$stamped" != "$upstream" ]; then
   fi
   # GitHub lists at most 300 files here; past that the overlap cannot be known.
   if [ "$(printf '%s' "$cmp" | jq '.files | length')" -ge 300 ]; then
-    refused file-pr-target-moved-300-files "$target moved by 300 files or more since branch-check (${stamped:0:12} to ${upstream:0:12}) - fetch, rebase, rerun branch-check.sh and the review" >&2
+    refused file-pr-target-moved-too-far "$target moved by 300 files or more since branch-check (${stamped:0:12} to ${upstream:0:12}) - fetch, rebase, rerun branch-check.sh and the review" >&2
     exit 2
   fi
   moved=$(printf '%s' "$cmp" | jq -r '.files[] | .filename, (.previous_filename // empty)')
@@ -224,7 +224,7 @@ if ! mine=$(gh pr list -R "$repo" --author @me --state open --json createdAt --j
 fi
 open_count=$(printf '%s' "$mine" | jq 'length')
 if [ "$open_count" -ge 3 ]; then
-  refused file-pr-three-open-prs "you have $open_count open pull requests on $repo - three is the most a repository gets" >&2
+  refused file-pr-open-pr-cap "you have $open_count open pull requests on $repo - three is the most a repository gets" >&2
   exit 2
 fi
 since=$(printf '%s' "$mine" | jq -r --argjson now "$(date -u +%s)" 'if length > 0 then $now - (last | fromdateiso8601) else 99999 end')

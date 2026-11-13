@@ -80,7 +80,11 @@ home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 reasons=""
 refuse() { refusal_log "$1"; reasons="$reasons
     $2 [$1]"; }
-refuse_line() { refuse "${1%%|*}" "${1#*|}"; } # a "name|message" line from a shared check
+refuse_line() { # a "name|message" line from a shared check; one with no name is listed as it came
+  if [[ "$1" == *"|"* ]]; then refuse "${1%%|*}" "${1#*|}"; return; fi
+  refusal_log ""; reasons="$reasons
+    $1"
+}
 
 while IFS= read -r r; do refuse_line "$r"; done < <(tone_refusals "$body" "$long")
 

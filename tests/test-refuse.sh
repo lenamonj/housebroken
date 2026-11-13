@@ -117,4 +117,23 @@ out=$(HOUSEBROKEN_HOME="$root/afile" bash "$scripts/push.sh" notarepo 2>/dev/nul
 err=$( HOUSEBROKEN_HOME="$root/afile"; { refused x-y "one"; refused x-y "two"; } 2>&1 >/dev/null )
 [ "$(printf '%s\n' "$err" | grep -c 'could not be written')" = 1 ] || fail "the unwritable log was said more than once: $err"
 
+# with no home at all the refusal is what it was, and the log is said unwritable
+err=$(env -u HOME -u HOUSEBROKEN_HOME bash "$scripts/push.sh" notarepo 2>&1 >/dev/null); rc=$?
+[ "$rc" -eq 2 ] || fail "no home changed the exit: $rc: $err"
+printf '%s\n' "$err" | grep -qxF 'REFUSED: name the upstream repository as owner/repo [push-repo-form]' || fail "no home changed the line: $err"
+[ "$(printf '%s\n' "$err" | grep -c 'could not be written')" = 1 ] || fail "no home was not said: $err"
+
+# the time is UTC whatever the machine's zone is
+before=$(date -u +%Y-%m-%dT%H)
+TZ=JST-9 bash "$scripts/push.sh" notarepo >/dev/null 2>&1
+after=$(date -u +%Y-%m-%dT%H)
+got=$(tail -n 1 "$log" | cut -c1-13)
+[ "$got" = "$before" ] || [ "$got" = "$after" ] || fail "the time is not UTC: $got, not $before"
+
+# a script that sources common.sh alone can still refuse through it
+printf '%s 1\n' "$(date -u +%s)" > "$root/filing.log"
+out=$(bash -c 'set -u; . "$1/common.sh"; filing_log() { echo "$2"; }; spacing_gate o/r "$2"' _ "$scripts" "$root/filing.log" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "common.sh alone: exit $rc: $out"
+printf '%s\n' "$out" | grep -qE '^REFUSED: your last filing on o/r .* \[common-filing-too-soon-after-last\]$' || fail "common.sh alone did not refuse by name: $out"
+
 echo "PASS $name"

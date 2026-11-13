@@ -28,14 +28,14 @@
 refusal_log_said=""
 
 refusal_log() { # name
-  local home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}" where="-"
+  local home="${HOUSEBROKEN_HOME:-${HOME:+$HOME/.housebroken}}" where="-"
   if ! [[ "$1" =~ ^[a-z0-9]+(-[a-z0-9]+)+$ ]]; then
     echo "housebroken: a refusal that carries no rule name was not logged" >&2
     return 0
   fi
   if [[ "${repo:-}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then where="$repo"; fi
-  if ! { mkdir -p "$home" && printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$where" >> "$home/refusals.tsv"; } 2>/dev/null; then
-    [ -n "$refusal_log_said" ] || echo "housebroken: the refusal log at $home/refusals.tsv could not be written" >&2
+  if [ -z "$home" ] || ! { mkdir -p "$home" && printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$where" >> "$home/refusals.tsv"; } 2>/dev/null; then
+    [ -n "$refusal_log_said" ] || echo "housebroken: the refusal log at ${home:-\$HOME/.housebroken}/refusals.tsv could not be written" >&2
     refusal_log_said=1
   fi
   return 0

@@ -176,7 +176,14 @@ named gate-issue-write 'gh issue create -R a/b --title t'
 named gate-graphql-mutation "gh api graphql -f query='mutation { addComment(input: {subjectId: \"x\", body: \"y\"}) { clientMutationId } }'"
 named gate-api-write-method 'gh api -X POST repos/a/b/issues/1/comments -f body=x'
 named gate-api-fields-post 'gh api repos/a/b/issues/1/comments -f body=x'
-named gate-force-push 'git push --force origin fix'
+named gate-push-force-or-delete 'git push --force origin fix'
+# a reason that lost its name is still refused, and nothing nameless reaches the log
+n=$(count)
+sed 's/^\( *\)why_id=gate-pr-write$/\1why_id=""/' "$script" > "$tmp/nameless.sh"
+cmp -s "$script" "$tmp/nameless.sh" && fail "nothing was planted in the hook"
+printf '{"tool_input": {"command": "gh pr create -R a/b --title x"}}' | bash "$tmp/nameless.sh" 2>/dev/null
+[ "$?" = 2 ] || fail "the hook with a nameless reason did not refuse"
+[ "$(count)" = "$n" ] || fail "a refusal with no name reached the log: $(tail -n 1 "$log")"
 # a command that runs writes nothing
 n=$(count)
 hook 0 'git status'
