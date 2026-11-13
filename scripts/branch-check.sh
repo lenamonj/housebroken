@@ -35,6 +35,8 @@
 #
 # Exits 0 when nothing blocks, 1 on a refusal, 2 on a usage error.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 
@@ -54,52 +56,52 @@ while [ "$#" -gt 0 ]; do
     --base)
       shift
       base="${1:-}"
-      [ -n "$base" ] || { echo "REFUSED: --base needs a ref" >&2; exit 2; }
+      [ -n "$base" ] || { refused branch-check-base-no-ref "--base needs a ref" >&2; exit 2; }
       ;;
     --base=*) base="${1#--base=}" ;;
     --asked)
       shift
       asked="${1:-}"
-      [ -n "$asked" ] || { echo "REFUSED: --asked needs the URL of the maintainer's ask" >&2; exit 2; }
+      [ -n "$asked" ] || { refused branch-check-asked-no-url "--asked needs the URL of the maintainer's ask" >&2; exit 2; }
       ;;
     --asked=*) asked="${1#--asked=}" ;;
     --warning-log)
       shift
       warnlog="${1:-}"
-      [ -f "$warnlog" ] || { echo "REFUSED: --warning-log needs a build log file" >&2; exit 2; }
+      [ -f "$warnlog" ] || { refused branch-check-warning-log-no-file "--warning-log needs a build log file" >&2; exit 2; }
       ;;
     --aot-log)
       shift
       aotlog="${1:-}"
-      [ -f "$aotlog" ] || { echo "REFUSED: --aot-log needs an AOT publish log file" >&2; exit 2; }
+      [ -f "$aotlog" ] || { refused branch-check-aot-log-no-file "--aot-log needs an AOT publish log file" >&2; exit 2; }
       ;;
     --allow)
       shift
-      [ -n "${1:-}" ] || { echo "REFUSED: --allow needs a path" >&2; exit 2; }
+      [ -n "${1:-}" ] || { refused branch-check-allow-no-path "--allow needs a path" >&2; exit 2; }
       allows+=("$1")
       ;;
-    -*) echo "REFUSED: unknown option $1" >&2; exit 2 ;;
+    -*) refused branch-check-unknown-option "unknown option $1" >&2; exit 2 ;;
     *) clone="$1" ;;
   esac
   shift
 done
 
-cd "$clone" 2>/dev/null || { echo "REFUSED: $clone is not a directory" >&2; exit 2; }
-git rev-parse --git-dir >/dev/null 2>&1 || { echo "REFUSED: $clone is not a git clone" >&2; exit 2; }
+cd "$clone" 2>/dev/null || { refused branch-check-not-a-directory "$clone is not a directory" >&2; exit 2; }
+git rev-parse --git-dir >/dev/null 2>&1 || { refused branch-check-not-a-clone "$clone is not a git clone" >&2; exit 2; }
 # Git prints paths from the top and reads pathspecs from here, so anywhere else
 # every scan below would match nothing.
-cd "$(git rev-parse --show-toplevel)" || { echo "REFUSED: cannot reach the top of $clone" >&2; exit 2; }
+cd "$(git rev-parse --show-toplevel)" || { refused branch-check-top-unreachable "cannot reach the top of $clone" >&2; exit 2; }
 
 if [ -z "$base" ]; then
   for candidate in upstream/main upstream/master origin/main origin/master; do
     if git rev-parse --verify -q "$candidate" >/dev/null 2>&1; then base="$candidate"; break; fi
   done
 fi
-[ -n "$base" ] || { echo "REFUSED: no base ref resolved - pass --base REF" >&2; exit 2; }
-git rev-parse --verify -q "$base" >/dev/null 2>&1 || { echo "REFUSED: base $base does not resolve" >&2; exit 2; }
+[ -n "$base" ] || { refused branch-check-no-base-resolved "no base ref resolved - pass --base REF" >&2; exit 2; }
+git rev-parse --verify -q "$base" >/dev/null 2>&1 || { refused branch-check-base-unresolvable "base $base does not resolve" >&2; exit 2; }
 
 blocked=0
-block() { echo "REFUSED: $*"; blocked=1; }
+block() { refused "$1" "$2"; blocked=1; }
 # Whether the base already carries a path. "rev:path" is not used because Git
 # for Windows' shell rewrites an argument shaped like "a/b:.c/d" as a path list.
 in_base() { [ -n "$(git ls-tree --name-only "$base" -- "$1" 2>/dev/null)" ]; }
@@ -109,7 +111,7 @@ echo "== branch check: $(git rev-parse --abbrev-ref HEAD) against $base =="
 # What you tested is what you file, or you do not know what you are filing.
 dirty=$(git status --porcelain)
 if [ -n "$dirty" ]; then
-  block "the working tree is dirty, so the commits are not what you tested"
+  block branch-check-tree-dirty "the working tree is dirty, so the commits are not what you tested"
   printf '%s\n' "$dirty" | sed 's/^/    /'
 fi
 
@@ -120,23 +122,23 @@ case "$full" in
     rest="${full#refs/remotes/}"; remote="${rest%%/*}"; rbranch="${rest#*/}"
     live=$(git ls-remote "$remote" "refs/heads/$rbranch" 2>/dev/null | awk '{print $1}')
     if [ -z "$live" ]; then
-      block "cannot read $rbranch from $remote, so whether $base is current is unknown"
+      block branch-check-remote-unreadable "cannot read $rbranch from $remote, so whether $base is current is unknown"
     elif [ "$live" != "$(git rev-parse "$base")" ]; then
       echo "CHECK: the base moved: $remote has $rbranch at ${live:0:12}, $base is $(git rev-parse --short=12 "$base") - file-pr.sh refuses when the new commits touch this branch's files"
     fi
     ;;
-  *) block "base $base is not a remote-tracking ref, so whether it is current cannot be checked - pass --base <remote>/<branch>" ;;
+  *) block branch-check-base-not-tracking "base $base is not a remote-tracking ref, so whether it is current cannot be checked - pass --base <remote>/<branch>" ;;
 esac
 
 if ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
-  block "HEAD is not on top of $base - rebase before filing"
+  block branch-check-not-on-base "HEAD is not on top of $base - rebase before filing"
 fi
 
 namestat=$(gdiff --name-status -M "$base..HEAD" 2>/dev/null)
 files=$(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $3} NF == 2 {print $2}')
 renames=$(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $2 "\t" $3}')
 if [ -z "$files" ]; then
-  block "no files differ from $base - there is nothing to file"
+  block branch-check-no-files-differ "no files differ from $base - there is nothing to file"
 fi
 
 # Prints why a path is a working artifact, or nothing when it is not one.
@@ -172,7 +174,7 @@ while IFS= read -r f; do
       norm=$(printf '%s\n' "$sibs" | grep -c '^100644$')
       exec=$(printf '%s\n' "$sibs" | grep -c '^100755$')
       if [ "$norm" -gt "$exec" ]; then
-        block "$f is committed 100755 but $norm of its $ext siblings are 100644"
+        block branch-check-mode-unlike-siblings "$f is committed 100755 but $norm of its $ext siblings are 100644"
       fi
     fi
   fi
@@ -185,12 +187,12 @@ while IFS= read -r f; do
   # files build output.
   if ! in_base "$f"; then
     if git check-ignore -q --no-index -- "$f" 2>/dev/null; then
-      block "$f is added by this branch and the repository's .gitignore excludes it"
+      block branch-check-file-gitignored "$f is added by this branch and the repository's .gitignore excludes it"
     fi
   fi
 
   why=$(artifact_why "$f")
-  [ -z "$why" ] || block "$f $why"
+  [ -z "$why" ] || block branch-check-artifact-in-diff "$f $why"
 done <<EOF
 $files
 EOF
@@ -201,7 +203,7 @@ EOF
 trailers=$(git log --format='%h author %an <%ae>, committer %cn <%ce>%n%b' "$base..HEAD" 2>/dev/null \
   | grep -iE '^co-authored-by:.*(claude|anthropic|copilot|cursor|aider|codex|gemini)|^claude-session:|claude\.ai/code/session_|generated with .*claude|noreply@anthropic\.com|cursoragent@cursor\.com|noreply@aider\.chat')
 if [ -n "$trailers" ]; then
-  block "a commit carries a tool trailer or a session link, or a tool identity, which no project asked for"
+  block branch-check-tool-mark-in-commit "a commit carries a tool trailer or a session link, or a tool identity, which no project asked for"
   printf '%s\n' "$trailers" | sed 's/^/    /'
 fi
 
@@ -210,7 +212,7 @@ fi
 # catching them.
 usernames=$(git log --format='%b' "$base..HEAD" 2>/dev/null | grep -E '^Signed-off-by: [^ <]+ <')
 if [ -n "$usernames" ]; then
-  block "a Signed-off-by names a username; the DCO asks for a real name"
+  block branch-check-signoff-username "a Signed-off-by names a username; the DCO asks for a real name"
   printf '%s\n' "$usernames" | sed 's/^/    /'
 fi
 
@@ -221,9 +223,9 @@ comment_args=(--base "$base")
 comments=$(bash "$here/comment-check.sh" . "${comment_args[@]}" 2>&1); comment_rc=$?
 case "$comment_rc" in
   0) ;;
-  1) block "the branch adds comments to code that nobody asked for"
+  1) block branch-check-comments-added "the branch adds comments to code that nobody asked for"
      printf '%s\n' "$comments" | grep -E '^(REFUSED|CHECK): ' | sed 's/^REFUSED: /    /' ;;
-  *) block "comment-check.sh could not run: $comments" ;;
+  *) block branch-check-comment-check-failed "comment-check.sh could not run: $comments" ;;
 esac
 printf '%s\n' "$comments" | grep -E '^CHECK: ' | sed 's/^/    /'
 
@@ -264,7 +266,7 @@ if [ -n "$suppressions" ]; then
     fi
   done <<< "$suppressions"
   if [ -n "$unshown" ]; then
-    block "the branch adds a warning suppression, and no build log shows the warning firing ($unshown)"
+    block branch-check-suppression-unshown "the branch adds a warning suppression, and no build log shows the warning firing ($unshown)"
     printf '%s\n' "$suppressions" | sed 's/^/    /'
   fi
 fi
@@ -289,7 +291,7 @@ if [ -n "$aotdecl" ]; then
     done
   fi
   if [ -n "$reflection" ] && [ "$published" -eq 0 ]; then
-    block "the branch adds reflection to a project that declares AOT or trim support (${aotdecl% }), and no --aot-log shows an AOT publish of it"
+    block branch-check-reflection-under-aot "the branch adds reflection to a project that declares AOT or trim support (${aotdecl% }), and no --aot-log shows an AOT publish of it"
     printf '%s\n' "$reflection" | sed 's/^/    /'
   fi
 fi
@@ -315,7 +317,7 @@ while IFS= read -r f; do
   stat=$(gdiff --numstat -M "$base..HEAD" -- "${spec[@]}" | head -1)
   # A file with no diff was not scanned, and that is never the same as clean.
   if [ -z "$stat" ]; then
-    block "git gave no diff for $f, so nothing in it was scanned"
+    block branch-check-no-diff-for-file "git gave no diff for $f, so nothing in it was scanned"
     continue
   fi
   is_test_path "$f" || nadded=$((nadded + $(printf '%s' "$stat" | awk '{print ($1 == "-") ? 0 : $1}')))
@@ -324,20 +326,20 @@ while IFS= read -r f; do
   leaks=$(printf '%s\n' "$addedf" | grep -oE "$leak_re" | sort -u)
   netleaks="$netleaks
 $leaks"
-  [ -z "$leaks" ] || block "$f adds a personal path or a credential: $(printf '%s' "$leaks" | tr '\n' ' ')"
+  [ -z "$leaks" ] || block branch-check-leak-in-diff "$f adds a personal path or a credential: $(printf '%s' "$leaks" | tr '\n' ' ')"
   paths=$(printf '%s\n' "$addedf" | grep -oE "$path_re" | sort -u)
   [ -z "$paths" ] || echo "CHECK: $f adds a user path, a fixture or an example unless it is yours: $(printf '%s' "$paths" | tr '\n' ' ')"
   case "$f" in
     package-lock.json|*/package-lock.json|yarn.lock|*/yarn.lock|pnpm-lock.yaml|*/pnpm-lock.yaml|Cargo.lock|*/Cargo.lock|go.sum|*/go.sum|poetry.lock|*/poetry.lock|uv.lock|*/uv.lock|Gemfile.lock|*/Gemfile.lock|composer.lock|*/composer.lock|packages.lock.json|*/packages.lock.json|vendor/*|*/vendor/*|node_modules/*|*/node_modules/*|*.min.js|*.pb.go|*_generated.*|*.g.cs|*.designer.cs|*.Designer.cs)
-      block "$f is a lockfile, vendored or generated file - a build rewrote it, or pass --allow $f if the change is about it" ;;
+      block branch-check-generated-file "$f is a lockfile, vendored or generated file - a build rewrote it, or pass --allow $f if the change is about it" ;;
   esac
   case "$stat" in
-    -*) block "$f is binary - pass --allow $f if the change needs it" ;;
+    -*) block branch-check-binary-file "$f is binary - pass --allow $f if the change needs it" ;;
     *)
       total=$(printf '%s' "$stat" | awk '{print $1 + $2}')
       real=$(gdiff --numstat -M --ignore-space-at-eol --ignore-cr-at-eol "$base..HEAD" -- "${spec[@]}" | awk '{print $1 + $2}')
       if [ "$total" -ge 10 ] && [ $((${real:-0} * 2)) -lt "$total" ]; then
-        block "$f changes $total lines, of which ${real:-0} differ beyond whitespace and line endings - restore the file's own endings"
+        block branch-check-whitespace-rewrite "$f changes $total lines, of which ${real:-0} differ beyond whitespace and line endings - restore the file's own endings"
       fi
       ;;
   esac
@@ -354,12 +356,12 @@ if [ "$(git rev-list --count "$base..HEAD")" -gt 1 ]; then
   history=$(gitq log -p -U0 -M --no-ext-diff --no-textconv --no-color --format= "$base..HEAD" | added_lines)
   gone=$(printf '%s\n' "$history" | while IFS=$'\t' read -r f line; do allowed "$f" || printf '%s\n' "$line"; done \
     | grep -oE "$leak_re" | sort -u | grep -vxF -e "" -f <(printf '%s\n' "$netleaks"))
-  [ -z "$gone" ] || block "the branch's history carries a personal path or a credential: $(printf '%s' "$gone" | tr '\n' ' ')- a later commit does not remove it from what is pushed; rewrite the commits"
+  [ -z "$gone" ] || block branch-check-leak-in-history "the branch's history carries a personal path or a credential: $(printf '%s' "$gone" | tr '\n' ' ')- a later commit does not remove it from what is pushed; rewrite the commits"
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     printf '%s\n' "$files" | grep -qxF -- "$f" && continue
     why=$(artifact_why "$f")
-    [ -z "$why" ] || block "$f is in this branch's history: it $why, and a later commit does not remove it from what is pushed; rewrite the commits"
+    [ -z "$why" ] || block branch-check-artifact-in-history "$f is in this branch's history: it $why, and a later commit does not remove it from what is pushed; rewrite the commits"
   done <<< "$(gitq log --name-only --format= "$base..HEAD" | sort -u)"
 fi
 
