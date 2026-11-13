@@ -45,6 +45,8 @@ reply() { # expected-exit text [extra args]
   printf '%s\n' "$text" > "$tmp/r.md"
   bash "$script" octocat/Hello-World 1 --body-file "$tmp/r.md" "$@" > "$tmp/out" 2>&1
   [ "$?" = "$want" ] || { cat "$tmp/out" >&2; fail "exit not $want for: $text"; }
+  # every reason a refused reply lists carries the name of its rule
+  if [ "$want" = 2 ] && grep -E '^    ' "$tmp/out" | grep -vqE ' \[[a-z0-9]+(-[a-z0-9]+)+\]$'; then fail "a reason with no name: $(cat "$tmp/out")"; fi
 }
 
 reply 0 "Every loader checks its read, so a truncated file fails on main; the description is corrected."
@@ -54,6 +56,10 @@ reply 0 "Thanksgiving week is fine for the release."
 reply 2 "You are right, the loader checks its read."
 reply 2 "Good catch. Fixed in the second commit."
 reply 2 "Thanks, fixed in the second commit."
+grep -qx 'REFUSED: the reply to octocat/Hello-World#1 is not ready: \[reply-not-ready\]' "$tmp/out" || fail "the summary line does not end with its name: $(cat "$tmp/out")"
+grep -qx '    it thanks or apologises; state the fact and what changed \[common-tone-thanks\]' "$tmp/out" || fail "the tone reason does not end with its name: $(cat "$tmp/out")"
+[ "$(tail -n 2 "$HOUSEBROKEN_HOME/refusals.tsv" | cut -f2,3 | tr '	
+' '  ')" = "common-tone-thanks octocat/Hello-World reply-not-ready octocat/Hello-World " ] || fail "the log does not hold the reason and the refusal: $(tail -n 2 "$HOUSEBROKEN_HOME/refusals.tsv")"
 reply 2 "Fixed in the second commit!"
 reply 2 "Fixed in **the second commit**."
 reply 2 "Fixed. Let me know if anything else is needed."

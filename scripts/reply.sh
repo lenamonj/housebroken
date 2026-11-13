@@ -47,13 +47,15 @@
 #
 # Exits 0 when posted (or on a dry run), 2 on a refusal or a usage error.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 case "${1:-}" in --help|-h) usage; exit 0 ;; esac
 
 repo="${1:-}"; num="${2:-}"
-case "$repo" in */*) ;; *) echo "REFUSED: name the repository as owner/repo" >&2; exit 2 ;; esac
-case "$num" in ''|*[!0-9]*) echo "REFUSED: name the pull request or issue number" >&2; exit 2 ;; esac
+case "$repo" in */*) ;; *) refused reply-repo-form "name the repository as owner/repo" >&2; exit 2 ;; esac
+case "$num" in ''|*[!0-9]*) refused reply-no-number "name the pull request or issue number" >&2; exit 2 ;; esac
 shift 2
 body=""; report=""; long=0; clone=""; thread=""; outsider=0
 while [ "$#" -gt 0 ]; do
@@ -64,36 +66,37 @@ while [ "$#" -gt 0 ]; do
     --in-reply-to) thread="${2:-}"; shift ;;
     --long) long=1 ;;
     --outsider) outsider=1 ;;
-    *) echo "REFUSED: unknown argument $1" >&2; exit 2 ;;
+    *) refused reply-unknown-argument "unknown argument $1" >&2; exit 2 ;;
   esac
   shift
 done
-[ -f "$body" ] || { echo "REFUSED: --body-file names no file" >&2; exit 2; }
-case "$thread" in ''|[0-9]*) ;; *) echo "REFUSED: --in-reply-to needs the comment id" >&2; exit 2 ;; esac
+[ -f "$body" ] || { refused reply-body-file-missing "--body-file names no file" >&2; exit 2; }
+case "$thread" in ''|[0-9]*) ;; *) refused reply-in-reply-to-form "--in-reply-to needs the comment id" >&2; exit 2 ;; esac
 here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=scripts/common.sh
 . "$here/common.sh"
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 
-refused=""
-refuse() { refused="$refused
-    $*"; }
+reasons=""
+refuse() { refusal_log "$1"; reasons="$reasons
+    $2 [$1]"; }
+refuse_line() { refuse "${1%%|*}" "${1#*|}"; } # a "name|message" line from a shared check
 
-while IFS= read -r r; do refuse "$r"; done < <(tone_refusals "$body" "$long")
+while IFS= read -r r; do refuse_line "$r"; done < <(tone_refusals "$body" "$long")
 
 refargs=("$repo" "$body"); [ -n "$clone" ] && refargs+=(--clone "$clone")
 if ! refs=$(bash "$here/ref-check.sh" "${refargs[@]}" 2>&1); then
-  refuse "it names something that does not exist: $(printf '%s\n' "$refs" | grep 'NOT FOUND' | tr -s ' ' | tr '\n' ';')"
+  refuse reply-reference-not-found "it names something that does not exist: $(printf '%s\n' "$refs" | grep 'NOT FOUND' | tr -s ' ' | tr '\n' ';')"
 fi
 if [ -n "$report" ]; then
-  checked=$(bash "$here/review.sh" check "$report" --text "$body" 2>&1) || refuse "the review does not clear this text: $checked"
+  checked=$(bash "$here/review.sh" check "$report" --text "$body" 2>&1) || refuse reply-review-not-clear "the review does not clear this text: $checked"
 fi
 
 # Whom this answers. One thread read, every page, into a file: a long thread
 # does not fit on a command line, and a read that failed is not an empty one.
 user="${HOUSEBROKEN_USER:-$(gh api user --jq .login 2>/dev/null)}"
-[ -n "$user" ] || { echo "REFUSED: gh is not authenticated, so who this reply answers cannot be read" >&2; exit 2; }
-work=$(mktemp -d) || { echo "REFUSED: mktemp failed" >&2; exit 2; }
+[ -n "$user" ] || { refused reply-gh-unauthenticated "gh is not authenticated, so who this reply answers cannot be read" >&2; exit 2; }
+work=$(mktemp -d) || { refused reply-mktemp-failed "mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$work"' EXIT
 read_all() { # endpoint file
   gh api --paginate "$1" > "$2.raw" 2>/dev/null && jq -cs 'add // []' "$2.raw" > "$2" 2>/dev/null
@@ -103,7 +106,7 @@ if [ -n "$thread" ]; then
   if one=$(gh api "repos/$repo/pulls/comments/$thread" 2>/dev/null); then
     voice=$(printf '%s' "$one" | jq -r '"\(.user.login // "?") \(.author_association // "?")"' | tr -d '\r')
   else
-    refuse "cannot read comment $thread, so who it answers is unknown"
+    refuse reply-comment-unreadable "cannot read comment $thread, so who it answers is unknown"
   fi
 else
   ok=1
@@ -129,23 +132,23 @@ else
       voice="$v"; break
     done <<<"$voices"
   else
-    refuse "cannot read who is on $repo#$num, so who this answers is unknown"
+    refuse reply-thread-unreadable "cannot read who is on $repo#$num, so who this answers is unknown"
   fi
 fi
 if [ -n "$voice" ] && [ "$outsider" -eq 0 ]; then
   who="${voice%% *}"; role="${voice#* }"
-  has_role "$role" || refuse "$who ($role) has no role in $repo, and the skill answers maintainers; pass --outsider when the user has said to answer them"
+  has_role "$role" || refuse reply-asker-has-no-role "$who ($role) has no role in $repo, and the skill answers maintainers; pass --outsider when the user has said to answer them"
 fi
 
 log="$home/replies/${repo%%/*}-${repo##*/}.log"
 if [ -f "$log" ]; then
   last=$(tail -1 "$log" | awk '{print $1}')
   since=$(( $(date -u +%s) - ${last:-0} ))
-  [ "$since" -ge 600 ] || refuse "your last reply to $repo went out ${since}s ago; space them ten minutes apart"
+  [ "$since" -ge 600 ] || refuse reply-too-soon-after-last "your last reply to $repo went out ${since}s ago; space them ten minutes apart"
 fi
 
-if [ -n "$refused" ]; then
-  echo "REFUSED: the reply to $repo#$num is not ready:$refused" >&2
+if [ -n "$reasons" ]; then
+  refused reply-not-ready "the reply to $repo#$num is not ready:$reasons" >&2
   exit 2
 fi
 claims=$(bash "$here/claim-check.sh" "$body" 2>&1) || printf 'Posting these claims, which step 10 had you re-derive with housebroken claims first:\n%s\n' "$claims" >&2

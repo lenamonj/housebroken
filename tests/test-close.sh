@@ -95,7 +95,8 @@ for bad in "Thanks, closing this." "Closing this in favour of #1!" "Closing. Let
   closepr 2 9 "$bad"
 done
 closepr 2 9 "One. Two. Three. Four."
-grep -q "it runs 4 sentences; a close note is one to three$" "$tmp/out" || fail "the sentence limit did not name a close note: $(cat "$tmp/out")"
+grep -qx 'REFUSED: the close of octocat/Hello-World#9 is not ready: \[close-not-ready\]' "$tmp/out" || fail "the summary line does not end with its name: $(cat "$tmp/out")"
+grep -q "it runs 4 sentences; a close note is one to three \[common-tone-too-many-sentences\]$" "$tmp/out" || fail "the sentence limit did not name a close note: $(cat "$tmp/out")"
 nothing_written "a refused note"
 
 # a note of our own words is required

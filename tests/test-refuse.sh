@@ -40,6 +40,25 @@ n=$(lines)
 bash "$scripts/push.sh" --help >/dev/null || fail "--help failed"
 [ "$(lines)" = "$n" ] || fail "a command that was not refused wrote to the log"
 
+# the earliest refusal of every script is named, so the helper is in hand before it
+first() { # script name-expected args...
+  local s="$1" want="$2" got; shift 2
+  got=$(bash "$scripts/$s.sh" "$@" 2>&1)
+  printf '%s
+' "$got" | grep -q "^REFUSED: .* \[$want\]\$" || fail "$s.sh: its first refusal is not named $want: $got"
+}
+first branch-check branch-check-base-no-ref . --base
+first claim-check claim-check-no-file-named
+first close close-repo-form notarepo
+first declare declare-unknown-option --bogus
+first edit-pr edit-pr-repo-form notarepo
+first file-issue file-issue-repo-form notarepo
+first file-pr file-pr-repo-form notarepo
+first proof proof-unknown-option --bogus
+first ref-check ref-check-repo-form notarepo
+first reply reply-repo-form notarepo
+first review review-no-report check "$root/no-such-report.md"
+
 # shellcheck source=scripts/refuse.sh
 . "$scripts/refuse.sh"
 
@@ -48,6 +67,13 @@ out=$(repo="o/r"; refused x-y "m" 2>/dev/null)
 [ "$out" = "REFUSED: m [x-y]" ] || fail "refused did not print its line on stdout: $out"
 [ -z "$(refused x-y "m" 2>&1 >/dev/null)" ] || fail "refused printed on stderr"
 refused x-y "m" >/dev/null || fail "refused did not return 0"
+# a message of several lines: the name ends the line that says REFUSED, and the rest follows as it was
+out=$(refused x-y "the reply is not ready:
+    one [a-b]
+    two" 2>/dev/null)
+[ "$out" = "REFUSED: the reply is not ready: [x-y]
+    one [a-b]
+    two" ] || fail "a message of several lines: $out"
 
 # a repository that is not owner/name reaches the log as -
 for odd in "a/b${tab}c" "a/b/c" "$(printf 'a/b\nc/d')" "nothing" "o/r x" ""; do

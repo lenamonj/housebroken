@@ -34,46 +34,49 @@
 # close that failed, 1 when the close went through but the notes line could
 # not be written or the fork branch could not be deleted.
 set -u
+# shellcheck source=scripts/refuse.sh
+. "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 case "${1:-}" in --help|-h) usage; exit 0 ;; esac
 
 repo="${1:-}"; num="${2:-}"
-case "$repo" in */*) ;; *) echo "REFUSED: name the repository as owner/repo" >&2; exit 2 ;; esac
-case "$num" in ''|*[!0-9]*) echo "REFUSED: name the pull request number" >&2; exit 2 ;; esac
+case "$repo" in */*) ;; *) refused close-repo-form "name the repository as owner/repo" >&2; exit 2 ;; esac
+case "$num" in ''|*[!0-9]*) refused close-no-number "name the pull request number" >&2; exit 2 ;; esac
 shift 2
 body=""; clone=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --body-file) body="${2:-}"; shift ;;
     --clone) clone="${2:-}"; shift ;;
-    *) echo "REFUSED: unknown argument $1" >&2; exit 2 ;;
+    *) refused close-unknown-argument "unknown argument $1" >&2; exit 2 ;;
   esac
   shift
 done
-[ -f "$body" ] || { echo "REFUSED: --body-file names no file" >&2; exit 2; }
+[ -f "$body" ] || { refused close-body-file-missing "--body-file names no file" >&2; exit 2; }
 here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=scripts/common.sh
 . "$here/common.sh"
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 
-refused=""
-refuse() { refused="$refused
-    $*"; }
+reasons=""
+refuse() { refusal_log "$1"; reasons="$reasons
+    $2 [$1]"; }
+refuse_line() { refuse "${1%%|*}" "${1#*|}"; } # a "name|message" line from a shared check
 
 # The first line of our own words: not code, not a quote, and with a letter in it.
 # shellcheck disable=SC2016  # the backticks are markdown, matched literally
 own=$(awk '/^(```|~~~)/ {f = !f; next} !f && !/^ *>/' "$body" | sed 's/`[^`]*`//g' | grep -m1 '[[:alpha:]]')
-[ -n "$own" ] || refuse "it carries no note of its own; say why it is withdrawn and where the work went"
-while IFS= read -r r; do refuse "$r"; done < <(tone_refusals "$body" 0 "a close note is one to three")
+[ -n "$own" ] || refuse close-no-note-of-its-own "it carries no note of its own; say why it is withdrawn and where the work went"
+while IFS= read -r r; do refuse_line "$r"; done < <(tone_refusals "$body" 0 "a close note is one to three")
 
 refargs=("$repo" "$body"); [ -n "$clone" ] && refargs+=(--clone "$clone")
 if ! refs=$(bash "$here/ref-check.sh" "${refargs[@]}" 2>&1); then
-  refuse "it names something that does not exist: $(printf '%s\n' "$refs" | grep 'NOT FOUND' | tr -s ' ' | tr '\n' ';')"
+  refuse close-reference-not-found "it names something that does not exist: $(printf '%s\n' "$refs" | grep 'NOT FOUND' | tr -s ' ' | tr '\n' ';')"
 fi
 
 user="${HOUSEBROKEN_USER:-$(gh api user --jq .login 2>/dev/null)}"
-[ -n "$user" ] || { echo "REFUSED: gh is not authenticated, so whose pull request this is cannot be read" >&2; exit 2; }
+[ -n "$user" ] || { refused close-gh-unauthenticated "gh is not authenticated, so whose pull request this is cannot be read" >&2; exit 2; }
 fork_owner=""; fork=""; branch=""
 if pr=$(gh pr view "$num" --repo "$repo" --json author,state,headRefName,headRepository,headRepositoryOwner 2>/dev/null); then
   author=$(printf '%s' "$pr" | jq -r '.author.login // "?"' | tr -d '\r')
@@ -81,21 +84,21 @@ if pr=$(gh pr view "$num" --repo "$repo" --json author,state,headRefName,headRep
   fork_owner=$(printf '%s' "$pr" | jq -r '.headRepositoryOwner.login // ""' | tr -d '\r')
   fork=$(printf '%s' "$pr" | jq -r '.headRepository.name // ""' | tr -d '\r')
   branch=$(printf '%s' "$pr" | jq -r '.headRefName // ""' | tr -d '\r')
-  [ "$author" = "$user" ] || refuse "$repo#$num is $author's, not yours"
-  [ "$state" = "OPEN" ] || refuse "$repo#$num is $state; only an open pull request is closed"
+  [ "$author" = "$user" ] || refuse close-not-yours "$repo#$num is $author's, not yours"
+  [ "$state" = "OPEN" ] || refuse close-not-open "$repo#$num is $state; only an open pull request is closed"
 else
-  refuse "cannot read $repo#$num, so whose it is and whether it is open are unknown"
+  refuse close-thread-unreadable "cannot read $repo#$num, so whose it is and whether it is open are unknown"
 fi
 
 log="$home/replies/${repo%%/*}-${repo##*/}.log"
 if [ -f "$log" ]; then
   last=$(tail -1 "$log" | awk '{print $1}')
   since=$(( $(date -u +%s) - ${last:-0} ))
-  [ "$since" -ge 600 ] || refuse "your last comment on $repo went out ${since}s ago; space them ten minutes apart"
+  [ "$since" -ge 600 ] || refuse close-too-soon-after-last "your last comment on $repo went out ${since}s ago; space them ten minutes apart"
 fi
 
-if [ -n "$refused" ]; then
-  echo "REFUSED: the close of $repo#$num is not ready:$refused" >&2
+if [ -n "$reasons" ]; then
+  refused close-not-ready "the close of $repo#$num is not ready:$reasons" >&2
   exit 2
 fi
 claims=$(bash "$here/claim-check.sh" "$body" 2>&1) || printf 'Posting these claims, which step 10 had you re-derive with housebroken claims first:\n%s\n' "$claims" >&2

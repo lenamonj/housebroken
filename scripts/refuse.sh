@@ -9,7 +9,9 @@
 # verdict and no exit status.
 #
 #   refused NAME MESSAGE    prints "REFUSED: MESSAGE [NAME]" on stdout and logs
-#                           it; the caller keeps its own redirect and exit
+#                           it; the caller keeps its own redirect and exit. When
+#                           MESSAGE runs over several lines the name ends the
+#                           first, the one that says REFUSED
 #   refusal_log NAME        the log line alone
 #   reason NAME MESSAGE     prints "NAME|MESSAGE", for a check that hands its
 #                           reasons back as text
@@ -39,8 +41,13 @@ refusal_log() { # name
   return 0
 }
 
-refused() { # name message
-  echo "REFUSED: $2 [$1]"
+refused() { # name message; the name ends the line that says REFUSED, whatever follows it
+  local nl='
+'
+  case "$2" in
+    *"$nl"*) echo "REFUSED: ${2%%"$nl"*} [$1]$nl${2#*"$nl"}" ;;
+    *) echo "REFUSED: $2 [$1]" ;;
+  esac
   refusal_log "$1"
 }
 
