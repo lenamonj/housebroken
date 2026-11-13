@@ -130,7 +130,9 @@ An upgrade moves the package and not those two copies, so after one run `housebr
 | `scripts/gate-hook.sh` | a Claude Code hook that refuses GitHub writes outside the gates |
 | `scripts/fork-hygiene.sh` | branches deleted after merge or close, orphan forks listed |
 
-The scripts are bash, 3.2 or newer, and need `gh` and `jq`; `scripts/common.sh` is what they share. Each script's header says what it assumes. `bash tests/run.sh` runs every test offline, behind a stub `gh`.
+The scripts are bash, 3.2 or newer, and need `gh` and `jq`; `scripts/common.sh` is what they share and `scripts/refuse.sh` is how each one says no. Each script's header says what it assumes. `bash tests/run.sh` runs every test offline, behind a stub `gh`.
+
+The line that says `REFUSED` ends with a name in brackets, as in `REFUSED: the clone is on no branch [push-on-no-branch]`, and so does a refusal of the hook. The name is the rule's own and stays the same if the message is ever reworded. Each refusal also adds one line to `~/.housebroken/refusals.tsv`: the time, the name, and the repository when the gate was given one. The file holds no message text, housebroken sends it nowhere, and it can be deleted at any time.
 
 ## Not in scope
 

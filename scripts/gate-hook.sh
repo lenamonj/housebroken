@@ -27,6 +27,9 @@
 # a fork carries your name too: push a rework with housebroken push, or run it
 # yourself.
 #
+# A refusal ends with its rule's name in brackets and adds one line, the time
+# and the name, to $HOUSEBROKEN_HOME/refusals.tsv, which stays on this machine.
+#
 # `housebroken install-hook` copies this script to
 # ~/.claude/hooks/housebroken-gate.sh and prints the entry to add to the
 # "PreToolUse" list in ~/.claude/settings.json. An upgrade does not move the

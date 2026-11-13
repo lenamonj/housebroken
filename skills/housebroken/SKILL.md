@@ -280,7 +280,9 @@ report it in one line and do not proceed to the next step.
    and declaration being filed, when you already have three open pull requests on the
    repository, and when your last filing there, a pull request or an issue,
    is under ten minutes old.
-   A refusal is a result; fix the cause.
+   A refusal is a result; fix the cause. Its first line ends with the rule's
+   name in brackets, and `~/.housebroken/refusals.tsv` keeps one line for
+   each refusal: the time, the name and the repository.
 
 10. **Watch it land.**
     `housebroken verify owner/repo PR` re-derives from GitHub that the head is
