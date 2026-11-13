@@ -282,8 +282,10 @@ report it in one line and do not proceed to the next step.
 10. **Watch it land.**
     `housebroken verify owner/repo PR` re-derives from GitHub that the head is
     the intended commit, the files are the ones the branch stamp lists, the
-    body is the one that was filed, and CI is green. When all of that holds
-    it prints one line; the report prints only when something does not. It
+    body is the one that was filed, and CI is green. When nothing is wrong
+    it prints one line, which names the head and the checks and says whether
+    the files and the body matched or were not compared; the report prints
+    only when something is wrong. It
     wants a stamp for the head, or the sha as a third argument; it reads
     NOT SETTLED until checks have run, and a NOT SETTLED is not an OK. It
     stops at the first red check,
@@ -295,12 +297,13 @@ report it in one line and do not proceed to the next step.
     name two states that look quiet. A head no CI job ever started on reads
     `no-ci-on-head` when GitHub made no run for it and `ci-never-started`
     when the run it made finished without one. A new push or a close and
-    reopen makes a new run, which may again wait for approval, and doing
+    reopen can start a new run, which may again wait for approval, and doing
     either is the user's call; a workflow filtered off the change makes no
     run and reads the same, so read the workflow before calling it a
     problem. A stale bot's notice that still stands reads `stale:closes-`
-    and the day when it states its days, `stale:warned-` and its own date
-    when it does not, and `stale:label` when only the label says so. It is
+    and the day when it says it will be closed in or within a number of
+    days, and `stale:warned-` and its own date when it does not; a label
+    alone, with no notice, reads `stale:label`. Each is
     a deadline to bring to the user, never a reason to comment on your own,
     and before any bump the body's claims are re-derived on the default
     branch. A check list or a notice that could not be read says

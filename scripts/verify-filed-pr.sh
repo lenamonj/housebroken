@@ -10,9 +10,10 @@
 # running" and its mutation job failed unseen. Since 2026-11-11 the wait ends at
 # the first red check: a macOS job had failed eight minutes in and nothing was
 # said for 44 more, until the last job of the matrix finished.
-# When all of it holds, one line says so and names the head, the files, the body
-# and the checks. The report is printed only when something does not hold, when
-# the body differs from the filed copy, or when a read fails on the way.
+# When nothing is wrong, one line says so: the head, how many files, whether the
+# files and the body matched or were not compared, and the checks. The report is
+# printed only when something is wrong, when the body differs from the filed
+# copy, or when a read fails on the way.
 #
 # Usage:
 #   bash verify-filed-pr.sh [--settle] owner/repo PR_NUMBER [expected-head-sha]

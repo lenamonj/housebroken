@@ -7,8 +7,8 @@
 # changes, CI has a failing check, the PR is CONFLICTING (needs a rebase), or
 # no CI job ever started on the head in a repository that runs them (GitHub made
 # no run, or the run it made finished without one), or a stale bot's notice
-# stands, printed with the day it closes. A new push or a close and reopen makes
-# a new run, which may again wait for approval; a workflow filtered off the
+# stands, printed with the day it closes. A new push or a close and reopen can
+# start a new run, which may again wait for approval; a workflow filtered off the
 # change makes none, and reads the same. A check list or a notice that could
 # not be read is printed as ci-unread or stale:unread, never as clean.
 # Read-only; acting is the operator's.

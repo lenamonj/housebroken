@@ -202,8 +202,8 @@ def ci: check_state as $s
 # What an empty statusCheckRollup means, in one word. GitHub lists no check both
 # for a repository whose pull requests run nothing and for a head it never made
 # a run for, and only the second is a problem: there is nothing for a maintainer
-# to approve. A new push or a close and reopen makes a new run there, which may
-# again wait for approval. A pull request filed seconds ago can read
+# to approve. A new push or a close and reopen can start a new run there, which
+# may again wait for approval. A pull request filed seconds ago can read
 # no-ci-on-head until its runs exist.
 #   needs-run-approval  a run on the head waits for a maintainer's approval
 #   ci-never-started    a run on the head finished badly and no check was ever
@@ -254,9 +254,10 @@ bot_login_jq='def is_bot_login: test("(\\[bot\\]|^app/.*|^github-actions|^depend
 # with activity: the bots do not all say "stale". A comment or review after it
 # by someone who is not a bot, or a commit after it, resets the bot's timer, so
 # nothing is marked then, even while the label lingers until the bot runs again.
-#   stale:closes-YYYY-MM-DD  the notice stands and says "closed in N days" or
-#                            "within N days". Gone two days after that day: a
-#                            pull request still open then was not closed by it
+#   stale:closes-YYYY-MM-DD  the notice stands and says it will be closed in or
+#                            within N days ("closed in 7 days", "closed within
+#                            3 days"). Gone two days after that day: a pull
+#                            request still open then was not closed by it
 #   stale:warned-YYYY-MM-DD  the notice stands and states no such days: its own
 #                            date. A number that is spelled, counted in hours or
 #                            not tied to the close is not guessed at
