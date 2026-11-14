@@ -269,4 +269,17 @@ grep -q '^RESULT: BAN' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "a clean
 bash "$script" --branch main --out o/r >/dev/null
 grep -q '^RESULT: CLEAN' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "a clean reread of the same branch did not replace the BAN"
 
+# a reading given on a BAN read is not saved, and that is said
+printf 'We do not accept AI-generated code.\n' > "$root/files/CONTRIBUTING.md"
+msg=$(bash "$script" --out --reading "they ban it" --disclosure none o/r 2>&1 >/dev/null)
+printf '%s\n' "$msg" | grep -q "the reading and its call were not saved: this read of o/r on main is BAN" || fail "a reading dropped on a BAN read was not said: $msg"
+grep -q '^DISCLOSURE: \|^READING: ' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" && fail "a BAN printout carries a reading or a call"
+
+# a carriage return in a file's path does not reach the printout
+printf 'docs/a\rb/CONTRIBUTING.md\n' > "$root/tree.txt"
+out=$(STUB_CONTENTS_FAIL=1 bash "$script" --out o/r)
+printf '%s' "$out" | grep -q "UNREAD: docs/a b/CONTRIBUTING.md" || fail "an unread path was not printed: $out"
+grep -q "$(printf '\r')" "$HOUSEBROKEN_HOME/policy/policy-o-r.md" && fail "a carriage return from a path is in the printout"
+printf 'CONTRIBUTING.md\n' > "$root/tree.txt"
+
 echo "PASS $name"

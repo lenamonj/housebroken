@@ -213,17 +213,19 @@ scan() {
   fi
   while IFS= read -r f; do
     [ -n "$f" ] || continue
+    # A path is a stranger's text too: printed on one line, control bytes gone.
+    shown=$(printf '%s' "$f" | clean_line)
     enc=$(uri_path "$f")
     # The raw form: the JSON one carries no content for a file over 1 MB.
     if ! body=$(gh api -H 'Accept: application/vnd.github.raw+json' "repos/$target/contents/$enc?ref=$ref" 2>/dev/null); then
-      echo "  UNREAD: $label$f"
+      echo "  UNREAD: $label$shown"
       unread=$((unread + 1))
       continue
     fi
     if [ -z "$body" ]; then
       size=$(printf '%s' "$tree" | jq -r --arg p "$f" '[.tree[] | select(.path == $p) | .size // 0] | first // 0')
       if [ "${size:-0}" != "0" ]; then
-        echo "  UNREAD: $label$f (listed at $size bytes, served empty)"
+        echo "  UNREAD: $label$shown (listed at $size bytes, served empty)"
         unread=$((unread + 1))
         continue
       fi
@@ -235,14 +237,14 @@ scan() {
     if [ -n "$hits" ]; then
       found=1
       nhits=$(printf '%s\n' "$hits" | grep -c .)
-      echo "  --- $label$f ---"
+      echo "  --- $label$shown ---"
       printf '%s\n' "$hits" | head -"$MAX_PRINTED" | clean_lines | cut -c1-300 | sed 's/^/      /'
       [ "$nhits" -le "$MAX_PRINTED" ] || echo "      (and $((nhits - MAX_PRINTED)) more, all of them read)"
       # What a project does itself is not what it asks of a contributor.
       printf '%s\n' "$hits" | sed -E 's/[Ww]e (do not|don.t) use//g' | grep -aqiE "$BAN_RE" && ban=1
       printf '%s\n' "$hits" | aside_other_disclosure | grep -aqiE "$DISCLOSE_RE" && disclose=1
     else
-      echo "  (clean) $label$f"
+      echo "  (clean) $label$shown"
     fi
   done <<< "$files"
 }
