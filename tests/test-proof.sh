@@ -177,7 +177,7 @@ env_cmd='for v in HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_pr
 [ "$NO_PROXY" = localhost,127.0.0.1,::1 ] && [ "$no_proxy" = localhost,127.0.0.1,::1 ] || echo NO_PROXY >> "$ENV_BAD"
 bash src/lib_test.sh'
 out=$(ENV_BAD="$root/env-bad" NO_PROXY=example.com no_proxy=example.com bash "$script" . --base upstream-main --test "$env_cmd"); rc=$?
-[ "$rc" -eq 0 ] && [ ! -f "$root/env-bad" ] || fail "an arm ran without the proxies blocked and NO_PROXY at loopback ($(cat "$root/env-bad" 2>/dev/null | tr '\n' ' ')): $out"
+[ "$rc" -eq 0 ] && [ ! -f "$root/env-bad" ] || fail "an arm ran without the proxies blocked and NO_PROXY at loopback ($(tr '\n' ' ' 2>/dev/null < "$root/env-bad")): $out"
 
 # a base arm whose client went to the blocked proxy is red for the wrong reason
 out=$(bash "$script" . --base upstream-main --test 'grep -q fixed src/lib.txt || { echo "Get \"https://api.example.com\": proxyconnect tcp: dial tcp 127.0.0.1:9: connect: connection refused"; exit 1; }'); rc=$?
