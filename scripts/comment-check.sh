@@ -146,7 +146,7 @@ while IFS= read -r f; do
   [ -s "$work/rows" ] || continue
 
   # An added comment line is unpaid unless a removed comment line in the same
-  # hunk pays for it, the one of the same text first, or it is in the leading
+  # hunk pays for it, or it is in the leading
   # comment block of a new file whose neighbours open with one. Every added line
   # between an added /* and its */ is a comment, whatever it starts with. The
   # text is everything after the third tab, not a field: a tab-indented line
@@ -155,11 +155,9 @@ while IFS= read -r f; do
   case "$re" in *'/[*]'*) blk=1 ;; esac
   awk -F'\t' -v re="$re" -v hdr="$header_ok" -v file="$f" -v blk="$blk" '
     function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
-    function take(h, t,   i, pick) {
-      pick = 0
-      for (i = 1; i <= rn[h]; i++) if (!ru[h, i]) { if (rt[h, i] == t) { pick = i; break } if (!pick) pick = i }
-      if (pick) ru[h, pick] = 1
-      return pick
+    function take(h,   i) {
+      for (i = 1; i <= rn[h]; i++) if (!ru[h, i]) { ru[h, i] = 1; return 1 }
+      return 0
     }
     { line = $0; for (i = 0; i < 3; i++) line = substr(line, index(line, "\t") + 1) }
     $1 == "-" { if (line ~ re) { n = ++rn[$2]; rt[$2, n] = trim(line) } next }
@@ -173,7 +171,7 @@ while IFS= read -r f; do
       }
       if (iscom) {
         t = trim(line)
-        if (take($2, t)) next
+        if (take($2)) next
         if (hdr == 1 && !code_seen) next
         text = line; sub(/^[[:space:]]+/, "", text)
         print "H\034" t "\034" file ":" $3 "\034" file ":" $3 " adds a comment: " text
