@@ -166,4 +166,32 @@ git update-ref refs/remotes/origin/main upstream-main
 out=$(bash "$script" . --test "$inline_cmd" --base-file "src/lib.txt=$root/base-plus-test.txt"); rc=$?
 [ "$rc" -eq 0 ] || fail "the origin/main fallback failed: $out"
 
+# Both arms run with every proxy variable at a closed local port and NO_PROXY
+# empty, so a test that reaches for the network fails here instead of sending
+# a request (teslamotors/vehicle-command #479 posted to production from its red arm).
+git checkout -q main
+# shellcheck disable=SC2016  # the command is evaluated in the arm
+env_cmd='bash src/lib_test.sh && for v in HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy; do eval "[ \"\$$v\" = http://127.0.0.1:9 ]" || exit 1; done && [ -z "$NO_PROXY" ] && [ -z "$no_proxy" ]'
+out=$(NO_PROXY=localhost no_proxy=localhost bash "$script" . --base upstream-main --test "$env_cmd"); rc=$?
+[ "$rc" -eq 0 ] || fail "the arms did not run with the proxies blocked and NO_PROXY empty: $out"
+
+# a base arm whose client went to the blocked proxy is red for the wrong reason
+stamp="$HOUSEBROKEN_HOME/proofs/$(git rev-parse HEAD)"
+out=$(bash "$script" . --base upstream-main --test 'grep -q fixed src/lib.txt || { echo "Get \"https://api.example.com\": proxyconnect tcp: dial tcp 127.0.0.1:9: connect: connection refused"; exit 1; }'); rc=$?
+[ "$rc" -eq 1 ] || fail "a base arm that reached for the network exited $rc: $out"
+printf '%s' "$out" | grep -q "the base arm reached for the network" || fail "the base arm's reach was not named: $out"
+printf '%s' "$out" | grep -q "proxyconnect tcp" || fail "the line that showed the reach was not quoted: $out"
+[ ! -f "$stamp" ] || fail "a base arm that reached for the network was stamped"
+
+# a head arm that passes after its client failed at the proxy has reached too
+out=$(bash "$script" . --base upstream-main --test 'bash src/lib_test.sh; rc=$?; echo "requests.exceptions.ProxyError: HTTPSConnectionPool(host=x, port=443)"; exit $rc'); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "the head arm reached for the network" || fail "a head arm that reached for the network was not refused: $out"
+
+# a real client: curl hands the host to the proxy without resolving it, and
+# over https names the proxy only as "over proxy 127.0.0.1" or "via 127.0.0.1"
+if command -v curl >/dev/null 2>&1; then
+  out=$(bash "$script" . --base upstream-main --test 'grep -q fixed src/lib.txt || { curl -sS -m 5 https://example.invalid/; exit 1; }'); rc=$?
+  [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "the base arm reached for the network" || fail "curl through the blocked proxy was not seen: $out"
+fi
+
 echo "PASS $name"

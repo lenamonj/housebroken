@@ -16,6 +16,14 @@
 # can tell that from the bug. A run that does not show the fix removes any stamp
 # an earlier run left for this head.
 #
+# Both arms run with HTTP_PROXY, HTTPS_PROXY and ALL_PROXY (and their lower
+# case) at a closed local port and NO_PROXY empty: a red arm on
+# teslamotors/vehicle-command #479 sent a real POST to the vendor's production
+# API. A client that honors them fails instead of sending, and an arm whose
+# output shows one did (Go's proxyconnect, Python's ProxyError, curl's "over
+# proxy" or "via") is not stamped. A client that ignores them (Java, Node's fetch, a raw
+# socket) is not held; fetch dependencies before the run.
+#
 # A change with nothing to prove red, a documentation fix or a refactor
 # whose behaviour the existing suite already pins, says so with --none and a
 # reason; the stamp records the reason and the filing prints it.
@@ -135,8 +143,13 @@ echo "proof: taking away ${#fixes[@]} file(s): ${fixes[*]}${kept[0]:+; keeping $
 
 hash_of() { if [ -f "$1" ]; then git hash-object -- "$1"; else echo absent; fi; }
 hashes() { local f; for f in "${fixes[@]}"; do printf '%s %s\n' "$(hash_of "$f")" "$f"; done; }
-run_arm() { # label -> rc in arm_rc, output tail in arm_out
-  arm_out=$(bash -c "$cmd" 2>&1); arm_rc=$?
+blackhole=http://127.0.0.1:9
+run_arm() { # label -> rc in arm_rc, output tail in arm_out, a line showing a reach for the network in arm_net
+  arm_out=$(HTTP_PROXY=$blackhole HTTPS_PROXY=$blackhole ALL_PROXY=$blackhole \
+    http_proxy=$blackhole https_proxy=$blackhole all_proxy=$blackhole NO_PROXY= no_proxy= \
+    bash -c "$cmd" 2>&1); arm_rc=$?
+  arm_net=$(printf '%s\n' "$arm_out" |
+    grep -m1 -E 'proxyconnect|ProxyError|127\.0\.0\.1(:| port )9([^0-9]|$)|(over proxy|via) 127\.0\.0\.1([^0-9.:]|$)' | cut -c1-200)
   arm_out=$(printf '%s\n' "$arm_out" | tail -15)
   echo "== $1 arm: exit $arm_rc"
   printf '%s\n' "$arm_out" | sed 's/^/    /'
@@ -144,7 +157,7 @@ run_arm() { # label -> rc in arm_rc, output tail in arm_out
 
 head_hashes=$(hashes)
 run_arm head
-head_rc=$arm_rc; head_out=$arm_out
+head_rc=$arm_rc; head_out=$arm_out; head_net=$arm_net
 
 # The base arm: each fix file by its content at the merge base, through the
 # clone's own filters so line endings are what a checkout gives, or gone
@@ -176,7 +189,7 @@ for f in "${fixes[@]}"; do
 done
 base_hashes=$(hashes)
 run_arm base
-base_rc=$arm_rc; base_out=$arm_out
+base_rc=$arm_rc; base_out=$arm_out; base_net=$arm_net
 restore
 trap - EXIT
 
@@ -201,6 +214,10 @@ case "$base_rc" in
   0) failed="${failed:+$failed; }the test passes without the fix, so it does not show the bug${kept[0]:+ (or the fix is in a kept file: ${kept[*]})}" ;;
 esac
 [ "$head_rc" -eq 0 ] || failed="${failed:+$failed; }the test fails with the fix"
+for arm in base head; do
+  if [ "$arm" = base ]; then net=$base_net; else net=$head_net; fi
+  [ -z "$net" ] || failed="${failed:+$failed; }the $arm arm reached for the network through the blocked proxy ($net); stub the client the way the neighbouring tests do, and fetch dependencies before the run"
+done
 if [ -n "$failed" ]; then
   echo "proof: not shown - $failed"
   exit 1

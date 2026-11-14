@@ -107,10 +107,12 @@ report it in one line and do not proceed to the next step.
    the bug in, write the test that fails. Run it and keep the failing output.
    Apply the patch. Run it again. Both results go into the pull request as
    the test itself; the body states the fact in one sentence.
-   Run the red arm with egress blocked (`HTTPS_PROXY` and `HTTP_PROXY` at a
-   black-hole address, or the equivalent): a test that then names a host has
-   left the machine, and is rewritten to stub the client the way its
-   neighbours do.
+   Run both arms with egress blocked. `housebroken proof` sets every proxy
+   variable to a closed local port, and a test whose output then shows a
+   client going to it is not stamped. A client that ignores proxy variables
+   (Java, Node's fetch, a raw socket) is not held by that, so block it the
+   language's way. A test that reaches the network is rewritten to stub the
+   client the way its neighbours do; fetch dependencies before the run.
    Ask what each step would print if it did nothing, and make that answer
    different from success: revert by content and compare hashes rather than
    trusting a command's exit code, check the clone's line endings before the
@@ -350,7 +352,9 @@ report it in one line and do not proceed to the next step.
     contributor or a first-timer is anyone who can type, and the inbox says
     so. Answer every maintainer comment the same day,
     in the user's voice, and run `housebroken claims` over the reply before
-    it is posted. A voice with no role is read, never answered on your own:
+    it is posted. A reproduction a maintainer asks for is the shipped command
+    line or an exported function of a public package, run on a fresh clone,
+    with its real output pasted; a call into an internal package is not one. A voice with no role is read, never answered on your own:
     report what they said and answer only when the user says to, with
     `--outsider`, at most once, on the facts. A reply that concedes a point, disagrees, or rides on
     a code change goes through the adversarial review of step 9 first, with
