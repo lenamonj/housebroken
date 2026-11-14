@@ -124,4 +124,12 @@ if [ "$code" != "2" ] || [ "$cmnt" != "2" ]; then
   exit 1
 fi
 
+# A clone given as the root is measured itself (#6), from inside it or by path,
+# and gives the same row as the directory above it.
+out4=$(bash "$script" "$root/pflag") || { echo "FAIL $name: a clone as the root exited non-zero: $out4"; exit 1; }
+[ "$(echo "$out4" | grep -E '^pflag[[:space:]]+census-fixture[[:space:]]')" = "$(echo "$out" | grep -E '^pflag[[:space:]]+census-fixture[[:space:]]')" ] \
+  || { echo "FAIL $name: a clone as the root did not give its own row: $out4"; exit 1; }
+out5=$(cd "$root/pflag" && bash "$script" .) || { echo "FAIL $name: census . inside a clone exited non-zero: $out5"; exit 1; }
+echo "$out5" | grep -qE '^pflag[[:space:]]+census-fixture[[:space:]]' || { echo "FAIL $name: census . inside a clone gave no row: $out5"; exit 1; }
+
 echo "PASS $name"

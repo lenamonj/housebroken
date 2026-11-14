@@ -23,8 +23,9 @@
 #   bash comment-census.sh [CLONE_ROOT]
 #   bash comment-census.sh --help
 #
-# CLONE_ROOT is any directory whose immediate subdirectories are git clones.
-# Defaults to $HOUSEBROKEN_CLONES, then to $HOUSEBROKEN_HOME/clones.
+# CLONE_ROOT is a git clone, which is measured alone, or any directory whose
+# immediate subdirectories are git clones. Defaults to $HOUSEBROKEN_CLONES,
+# then to $HOUSEBROKEN_HOME/clones.
 #
 # Environment:
 #   HOUSEBROKEN_CLONES  default clone root
@@ -125,8 +126,14 @@ flag_scan() {
 printf '%-28s %-36s %5s %5s %5s\n' repo branch code cmnt tests
 
 found=0
-for d in "$root"/*/; do
-  [ -d "$d/.git" ] || continue
+# A clone given as the root is measured itself; otherwise every clone under it.
+if [ -e "$root/.git" ]; then
+  clones=("$(cd "$root" && pwd)/")
+else
+  clones=("$root"/*/)
+fi
+for d in "${clones[@]}"; do
+  [ -e "$d/.git" ] || continue
   found=1
   name=$(basename "$d")
   base=$(git -C "$d" symbolic-ref -q --short refs/remotes/origin/HEAD || true)
