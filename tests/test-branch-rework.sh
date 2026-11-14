@@ -104,6 +104,25 @@ pr OPEN MERGEABLE fix develop; refuses branch-check-rework-wrong-pr "a pull requ
 PR_JSON=""; export PR_JSON;    refuses branch-check-rework-pr-unreadable "a pull request gh cannot read"
 PR_JSON="not json"; export PR_JSON; refuses branch-check-rework-pr-unreadable "an answer that is not JSON"
 
+# An answer missing any field, or holding it as null or empty, is unreadable:
+# no other rework name may stand in for it, and no field may be read from its
+# neighbour's place.
+for field in state mergeable headRefName baseRefName headRefOid; do
+  for how in missing null empty; do
+    pr OPEN MERGEABLE fix main
+    case "$how" in
+      missing) PR_JSON=$(printf '%s' "$PR_JSON" | jq -c "del(.$field)") ;;
+      null) PR_JSON=$(printf '%s' "$PR_JSON" | jq -c ".$field = null") ;;
+      empty) PR_JSON=$(printf '%s' "$PR_JSON" | jq -c ".$field = \"\"") ;;
+    esac
+    export PR_JSON
+    refuses branch-check-rework-pr-unreadable "an answer with $field $how"
+    others=$(printf '%s' "$out" | grep -oE '\[branch-check-rework-[a-z-]+\]' | grep -v pr-unreadable)
+    [ -z "$others" ] || fail "an answer with $field $how also printed $others: $out"
+    printf '%s' "$out" | grep -q ", ," && fail "an answer with $field $how printed an empty commit: $out"
+  done
+done
+
 # --rework=URL is the same option.
 pr OPEN MERGEABLE fix main
 out=$(run --rework="$url"); rc=$?
@@ -132,11 +151,18 @@ printf '%s' "$out" | grep -q "src/k.py" || fail "the overlapping file was not na
 (cd "$repo" && $G checkout -q --orphan lone && $G commit -q -m lone) || fail "orphan commit failed"
 out=$(run); rc=$?
 [ "$rc" = 1 ] || fail "an orphan head exited $rc: $out"
+only_refusal() { # id why
+  local got
+  got=$(printf '%s\n' "$out" | grep -oE '^REFUSED.*\[[a-z0-9-]+\]' | grep -oE '\[[a-z0-9-]+\]$')
+  [ "$got" = "[$1]" ] || fail "$2 printed refusals other than $1: $got / $out"
+}
 printf '%s' "$out" | grep -q "\[branch-check-no-shared-history\]" || fail "an orphan head was not named: $out"
+only_refusal branch-check-no-shared-history "an orphan head"
 pr OPEN MERGEABLE lone main "$(cd "$repo" && git rev-parse HEAD)"
 out=$(run --rework "$url"); rc=$?
 [ "$rc" = 1 ] || fail "an orphan head with --rework exited $rc: $out"
 printf '%s' "$out" | grep -q "\[branch-check-no-shared-history\]" || fail "an orphan head with --rework was not named: $out"
+only_refusal branch-check-no-shared-history "an orphan head with --rework"
 printf '%s' "$out" | grep -q "keeps its base" && fail "an orphan head was said to keep its base: $out"
 (cd "$repo" && $G checkout -q -f fix) || fail "checkout failed"
 

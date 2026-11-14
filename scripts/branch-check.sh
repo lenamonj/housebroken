@@ -116,10 +116,10 @@ fi
 [ -n "$base" ] || { refused branch-check-no-base-resolved "no base ref resolved - pass --base REF" >&2; exit 2; }
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || { refused branch-check-base-unresolvable "base $base does not resolve" >&2; exit 2; }
 # What the branch changed, read from where it left the base. Two unrelated
-# histories have no merge base: that is refused below, and the base stands in
-# so the other checks still read something.
+# histories have no merge base: that is refused below, before any scan reads
+# an unrelated tree as the branch's change.
 shared=1
-mb=$(git merge-base "$base" HEAD 2>/dev/null) || { shared=0; mb=$(git rev-parse "$base"); }
+mb=$(git merge-base "$base" HEAD 2>/dev/null) || shared=0
 
 blocked=0
 block() { refused "$1" "$2"; blocked=1; }
@@ -158,11 +158,15 @@ esac
 # since the branch point.
 if [ "$shared" -eq 0 ]; then
   block branch-check-no-shared-history "HEAD shares no history with $base, so it was not branched from it"
+  echo
+  echo "branch-check: refused. Fix the causes above; a refusal is a result."
+  exit 1
 elif ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
   if [ -z "$rework" ]; then
     block branch-check-not-on-base "HEAD is not on top of $base - rebase before filing"
   elif ! fields=$(gh pr view "$rework" --json state,mergeable,headRefName,baseRefName,headRefOid 2>/dev/null \
-         | jq -r '[.state, .mergeable, .headRefName, .baseRefName, .headRefOid] | @tsv' 2>/dev/null | tr -d '\r') || [ -z "$fields" ]; then
+         | jq -r '[.state, .mergeable, .headRefName, .baseRefName, .headRefOid]
+                  | select(all(.[]; type == "string" and . != "")) | @tsv' 2>/dev/null | tr -d '\r') || [ -z "$fields" ]; then
     block branch-check-rework-pr-unreadable "cannot read $rework, so whether it merges cleanly is unknown"
   else
     IFS=$'\t' read -r pr_state pr_merge pr_head pr_base pr_oid <<< "$fields"
