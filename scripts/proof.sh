@@ -146,7 +146,7 @@ hashes() { local f; for f in "${fixes[@]}"; do printf '%s %s\n' "$(hash_of "$f")
 blackhole=http://127.0.0.1:9
 run_arm() { # label -> rc in arm_rc, output tail in arm_out, a line showing a reach for the network in arm_net
   arm_out=$(HTTP_PROXY=$blackhole HTTPS_PROXY=$blackhole ALL_PROXY=$blackhole \
-    http_proxy=$blackhole https_proxy=$blackhole all_proxy=$blackhole NO_PROXY= no_proxy= \
+    http_proxy=$blackhole https_proxy=$blackhole all_proxy=$blackhole NO_PROXY='' no_proxy='' \
     bash -c "$cmd" 2>&1); arm_rc=$?
   arm_net=$(printf '%s\n' "$arm_out" |
     grep -m1 -E 'proxyconnect|ProxyError|127\.0\.0\.1(:| port )9([^0-9]|$)|(over proxy|via) 127\.0\.0\.1([^0-9.:]|$)' | cut -c1-200)
