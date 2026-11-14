@@ -369,10 +369,10 @@ report it in one line and do not proceed to the next step.
     on its default branch is empty and earlier pull requests sit there as
     their own commits, a second commit lands in main for good, so squash it
     into the original and amend the message. Any rewrite re-runs the current
-    gates over the whole patch. Stamp the new head with `housebroken branch
-   <clone> --rework <pull request URL>`: a rework keeps its base while the
-   pull request merges cleanly, and is rebased only when it conflicts, the
-   maintainer asks, or the head is rewritten anyway. Push it with `housebroken push owner/repo <clone>`: it
+    gates over the whole patch. Stamp the new head with
+    `housebroken branch <clone> --rework <pull request URL>`: a rework keeps
+    its base while the pull request merges cleanly, and is rebased only when
+    it conflicts, the maintainer asks, or the head is rewritten anyway. Push it with `housebroken push owner/repo <clone>`: it
     needs a branch stamp and a POST AS IS review of the new head, refuses a
     second push to the branch within thirty minutes, and refuses a push that
     rewrites the branch unless `--rework '<why>'` says why. A rebase that
