@@ -217,4 +217,38 @@ out=$(run); rc=$?
 [ "$rc" = "0" ] || { echo "FAIL $name: a comment moved out of a deleted file exited $rc, expected 0: $out"; exit 1; }
 echo "$out" | grep -q "^CHECK: src/a.go:8 moves a comment from src/b.go$" || { echo "FAIL $name: the move out of a deleted file was not printed: $out"; exit 1; }
 
+# 19. a renamed file gives up no comments, whatever diff.renames says: a copy
+# of one of its comments is added, not moved
+$G reset -q --hard main
+$G mv src/b.go src/b3.go
+printf '// Copyright The Project Authors\n// SPDX-License-Identifier: MIT\n\npackage a\n\nfunc A() int { return 1 }\n\n// B returns two.\nfunc A3() int { return 2 }\n' > src/a.go
+commit "rename b and copy its comment"
+git config diff.renames false
+out=$(run); rc=$?
+git config --unset diff.renames
+[ "$rc" = "1" ] || { echo "FAIL $name: a comment copied from a renamed file exited $rc under diff.renames=false, expected 1: $out"; exit 1; }
+
+# 20. a block comment moves whole, its unstarred inner lines included
+$G checkout -q main
+printf 'int e(void) {\n  return 1;\n}\n/*\n   b returns two, always.\n*/\nint b(void) { return 2; }\n' > src/e.c
+commit "e and b"
+$G checkout -q feature
+$G reset -q --hard main
+printf 'int e(void) {\n  return 1;\n}\n' > src/e.c
+printf 'int c(void) { return 3; }\n/*\n   b returns two, always.\n*/\nint b(void) { return 2; }\n' > src/c2.c
+commit "move b to c2"
+out=$(run); rc=$?
+[ "$rc" = "0" ] || { echo "FAIL $name: a moved block comment exited $rc, expected 0: $out"; exit 1; }
+[ "$(echo "$out" | grep -c "moves a comment from src/e.c")" = "3" ] || { echo "FAIL $name: the block's three lines were not each printed as a move: $out"; exit 1; }
+
+# 21. the same block moves whole out of a file the branch deletes
+$G reset -q --hard main
+$G rm -q src/e.c
+# Enough other code that git reads a delete and an add, not a rename.
+printf 'int c(void) { return 3; }\nint c1(void) { return 31; }\nint c2(void) { return 32; }\nint c3(void) { return 33; }\nint c4(void) { return 34; }\nint c5(void) { return 35; }\n/*\n   b returns two, always.\n*/\nint b(void) { return 2; }\n' > src/c2.c
+commit "fold e into c2"
+git diff --name-status -M main HEAD | grep -qx $'D\tsrc/e.c' || { echo "FAIL $name: the fixture is not a deleted file: $(git diff --name-status -M main HEAD)"; exit 1; }
+out=$(run); rc=$?
+[ "$rc" = "0" ] || { echo "FAIL $name: a block moved out of a deleted file exited $rc, expected 0: $out"; exit 1; }
+
 echo "PASS $name"

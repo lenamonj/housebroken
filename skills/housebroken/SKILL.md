@@ -225,9 +225,10 @@ report it in one line and do not proceed to the next step.
    repository ignores, a commit carrying a tool trailer, a session link or a
    tool identity, a sign-off that names a username, a branch that is not on
    top of its base (for a rework, `--rework <pull request URL>`: a head
-   behind its base passes when GitHub says that open pull request is this
-   branch into this base and merges cleanly, so the reviewer's view is not a
-   rebase), a base that is not a remote-tracking ref (it notes one the
+   behind its base passes when that open pull request's pushed head is in
+   this one, its branch names match, GitHub says it merges cleanly, and the
+   commits on top of its pushed head touch no file the base changed since
+   the branch point, so the reviewer's view is not a rebase), a base that is not a remote-tracking ref (it notes one the
    upstream has moved past; the filing refuses it when the move touches your
    files), any comment added to code
    (`--asked <URL>` when the maintainer asked for it; a comment that moves
@@ -371,8 +372,9 @@ report it in one line and do not proceed to the next step.
     into the original and amend the message. Any rewrite re-runs the current
     gates over the whole patch. Stamp the new head with
     `housebroken branch <clone> --rework <pull request URL>`: a rework keeps
-    its base while the pull request merges cleanly, and is rebased only when
-    it conflicts, the maintainer asks, or the head is rewritten anyway. Push it with `housebroken push owner/repo <clone>`: it
+    its base while the pull request merges cleanly and the new commits stay
+    off the files upstream changed, and is rebased only when one of those
+    fails, the maintainer asks, or the head is rewritten anyway. Push it with `housebroken push owner/repo <clone>`: it
     needs a branch stamp and a POST AS IS review of the new head, refuses a
     second push to the branch within thirty minutes, and refuses a push that
     rewrites the branch unless `--rework '<why>'` says why. A rebase that

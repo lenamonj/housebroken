@@ -160,7 +160,18 @@ while IFS= read -r f; do
       return 0
     }
     { line = $0; for (i = 0; i < 3; i++) line = substr(line, index(line, "\t") + 1) }
-    $1 == "-" { if (line ~ re) { n = ++rn[$2]; rt[$2, n] = trim(line) } next }
+    # Removed lines carry no line number; within a hunk they are contiguous.
+    $1 == "-" {
+      iscom = (line ~ re)
+      if (blk == 1) {
+        if ($2 != rh) rin = 0
+        rh = $2
+        if (rin) { iscom = 1; if (line ~ /[*]\//) rin = 0 }
+        else if (line ~ /^[[:space:]]*\/[*]/ && line !~ /[*]\//) rin = 1
+      }
+      if (iscom) { n = ++rn[$2]; rt[$2, n] = trim(line) }
+      next
+    }
     $1 == "+" {
       iscom = (line ~ re) && !($3 == 1 && line ~ /^#!/)
       if (blk == 1) {
@@ -186,10 +197,19 @@ while IFS= read -r f; do
   [ -n "$f" ] || continue
   ext=$(ext_of "$f") || continue
   re=$(comment_re "$ext") || continue
-  git show "$mb:$f" 2>/dev/null | awk -v re="$re" -v file="$f" '
-    $0 ~ re && !(NR == 1 && /^#!/) { t = $0; sub(/^[[:space:]]+/, "", t); sub(/[[:space:]]+$/, "", t); print "R\034" t "\034" file }
+  blk=0
+  case "$re" in *'/[*]'*) blk=1 ;; esac
+  git show "$mb:$f" 2>/dev/null | awk -v re="$re" -v file="$f" -v blk="$blk" '
+    {
+      iscom = ($0 ~ re) && !(NR == 1 && /^#!/)
+      if (blk == 1) {
+        if (inblock) { iscom = 1; if ($0 ~ /[*]\//) inblock = 0 }
+        else if ($0 ~ /^[[:space:]]*\/[*]/ && $0 !~ /[*]\//) inblock = 1
+      }
+      if (iscom) { t = $0; sub(/^[[:space:]]+/, "", t); sub(/[[:space:]]+$/, "", t); print "R\034" t "\034" file }
+    }
   ' >> "$work/all"
-done < <(gdiff --name-only --diff-filter=D "$mb" HEAD)
+done < <(gdiff --name-only -M --diff-filter=D "$mb" HEAD)
 
 # Read twice: every R first, then each H takes one R of its text or is refused.
 awk 'BEGIN { FS = "\034" }

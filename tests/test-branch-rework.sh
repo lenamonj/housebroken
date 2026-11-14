@@ -58,8 +58,9 @@ mkdir -p "$repo/src" || exit 1
 ) || fail "fixture failed"
 
 run() { bash "$script" "$repo" --base upstream/main "$@" 2>&1; }
-pr() { # state mergeable head base
-  PR_JSON=$(printf '{"state":"%s","mergeable":"%s","headRefName":"%s","baseRefName":"%s"}' "$1" "$2" "$3" "$4")
+pushed=$(cd "$repo" && git rev-parse HEAD)
+pr() { # state mergeable head base [pushed head]
+  PR_JSON=$(printf '{"state":"%s","mergeable":"%s","headRefName":"%s","baseRefName":"%s","headRefOid":"%s"}' "$1" "$2" "$3" "$4" "${5:-$pushed}")
   export PR_JSON
 }
 
@@ -102,6 +103,42 @@ pr OPEN MERGEABLE other main;  refuses branch-check-rework-wrong-pr "a pull requ
 pr OPEN MERGEABLE fix develop; refuses branch-check-rework-wrong-pr "a pull request into another base"
 PR_JSON=""; export PR_JSON;    refuses branch-check-rework-pr-unreadable "a pull request gh cannot read"
 PR_JSON="not json"; export PR_JSON; refuses branch-check-rework-pr-unreadable "an answer that is not JSON"
+
+# --rework=URL is the same option.
+pr OPEN MERGEABLE fix main
+out=$(run --rework="$url"); rc=$?
+[ "$rc" = 0 ] || fail "--rework=URL exited $rc: $out"
+
+# The pull request's pushed head must be in this head: a pull request of
+# another project or another line of work with the same branch names is not it.
+pr OPEN MERGEABLE fix main "$(cd "$repo" && git rev-parse upstream/main)"
+refuses branch-check-rework-not-pr-head "a pull request whose head is not in this one"
+pr OPEN MERGEABLE fix main 0123456789abcdef0123456789abcdef01234567
+refuses branch-check-rework-not-pr-head "a pull request whose head this clone does not have"
+
+# GitHub's answer is for the pushed head only: the rework's own commits may
+# not touch a file upstream changed since the branch point.
+(cd "$repo" && printf 'export const a = 3;\n' > src/a.ts && $G add -A && $G commit -q -m "rework a") || fail "rework commit failed"
+pr OPEN MERGEABLE fix main
+out=$(run --rework "$url"); rc=$?
+[ "$rc" = 0 ] || fail "a rework touching only its own files exited $rc: $out"
+(cd "$repo" && printf 'x = 2\n' > src/k.py && $G add -A && $G commit -q -m "rework k") || fail "rework commit failed"
+refuses branch-check-rework-upstream-overlap "a rework touching a file upstream changed"
+printf '%s' "$out" | grep -q "src/k.py" || fail "the overlapping file was not named: $out"
+(cd "$repo" && $G reset -q --hard "$pushed") || fail "reset failed"
+
+# A head that shares no history with its base is refused by its own name,
+# with or without --rework.
+(cd "$repo" && $G checkout -q --orphan lone && $G commit -q -m lone) || fail "orphan commit failed"
+out=$(run); rc=$?
+[ "$rc" = 1 ] || fail "an orphan head exited $rc: $out"
+printf '%s' "$out" | grep -q "\[branch-check-no-shared-history\]" || fail "an orphan head was not named: $out"
+pr OPEN MERGEABLE lone main "$(cd "$repo" && git rev-parse HEAD)"
+out=$(run --rework "$url"); rc=$?
+[ "$rc" = 1 ] || fail "an orphan head with --rework exited $rc: $out"
+printf '%s' "$out" | grep -q "\[branch-check-no-shared-history\]" || fail "an orphan head with --rework was not named: $out"
+printf '%s' "$out" | grep -q "keeps its base" && fail "an orphan head was said to keep its base: $out"
+(cd "$repo" && $G checkout -q -f fix) || fail "checkout failed"
 
 # A head on top of its base needs no pull request read.
 (cd "$repo" && $G rebase -q upstream/main) || fail "rebase failed"

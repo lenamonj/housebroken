@@ -29,8 +29,10 @@
 # --asked URL is the maintainer's request for documentation, which turns the
 # comment refusal into a check. --rework PR_URL names the open pull request
 # this head reworks: a head behind its base is then a check, not a refusal,
-# when GitHub says that pull request is this branch into this base and merges
-# cleanly, so the reviewer's view of the rework is not a rebase. Every diff is
+# when that open pull request's pushed head is in this one, its branch names
+# match, GitHub says it merges cleanly, and the commits on top of its pushed
+# head touch no file the base changed since the branch point, so the
+# reviewer's view of the rework is not a rebase. Every diff is
 # read from the merge base, which is the base itself when the head is on top
 # of it. --warning-log FILE is a build log of the
 # branch without its suppressions; it must name every warning id they suppress.
@@ -72,9 +74,11 @@ while [ "$#" -gt 0 ]; do
       [ -n "$asked" ] || { refused branch-check-asked-no-url "--asked needs the URL of the maintainer's ask" >&2; exit 2; }
       ;;
     --asked=*) asked="${1#--asked=}" ;;
-    --rework)
-      shift
-      rework="${1:-}"
+    --rework|--rework=*)
+      case "$1" in
+        --rework=*) rework="${1#--rework=}" ;;
+        *) shift; rework="${1:-}" ;;
+      esac
       [ -n "$rework" ] || { refused branch-check-rework-no-url "--rework needs the URL of the pull request it reworks" >&2; exit 2; }
       ;;
     --warning-log)
@@ -112,8 +116,10 @@ fi
 [ -n "$base" ] || { refused branch-check-no-base-resolved "no base ref resolved - pass --base REF" >&2; exit 2; }
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || { refused branch-check-base-unresolvable "base $base does not resolve" >&2; exit 2; }
 # What the branch changed, read from where it left the base. Two unrelated
-# histories have no merge base; the base stands in, and not-on-base refuses.
-mb=$(git merge-base "$base" HEAD 2>/dev/null) || mb=$(git rev-parse "$base")
+# histories have no merge base: that is refused below, and the base stands in
+# so the other checks still read something.
+shared=1
+mb=$(git merge-base "$base" HEAD 2>/dev/null) || { shared=0; mb=$(git rev-parse "$base"); }
 
 blocked=0
 block() { refused "$1" "$2"; blocked=1; }
@@ -147,15 +153,19 @@ esac
 
 # A rework keeps its base when the pull request merges cleanly: a rebase would
 # rewrite the commit the maintainer reviewed and bury the answer in upstream's
-# changes. Only GitHub knows whether it merges, so nothing else stands in.
-if ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
+# changes. GitHub's answer is for the head it holds, so that head must be in
+# this one, and the commits on top of it may not touch a file upstream changed
+# since the branch point.
+if [ "$shared" -eq 0 ]; then
+  block branch-check-no-shared-history "HEAD shares no history with $base, so it was not branched from it"
+elif ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
   if [ -z "$rework" ]; then
     block branch-check-not-on-base "HEAD is not on top of $base - rebase before filing"
-  elif ! fields=$(gh pr view "$rework" --json state,mergeable,headRefName,baseRefName 2>/dev/null \
-         | jq -r '[.state, .mergeable, .headRefName, .baseRefName] | @tsv' 2>/dev/null | tr -d '\r') || [ -z "$fields" ]; then
+  elif ! fields=$(gh pr view "$rework" --json state,mergeable,headRefName,baseRefName,headRefOid 2>/dev/null \
+         | jq -r '[.state, .mergeable, .headRefName, .baseRefName, .headRefOid] | @tsv' 2>/dev/null | tr -d '\r') || [ -z "$fields" ]; then
     block branch-check-rework-pr-unreadable "cannot read $rework, so whether it merges cleanly is unknown"
   else
-    IFS=$'\t' read -r pr_state pr_merge pr_head pr_base <<< "$fields"
+    IFS=$'\t' read -r pr_state pr_merge pr_head pr_base pr_oid <<< "$fields"
     branch=$(git rev-parse --abbrev-ref HEAD)
     behind=$(git rev-list --count "HEAD..$base")
     commits="commits"; [ "$behind" = 1 ] && commits="commit"
@@ -163,12 +173,20 @@ if ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
       block branch-check-rework-pr-not-open "$rework is $pr_state; only an open pull request keeps its base"
     elif [ "$pr_head" != "$branch" ] || [ "$pr_base" != "${rbranch:-}" ]; then
       block branch-check-rework-wrong-pr "$rework files $pr_head into $pr_base, but this is $branch against $base"
+    elif ! git merge-base --is-ancestor "$pr_oid" HEAD 2>/dev/null; then
+      block branch-check-rework-not-pr-head "the head $rework holds, ${pr_oid:0:12}, is not in HEAD - this is not a rework of it, or fetch it"
     elif [ "$pr_merge" != MERGEABLE ]; then
       why="$rework reads $pr_merge and HEAD is $behind $commits behind $base - rebase before pushing"
       [ "$pr_merge" != UNKNOWN ] || why="GitHub has not yet worked out whether $rework merges; run again in a minute"
       block branch-check-rework-not-mergeable "$why"
     else
-      echo "CHECK: HEAD is $behind $commits behind $base, and $rework merges cleanly, so the rework keeps its base"
+      overlap=$(LC_ALL=C comm -12 <(gdiff --name-only --no-renames "$pr_oid" HEAD | LC_ALL=C sort -u) \
+                                  <(gdiff --name-only --no-renames "$mb" "$base" | LC_ALL=C sort -u))
+      if [ -n "$overlap" ]; then
+        block branch-check-rework-upstream-overlap "the commits on top of ${pr_oid:0:12} change files $base changed since the branch point, so GitHub's answer does not cover them - rebase before pushing: $(printf '%s' "$overlap" | tr '\n' ' ')"
+      else
+        echo "CHECK: HEAD is $behind $commits behind $base, and $rework merges cleanly, so the rework keeps its base"
+      fi
     fi
   fi
 fi
@@ -263,7 +281,7 @@ comments=$(bash "$here/comment-check.sh" . "${comment_args[@]}" 2>&1); comment_r
 case "$comment_rc" in
   0) ;;
   1) block branch-check-comments-added "the branch adds comments to code that nobody asked for"
-     printf '%s\n' "$comments" | grep -E '^(REFUSED|CHECK): ' | sed 's/^REFUSED: /    /' ;;
+     printf '%s\n' "$comments" | grep -E '^REFUSED: ' | sed 's/^REFUSED: /    /' ;;
   *) block branch-check-comment-check-failed "comment-check.sh could not run: $comments" ;;
 esac
 printf '%s\n' "$comments" | grep -E '^CHECK: ' | sed 's/^/    /'

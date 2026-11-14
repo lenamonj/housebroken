@@ -363,4 +363,12 @@ fires "adds a warning suppression" && { echo "FAIL $name: an edited line keeping
 fires "adds a warning suppression" || { echo "FAIL $name: a second suppression beside a kept one was not refused"; exit 1; }
 (cd "$repo" && $G reset -q --hard HEAD~1)
 
+# 21. A refused branch prints each moved comment once, beside the refusal.
+(cd "$repo" && printf '// n is one.\nexport const n = 1;\n' > src/n.ts && $G add -A && $G commit -q -m n && setbase HEAD) || exit 1
+(cd "$repo" && printf 'export const x = 0;\n' > src/n.ts && printf 'export const z = 0;\n// n is one.\nexport const n = 1;\n// a new note.\nexport const o = 2;\n' > src/o.ts && $G add -A && $G commit -q -m "move n") || exit 1
+out=$(run); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: a new comment beside a moved one exited $rc: $out"; exit 1; }
+[ "$(printf '%s\n' "$out" | grep -c "moves a comment from src/n.ts")" = "1" ] || { echo "FAIL $name: a move was not printed exactly once: $out"; exit 1; }
+(cd "$repo" && $G reset -q --hard HEAD~1)
+
 echo "PASS $name"
