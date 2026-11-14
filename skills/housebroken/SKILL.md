@@ -157,6 +157,10 @@ report it in one line and do not proceed to the next step.
    to skip yours: run the linter over the changed files directly, and
    reproduce the global failure on a pristine base so the body says whose
    it is.
+   A target that can outlast the harness's limit on one command's time runs
+   detached (`nohup` or `setsid`) with its output in a file; file only after
+   reading that file's final result line. A build that was cut off is no
+   build.
    The policy printout of step 1 ends with the project's CI legs, and
    `housebroken ci owner/repo` prints them again: the jobs of each workflow's
    newest finished run. A leg marked NOT THIS MACHINE is a gate you did not
@@ -220,10 +224,14 @@ report it in one line and do not proceed to the next step.
    whose mode disagrees with its own siblings, a file the branch adds that the
    repository ignores, a commit carrying a tool trailer, a session link or a
    tool identity, a sign-off that names a username, a branch that is not on
-   top of its base, a base that is not a remote-tracking ref (it notes one the
+   top of its base (for a rework, `--rework <pull request URL>`: a head
+   behind its base passes when GitHub says that open pull request is this
+   branch into this base and merges cleanly, so the reviewer's view is not a
+   rebase), a base that is not a remote-tracking ref (it notes one the
    upstream has moved past; the filing refuses it when the move touches your
    files), any comment added to code
-   (`--asked <URL>` when the maintainer asked for it), a warning suppression
+   (`--asked <URL>` when the maintainer asked for it; a comment that moves
+   with its code word for word is printed as a move, not refused), a warning suppression
    that names no warning or whose warning `--warning-log` does not show
    firing, reflection added to a .NET project that declares AOT or trim
    support until `--aot-log` shows an AOT publish of that project you ran the
@@ -361,7 +369,10 @@ report it in one line and do not proceed to the next step.
     on its default branch is empty and earlier pull requests sit there as
     their own commits, a second commit lands in main for good, so squash it
     into the original and amend the message. Any rewrite re-runs the current
-    gates over the whole patch. Push it with `housebroken push owner/repo <clone>`: it
+    gates over the whole patch. Stamp the new head with `housebroken branch
+   <clone> --rework <pull request URL>`: a rework keeps its base while the
+   pull request merges cleanly, and is rebased only when it conflicts, the
+   maintainer asks, or the head is rewritten anyway. Push it with `housebroken push owner/repo <clone>`: it
     needs a branch stamp and a POST AS IS review of the new head, refuses a
     second push to the branch within thirty minutes, and refuses a push that
     rewrites the branch unless `--rework '<why>'` says why. A rebase that
