@@ -6,7 +6,8 @@
 # with its own siblings; a file the branch adds that the repository's own
 # .gitignore excludes; a working artifact; a commit carrying a tool trailer, a
 # session link or a tool identity; a sign-off naming a username; a branch that
-# is not on top of its base; and a comment added to code, test files included,
+# is not on top of its base, unless it reworks an open pull request that merges
+# cleanly; and a comment added to code, test files included,
 # unless a maintainer asked for it (comment-check.sh); a warning suppression the
 # branch adds, until a build log shows the warning it suppresses firing; and
 # reflection added to a .NET project that declares itself AOT compatible or
@@ -19,14 +20,19 @@
 # which file-pr.sh requires for the head it files.
 #
 # Usage:
-#   bash branch-check.sh [CLONE] [--base REF] [--asked URL]
+#   bash branch-check.sh [CLONE] [--base REF] [--asked URL] [--rework PR_URL]
 #                        [--warning-log FILE] [--aot-log FILE] [--allow PATH]...
 #   bash branch-check.sh --help
 #
 # CLONE defaults to the current directory. REF defaults to the first of
 # upstream/main, upstream/master, origin/main, origin/master that resolves.
 # --asked URL is the maintainer's request for documentation, which turns the
-# comment refusal into a check. --warning-log FILE is a build log of the
+# comment refusal into a check. --rework PR_URL names the open pull request
+# this head reworks: a head behind its base is then a check, not a refusal,
+# when GitHub says that pull request is this branch into this base and merges
+# cleanly, so the reviewer's view of the rework is not a rebase. Every diff is
+# read from the merge base, which is the base itself when the head is on top
+# of it. --warning-log FILE is a build log of the
 # branch without its suppressions; it must name every warning id they suppress.
 # --aot-log FILE is the output of an AOT publish (dotnet publish
 # -p:PublishAot=true) of the branch, run and read. --allow PATH names a file the
@@ -47,6 +53,7 @@ home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 clone="."
 base=""
 asked=""
+rework=""
 warnlog=""
 aotlog=""
 allows=()
@@ -65,6 +72,11 @@ while [ "$#" -gt 0 ]; do
       [ -n "$asked" ] || { refused branch-check-asked-no-url "--asked needs the URL of the maintainer's ask" >&2; exit 2; }
       ;;
     --asked=*) asked="${1#--asked=}" ;;
+    --rework)
+      shift
+      rework="${1:-}"
+      [ -n "$rework" ] || { refused branch-check-rework-no-url "--rework needs the URL of the pull request it reworks" >&2; exit 2; }
+      ;;
     --warning-log)
       shift
       warnlog="${1:-}"
@@ -99,12 +111,15 @@ if [ -z "$base" ]; then
 fi
 [ -n "$base" ] || { refused branch-check-no-base-resolved "no base ref resolved - pass --base REF" >&2; exit 2; }
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || { refused branch-check-base-unresolvable "base $base does not resolve" >&2; exit 2; }
+# What the branch changed, read from where it left the base. Two unrelated
+# histories have no merge base; the base stands in, and not-on-base refuses.
+mb=$(git merge-base "$base" HEAD 2>/dev/null) || mb=$(git rev-parse "$base")
 
 blocked=0
 block() { refused "$1" "$2"; blocked=1; }
 # Whether the base already carries a path. "rev:path" is not used because Git
 # for Windows' shell rewrites an argument shaped like "a/b:.c/d" as a path list.
-in_base() { [ -n "$(git ls-tree --name-only "$base" -- "$1" 2>/dev/null)" ]; }
+in_base() { [ -n "$(git ls-tree --name-only "$mb" -- "$1" 2>/dev/null)" ]; }
 
 echo "== branch check: $(git rev-parse --abbrev-ref HEAD) against $base =="
 
@@ -130,11 +145,35 @@ case "$full" in
   *) block branch-check-base-not-tracking "base $base is not a remote-tracking ref, so whether it is current cannot be checked - pass --base <remote>/<branch>" ;;
 esac
 
+# A rework keeps its base when the pull request merges cleanly: a rebase would
+# rewrite the commit the maintainer reviewed and bury the answer in upstream's
+# changes. Only GitHub knows whether it merges, so nothing else stands in.
 if ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
-  block branch-check-not-on-base "HEAD is not on top of $base - rebase before filing"
+  if [ -z "$rework" ]; then
+    block branch-check-not-on-base "HEAD is not on top of $base - rebase before filing"
+  elif ! fields=$(gh pr view "$rework" --json state,mergeable,headRefName,baseRefName 2>/dev/null \
+         | jq -r '[.state, .mergeable, .headRefName, .baseRefName] | @tsv' 2>/dev/null | tr -d '\r') || [ -z "$fields" ]; then
+    block branch-check-rework-pr-unreadable "cannot read $rework, so whether it merges cleanly is unknown"
+  else
+    IFS=$'\t' read -r pr_state pr_merge pr_head pr_base <<< "$fields"
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    behind=$(git rev-list --count "HEAD..$base")
+    commits="commits"; [ "$behind" = 1 ] && commits="commit"
+    if [ "$pr_state" != OPEN ]; then
+      block branch-check-rework-pr-not-open "$rework is $pr_state; only an open pull request keeps its base"
+    elif [ "$pr_head" != "$branch" ] || [ "$pr_base" != "${rbranch:-}" ]; then
+      block branch-check-rework-wrong-pr "$rework files $pr_head into $pr_base, but this is $branch against $base"
+    elif [ "$pr_merge" != MERGEABLE ]; then
+      why="$rework reads $pr_merge and HEAD is $behind $commits behind $base - rebase before pushing"
+      [ "$pr_merge" != UNKNOWN ] || why="GitHub has not yet worked out whether $rework merges; run again in a minute"
+      block branch-check-rework-not-mergeable "$why"
+    else
+      echo "CHECK: HEAD is $behind $commits behind $base, and $rework merges cleanly, so the rework keeps its base"
+    fi
+  fi
 fi
 
-namestat=$(gdiff --name-status -M "$base..HEAD" 2>/dev/null)
+namestat=$(gdiff --name-status -M "$mb..HEAD" 2>/dev/null)
 files=$(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $3} NF == 2 {print $2}')
 renames=$(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $2 "\t" $3}')
 if [ -z "$files" ]; then
@@ -163,7 +202,7 @@ while IFS= read -r f; do
 
   # A mode is only wrong relative to the file's own neighbours, and only the
   # branch's to answer for when the base does not already carry it.
-  base_mode=$(git ls-tree "$base" -- "$f" 2>/dev/null | awk '{print $1}')
+  base_mode=$(git ls-tree "$mb" -- "$f" 2>/dev/null | awk '{print $1}')
   if [ "$mode" = "100755" ] && [ "$base_mode" != "100755" ]; then
     case "$f" in
       *.*) ext=".${f##*.}" ;;
@@ -232,12 +271,12 @@ printf '%s\n' "$comments" | grep -E '^CHECK: ' | sed 's/^/    /'
 # A suppression hides a warning from the maintainer too, so it has to be shown
 # that the warning exists. A suppression covering nothing usually covers code
 # that is wrong in a way the analyzer cannot see.
-added=$(gdiff -U0 "$base..HEAD" -- . ':(exclude)*.md' ':(exclude)*.rst' ':(exclude)*.txt' 2>/dev/null \
+added=$(gdiff -U0 "$mb..HEAD" -- . ':(exclude)*.md' ':(exclude)*.rst' ':(exclude)*.txt' 2>/dev/null \
   | added_lines | cut -f2-)
 supp_re='UnconditionalSuppressMessage|SuppressMessage\(|#pragma warning disable|pragma warning *\( *disable|<NoWarn>|@SuppressWarnings|@SuppressLint|@Suppress\(|#!?\[allow\(|nolint|NOLINT|NOSONAR|noqa|eslint-disable|@ts-ignore|@ts-expect-error|type: *ignore|pylint: *disable|rubocop:disable|swiftlint:disable|phpstan-ignore|psalm-suppress'
 # A suppression the edited line already carried is the maintainer's: each
 # removed line answers for one added line with the same suppression text.
-removed=$(gdiff -U0 "$base..HEAD" -- . ':(exclude)*.md' ':(exclude)*.rst' ':(exclude)*.txt' 2>/dev/null \
+removed=$(gdiff -U0 "$mb..HEAD" -- . ':(exclude)*.md' ':(exclude)*.rst' ':(exclude)*.txt' 2>/dev/null \
   | awk '/^@@ / { n = (index($2, ",") ? substr($2, index($2, ",") + 1) : 1) + 0; next }
          n > 0 && /^-/ { print substr($0, 2); n--; next }')
 suppressions=$(printf '%s\n' "$added" | grep -E "$supp_re" | SUPP_RE="$supp_re" REMOVED="$removed" awk '
@@ -276,7 +315,7 @@ fi
 aotdecl=$(git grep -lE '<(IsAotCompatible|IsTrimmable|PublishAot|EnableTrimAnalyzer|EnableAotAnalyzer)( [^>]*)?>[[:space:]]*true' HEAD -- '*.csproj' '*.props' '*.targets' 2>/dev/null \
   | sed 's/^HEAD://' | tr '\n' ' ')
 if [ -n "$aotdecl" ]; then
-  reflection=$(gdiff -U0 "$base..HEAD" -- '*.cs' 2>/dev/null | added_lines | cut -f2- \
+  reflection=$(gdiff -U0 "$mb..HEAD" -- '*.cs' 2>/dev/null | added_lines | cut -f2- \
     | grep -E '\.Get(Property|Properties|Method|Methods|Field|Fields|Member|Members|Interfaces)\(|Activator\.CreateInstance|MakeGenericType|MakeGenericMethod|Type\.GetType\(|\.InvokeMember\(')
   # The log has to be a publish of this repository: it names, as a word, a
   # declaring project, or any project here when the declaration is in a .props.
@@ -314,7 +353,7 @@ while IFS= read -r f; do
   spec=("$f")
   old=$(renamed_from "$f")
   [ -z "$old" ] || spec=("$old" "$f")
-  stat=$(gdiff --numstat -M "$base..HEAD" -- "${spec[@]}" | head -1)
+  stat=$(gdiff --numstat -M "$mb..HEAD" -- "${spec[@]}" | head -1)
   # A file with no diff was not scanned, and that is never the same as clean.
   if [ -z "$stat" ]; then
     block branch-check-no-diff-for-file "git gave no diff for $f, so nothing in it was scanned"
@@ -322,7 +361,7 @@ while IFS= read -r f; do
   fi
   is_test_path "$f" || nadded=$((nadded + $(printf '%s' "$stat" | awk '{print ($1 == "-") ? 0 : $1}')))
   allowed "$f" && continue
-  addedf=$(gdiff -U0 -M "$base..HEAD" -- "${spec[@]}" | added_lines | cut -f2-)
+  addedf=$(gdiff -U0 -M "$mb..HEAD" -- "${spec[@]}" | added_lines | cut -f2-)
   leaks=$(printf '%s\n' "$addedf" | grep -oE "$leak_re" | sort -u)
   netleaks="$netleaks
 $leaks"
@@ -337,7 +376,7 @@ $leaks"
     -*) block branch-check-binary-file "$f is binary - pass --allow $f if the change needs it" ;;
     *)
       total=$(printf '%s' "$stat" | awk '{print $1 + $2}')
-      real=$(gdiff --numstat -M --ignore-space-at-eol --ignore-cr-at-eol "$base..HEAD" -- "${spec[@]}" | awk '{print $1 + $2}')
+      real=$(gdiff --numstat -M --ignore-space-at-eol --ignore-cr-at-eol "$mb..HEAD" -- "${spec[@]}" | awk '{print $1 + $2}')
       if [ "$total" -ge 10 ] && [ $((${real:-0} * 2)) -lt "$total" ]; then
         block branch-check-whitespace-rewrite "$f changes $total lines, of which ${real:-0} differ beyond whitespace and line endings - restore the file's own endings"
       fi
@@ -366,7 +405,7 @@ if [ "$(git rev-list --count "$base..HEAD")" -gt 1 ]; then
 fi
 
 # Absolutes in added prose are the claims a maintainer can falsify in one grep.
-claims=$(gdiff -U0 "$base..HEAD" -- '*.md' '*.mdx' '*.rst' '*.txt' 2>/dev/null \
+claims=$(gdiff -U0 "$mb..HEAD" -- '*.md' '*.mdx' '*.rst' '*.txt' 2>/dev/null \
   | added_lines | cut -f2- \
   | grep -nEi '\b(only|exactly|always|never|guaranteed|nothing|everything)\b')
 if [ -n "$claims" ]; then
@@ -386,10 +425,11 @@ if [ "$blocked" -ne 0 ]; then
   exit 1
 fi
 # The stamp file-pr.sh reads: this head passed, against this base, at this
-# time, changing these files.
+# time, changing these files. The base is the merge base, which a first filing
+# has on top of it, and which a rework's patch-id in push.sh is measured from.
 head=$(git rev-parse HEAD)
 mkdir -p "$home/branch-checks"
-printf 'head: %s\nbase: %s\nbase-ref: %s\nchecked: %s\n' "$head" "$(git rev-parse "$base")" "$base" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$home/branch-checks/$head"
+printf 'head: %s\nbase: %s\nbase-ref: %s\nchecked: %s\n' "$head" "$mb" "$base" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$home/branch-checks/$head"
 printf '%s\n' "$files" | sed '/^$/d; s/^/file: /' >> "$home/branch-checks/$head"
 printf '%s\n' "$renames" | awk -F'\t' 'NF == 2 {print "from: " $1}' >> "$home/branch-checks/$head"
 echo
