@@ -350,6 +350,32 @@ printf '%s' "$out" | grep -q "\[common-template-checkbox-missing\]" || fail "a r
 printf -- '## Summary\n\n## Testing\n' > "$template"
 boxes '## Summary' 'one finding'
 printf '%s' "$out" | grep -q "template-checkbox-missing" && fail "a template with no boxes required one: $out"
+# tb TEMPLATE BODY: printf formats; the result is in $out
+# shellcheck disable=SC2059
+tb() { printf -- "$1" > "$template"; printf -- "$2" > "$templated"
+  out=$(bash "$script" octocat/Hello-World --title t --body-file "$templated" 2>&1); }
+dropped() { printf '%s' "$out" | grep -q "\[common-template-checkbox-missing\]"; }
+tb '- [ ] I added tests <!-- if applicable -->\n- [ ] I signed the CLA.\n' '- [x] I signed the CLA.\nfix\n'
+dropped || fail "a box carrying a comment was not required: $out"
+tb '- [ ] I added tests <!-- if applicable -->\n' '- [x] I added tests\nfix\n'
+dropped && fail "a box kept without its comment was refused: $out"
+tb '- [ ] A\n+ [ ] B\n1. [ ] C\n' '- [x] A\n+ [x] B\nfix\n'
+dropped || fail "a dropped ordered box was not refused: $out"
+printf '%s' "$out" | grep -qF '    1. [ ] C' || fail "the ordered box was not named: $out"
+printf '%s' "$out" | grep -qF '+ [ ] B' && fail "a kept + box was named as dropped: $out"
+tb '## One\n- [ ] Yes\n## Two\n- [ ] Yes\n' '## One\n- [x] Yes\nfix\n'
+dropped || fail "a box the template carries twice was counted once: $out"
+tb '- [ ] Yes\n' '- [x] Yesterday I ran it\nfix\n'
+dropped || fail "a box was matched inside a longer word: $out"
+tb '- [ ] I signed the CLA.\n' '<!--\n- [x] I signed the CLA.\n-->\nfix\n'
+dropped || fail "a box kept only inside a comment was taken as kept: $out"
+tb '- [ ] A\r\n- [ ] B\r\n' '- [x] A\r\n- [ ] B\r\nfix\r\n'
+dropped && fail "a CRLF body keeping every box was refused: $out"
+tb '## Type\nPlease delete options that are not relevant.\n- [ ] Bug fix\n- [ ] New feature\n## Checklist\n- [ ] I ran the tests\n' \
+   '## Type\n- [x] Bug fix\n## Checklist\n- [x] I ran the tests\nfix\n'
+dropped && fail "a box the template says to delete was required: $out"
+tb '## Type\nPlease delete options that are not relevant.\n- [ ] Bug fix\n## Checklist\n- [ ] I ran the tests\n' '## Type\n- [x] Bug fix\nfix\n'
+dropped || fail "a box after the next heading was taken as deletable: $out"
 rm -f "$template"
 
 # the body file may be named either way gh reads it

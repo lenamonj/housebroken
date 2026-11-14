@@ -7,8 +7,8 @@
 # check reads it. This is that gate. The new text passes what a filing
 # passes: the policy printout is read and is not BAN or UNREAD, the prose
 # carries no footer, trailer or typographic dash, the project's template is
-# kept and the body holds to 120 words of its own, the policy's disclosure is
-# in it, and every reference it names exists. The pull request is open and
+# kept with each of its checkbox lines and the body holds to 120 words of its
+# own, the policy's disclosure is in it, and every reference it names exists. The pull request is open and
 # yours, edits to one repository are ten minutes apart, and the copy
 # verify-filed-pr.sh compares GitHub's body against is replaced, with the
 # text it replaced kept beside it.

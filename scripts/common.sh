@@ -141,16 +141,14 @@ check_text() {
 # as its unticked line, are left out before the words are counted. The
 # answer written after or under a template line that asks about AI is the
 # project's requirement, not ours: it is counted on its own and held to 50
-# words. A body that keeps none of the template has dropped it, and each
-# checkbox line outside a comment is kept, ticked or not, as its own line or
-# with the answer after it. Sets template, for the disclosure check that
-# follows.
+# words. A body that keeps none of the template has dropped it, and a body
+# that drops one of its checkbox lines has dropped a question (dropped_boxes).
+# Sets template, for the disclosure check that follows.
 prose_gate() { # repo body-file home
-  local repo="$1" bodyfile="$2" read_out words ai_words kept wanted missing
+  local repo="$1" bodyfile="$2" words ai_words kept wanted missing
   template="$3/policy/template-${repo%%/*}-${repo##*/}.md"
   [ -f "$template" ] || template=/dev/null
-  # The first line is the counts; each line after it is a box the body dropped.
-  read_out=$(awk -v T="$template" '
+  read -r words ai_words kept wanted < <(awk -v T="$template" '
     function norm(s) { gsub(/\[[xX]\]/, "[ ]", s); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
     function asks_ai(s) { return tolower(s) ~ /(^|[^a-z])ai([^a-z]|$)|artificial intelligence|generative|llm|language model/ }
     BEGIN { while ((getline l < T) > 0) {
@@ -158,25 +156,22 @@ prose_gate() { # repo body-file home
         inc = c
         if (l ~ /-->/) c = 0
         l = norm(l)
-        if (l != "") { t[l] = 1; if (!inc) { real[l] = 1; if (l ~ /^[-*] \[ \]/ && !(l in box)) { box[l] = 1; order[++boxes] = l } } }
+        if (l != "") { t[l] = 1; if (!inc) { real[l] = 1 } }
       }
       for (l in real) wanted++ }
     { l = norm($0)
-      if (l in t) { if (l in real) kept++; seen[l] = 1; section_ai = asks_ai(l); next }
+      if (l in t) { if (l in real) kept++; section_ai = asks_ai(l); next }
       best = ""
       for (k in t) if (index(l, k) == 1 && length(k) > length(best)) best = k
       if (best != "") {
         kept++
-        seen[best] = 1
         l = substr(l, length(best) + 1)
         if (asks_ai(best)) { ai += split(l, w); next }
       }
       if (section_ai) { ai += split(l, w); next }
       ours += split(l, w) }
-    END { print ours + 0, ai + 0, kept + 0, wanted + 0
-      for (i = 1; i <= boxes; i++) if (!(order[i] in seen)) print order[i] }' "$bodyfile")
-  read -r words ai_words kept wanted <<< "${read_out%%$'\n'*}"
-  missing=$(printf '%s\n' "$read_out" | sed 1d)
+    END { print ours + 0, ai + 0, kept + 0, wanted + 0 }' "$bodyfile")
+  missing=$(dropped_boxes "$template" "$bodyfile")
   if [ "$wanted" -gt 0 ] && [ "$kept" -eq 0 ]; then
     refused common-template-dropped "the body keeps none of $repo's pull request template ($template) - fill it in rather than replacing it" >&2
     exit 2
@@ -194,6 +189,36 @@ prose_gate() { # repo body-file home
     refused common-ai-answer-too-long "the answer to the template's AI question is $ai_words words - name the tool and what it did in 50 or fewer" >&2
     exit 2
   fi
+}
+
+# Prints each checkbox line of the template the body does not keep, once per
+# copy the template carries. HTML comments are cut out of both before reading,
+# so a box with a comment on its line is still a box and a box kept only inside
+# a comment is not kept. A box is kept ticked or not, alone or with its answer
+# after a space. Boxes the template says to delete when they do not apply
+# (after such a line, up to the next heading) are not required.
+dropped_boxes() { # template-file body-file
+  awk -v T="$1" '
+    function norm(s) { gsub(/\[[xX]\]/, "[ ]", s); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+    function uncomment(s,   out, i) {
+      out = ""
+      while (s != "") {
+        if (cs) { i = index(s, "-->"); if (!i) return out; s = substr(s, i + 3); cs = 0 }
+        else { i = index(s, "<!--"); if (!i) return out s; out = out substr(s, 1, i - 1); s = substr(s, i + 4); cs = 1 }
+      }
+      return out
+    }
+    BEGIN { while ((getline l < T) > 0) {
+        if (l ~ /^[[:space:]]*#/) optional = 0
+        if (tolower(l) ~ /(delete|remove)[^.]*(relevant|applicable|apply)/) optional = 1
+        b = norm(uncomment(l))
+        if (!optional && b ~ /^([-*+]|[0-9]+[.)])[[:space:]]+\[ \]/) { need[b]++; order[++boxes] = b }
+      }
+      cs = 0 }
+    { l = norm(uncomment($0)); best = ""
+      for (k in need) if ((l == k || index(l, k " ") == 1) && length(k) > length(best)) best = k
+      if (best != "") have[best]++ }
+    END { for (i = 1; i <= boxes; i++) { k = order[i]; if (have[k] > 0) have[k]--; else print k } }' "$2"
 }
 
 # Whether a body says AI was used, in its own words: a ticked box naming it, or

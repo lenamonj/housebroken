@@ -187,8 +187,9 @@ report it in one line and do not proceed to the next step.
    root>` lists default arguments and one-line wrappers added to keep call
    sites untouched; a maintainer asks why they are there, so have the answer.
    The body is at most 120 words,
-   in the project's template if it has one, every checkbox line of it kept
-   (the answer to the template's
+   in the project's template if it has one, every checkbox line of it kept,
+   ticked or not, unless the template says to delete the ones that do not
+   apply (the answer to the template's
    own AI question is counted apart, at most 50 words), and says what was wrong, what the
    change does, and how it was verified; every sentence in it is something
    you reproduced on the fresh clone in this session, never a line carried
