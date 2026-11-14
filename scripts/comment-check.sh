@@ -9,6 +9,9 @@
 # What passes:
 #   reworded   an added comment line that replaces a removed comment line in
 #              the same hunk, one for one
+#   moved      an added comment line whose text, trimmed, is a removed comment
+#              line's anywhere else in the diff, deleted files included, one for
+#              one; each move is printed as a CHECK naming where it came from
 #   header     the comment block a new file opens with, before its first line
 #              of code, when the files with its extension beside it at the
 #              base open with a comment too
@@ -102,17 +105,26 @@ report() {
   fi
 }
 
+ext_of() {
+  local name="${1##*/}"
+  case "$name" in
+    Makefile|GNUmakefile|Dockerfile|CMakeLists.txt) echo sh ;;
+    *.*) printf '%s\n' "${name##*.}" | tr '[:upper:]' '[:lower:]' ;;
+    *) return 1 ;;
+  esac
+}
+
 namestat=$(gdiff --name-status -M --diff-filter=d "$mb" HEAD)
 renames=$(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $2 "\t" $3}')
 
+# Every file writes two kinds of row to $work/all, fields split by \034 so a tab
+# in a comment cannot shift them: H, an added comment nothing in its hunk paid
+# for, and R, a removed comment no added line in its hunk took. An R pays for
+# an H of the same trimmed text once the whole diff is read: a move.
+: > "$work/all"
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  name="${f##*/}"
-  case "$name" in
-    Makefile|GNUmakefile|Dockerfile|CMakeLists.txt) ext="sh" ;;
-    *.*) ext=$(printf '%s' "${name##*.}" | tr '[:upper:]' '[:lower:]') ;;
-    *) continue ;;
-  esac
+  ext=$(ext_of "$f") || continue
   re=$(comment_re "$ext") || continue
   measured=$((measured + 1))
   # Both sides of a rename, or git reads every existing comment as added.
@@ -133,16 +145,24 @@ while IFS= read -r f; do
   ' > "$work/rows"
   [ -s "$work/rows" ] || continue
 
-  # An added comment line is refused unless a removed comment line in the same
-  # hunk pays for it, or it is in the leading comment block of a new file whose
-  # neighbours open with one. Every added line between an added /* and its */
-  # is a comment, whatever it starts with. The text is everything after the
-  # third tab, not a field: a tab-indented line would split there.
+  # An added comment line is unpaid unless a removed comment line in the same
+  # hunk pays for it, the one of the same text first, or it is in the leading
+  # comment block of a new file whose neighbours open with one. Every added line
+  # between an added /* and its */ is a comment, whatever it starts with. The
+  # text is everything after the third tab, not a field: a tab-indented line
+  # would split there.
   blk=0
   case "$re" in *'/[*]'*) blk=1 ;; esac
   awk -F'\t' -v re="$re" -v hdr="$header_ok" -v file="$f" -v blk="$blk" '
+    function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+    function take(h, t,   i, pick) {
+      pick = 0
+      for (i = 1; i <= rn[h]; i++) if (!ru[h, i]) { if (rt[h, i] == t) { pick = i; break } if (!pick) pick = i }
+      if (pick) ru[h, pick] = 1
+      return pick
+    }
     { line = $0; for (i = 0; i < 3; i++) line = substr(line, index(line, "\t") + 1) }
-    $1 == "-" { if (line ~ re) rem[$2]++; next }
+    $1 == "-" { if (line ~ re) { n = ++rn[$2]; rt[$2, n] = trim(line) } next }
     $1 == "+" {
       iscom = (line ~ re) && !($3 == 1 && line ~ /^#!/)
       if (blk == 1) {
@@ -152,17 +172,38 @@ while IFS= read -r f; do
         else if (line ~ /^[[:space:]]*\/[*]/ && line !~ /[*]\//) inblock = 1
       }
       if (iscom) {
-        if (rem[$2] > 0) { rem[$2]--; next }
+        t = trim(line)
+        if (take($2, t)) next
         if (hdr == 1 && !code_seen) next
         text = line; sub(/^[[:space:]]+/, "", text)
-        print file ":" $3 " adds a comment: " text
+        print "H\034" t "\034" file ":" $3 "\034" file ":" $3 " adds a comment: " text
       } else if (line !~ /^[[:space:]]*$/) code_seen = 1
     }
-  ' "$work/rows" > "$work/hits"
-  while IFS= read -r hit; do
-    [ -n "$hit" ] && report "$hit"
-  done < "$work/hits"
+    END { for (h in rn) for (i = 1; i <= rn[h]; i++) if (!ru[h, i]) print "R\034" rt[h, i] "\034" file }
+  ' "$work/rows" >> "$work/all"
 done < <(printf '%s\n' "$namestat" | awk -F'\t' 'NF == 3 {print $3} NF == 2 {print $2}')
+
+# A file the branch deletes gives up every comment it had.
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  ext=$(ext_of "$f") || continue
+  re=$(comment_re "$ext") || continue
+  git show "$mb:$f" 2>/dev/null | awk -v re="$re" -v file="$f" '
+    $0 ~ re && !(NR == 1 && /^#!/) { t = $0; sub(/^[[:space:]]+/, "", t); sub(/[[:space:]]+$/, "", t); print "R\034" t "\034" file }
+  ' >> "$work/all"
+done < <(gdiff --name-only --diff-filter=D "$mb" HEAD)
+
+# Read twice: every R first, then each H takes one R of its text or is refused.
+awk 'BEGIN { FS = "\034" }
+  NR == FNR { if ($1 == "R") { c[$2]++; from[$2, c[$2]] = $3 } next }
+  $1 == "H" { if (u[$2] < c[$2]) { u[$2]++; print "M\034" $3 " moves a comment from " from[$2, u[$2]] } else print "X\034" $4 }
+' "$work/all" "$work/all" > "$work/verdicts"
+while IFS= read -r row; do
+  case "$row" in
+    M*) echo "CHECK: ${row#M?}" ;;
+    X*) report "${row#X?}" ;;
+  esac
+done < "$work/verdicts"
 
 if [ "$found" -ne 0 ]; then
   echo "comment-check: refused. A comment goes into someone else's code only when its maintainer asks for it."

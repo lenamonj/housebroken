@@ -183,4 +183,38 @@ commit "comment in the renamed file"
 out=$(run); rc=$?
 [ "$rc" = "1" ] || { echo "FAIL $name: a comment in a renamed file exited $rc, expected 1: $out"; exit 1; }
 
+# 15. a comment that moves to another file with its code is not added (#29,
+# uber/h3 #1236), and the pairing is printed for the reader to check
+$G reset -q --hard main
+printf 'package b\n' > src/b.go
+printf '// Copyright The Project Authors\n// SPDX-License-Identifier: MIT\n\npackage a\n\nfunc A() int { return 1 }\n\n// B returns two.\nfunc B() int { return 2 }\n' > src/a.go
+commit "move B"
+out=$(run); rc=$?
+[ "$rc" = "0" ] || { echo "FAIL $name: a moved comment exited $rc, expected 0: $out"; exit 1; }
+echo "$out" | grep -q "^CHECK: src/a.go:8 moves a comment from src/b.go$" || { echo "FAIL $name: the move was not printed: $out"; exit 1; }
+
+# 16. one removed line pays for one added line: a second copy is refused
+printf '// Copyright The Project Authors\n// SPDX-License-Identifier: MIT\n\npackage a\n\n// B returns two.\nfunc A() int { return 1 }\n\n// B returns two.\nfunc B() int { return 2 }\n' > src/a.go
+commit "move B and copy its comment"
+out=$(run); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: a moved comment plus a copy exited $rc, expected 1: $out"; exit 1; }
+[ "$(echo "$out" | grep -c '^REFUSED: ')" = "1" ] || { echo "FAIL $name: expected one refusal for the copy: $out"; exit 1; }
+
+# 17. across files only identical text pays: a moved comment reworded is added
+$G reset -q --hard main
+printf 'package b\n' > src/b.go
+printf '// Copyright The Project Authors\n// SPDX-License-Identifier: MIT\n\npackage a\n\nfunc A() int { return 1 }\n\n// B returns the number two.\nfunc B() int { return 2 }\n' > src/a.go
+commit "move B and reword"
+out=$(run); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: a moved and reworded comment exited $rc, expected 1: $out"; exit 1; }
+
+# 18. a comment whose file the branch deletes can move too
+$G reset -q --hard main
+$G rm -q src/b.go
+printf '// Copyright The Project Authors\n// SPDX-License-Identifier: MIT\n\npackage a\n\nfunc A() int { return 1 }\n\n// B returns two.\nfunc B() int { return 2 }\n' > src/a.go
+commit "fold b into a"
+out=$(run); rc=$?
+[ "$rc" = "0" ] || { echo "FAIL $name: a comment moved out of a deleted file exited $rc, expected 0: $out"; exit 1; }
+echo "$out" | grep -q "^CHECK: src/a.go:8 moves a comment from src/b.go$" || { echo "FAIL $name: the move out of a deleted file was not printed: $out"; exit 1; }
+
 echo "PASS $name"
