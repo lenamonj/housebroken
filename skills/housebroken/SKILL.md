@@ -107,11 +107,12 @@ report it in one line and do not proceed to the next step.
    the bug in, write the test that fails. Run it and keep the failing output.
    Apply the patch. Run it again. Both results go into the pull request as
    the test itself; the body states the fact in one sentence.
-   Run both arms with egress blocked. `housebroken proof` sets every proxy
-   variable to a closed local port, and a test whose output then shows a
-   client going to it is not stamped. A client that ignores proxy variables
-   (Java, Node's fetch, a raw socket) is not held by that, so block it the
-   language's way. A test that reaches the network is rewritten to stub the
+   Run both arms with egress blocked. `housebroken proof` sets `HTTP_PROXY`,
+   `HTTPS_PROXY` and `ALL_PROXY` to local port 9 and `NO_PROXY` to loopback
+   only, and a test whose output then carries a client's failure at that
+   port is not stamped. A client that ignores those variables (Java, Node's
+   fetch, a raw socket, a proxy set in git or Cargo config) is not held by
+   that, so block it the language's way. A test that reaches the network is rewritten to stub the
    client the way its neighbours do; fetch dependencies before the run.
    Ask what each step would print if it did nothing, and make that answer
    different from success: revert by content and compare hashes rather than

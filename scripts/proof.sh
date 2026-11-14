@@ -17,12 +17,17 @@
 # an earlier run left for this head.
 #
 # Both arms run with HTTP_PROXY, HTTPS_PROXY and ALL_PROXY (and their lower
-# case) at a closed local port and NO_PROXY empty: a red arm on
-# teslamotors/vehicle-command #479 sent a real POST to the vendor's production
-# API. A client that honors them fails instead of sending, and an arm whose
-# output shows one did (Go's proxyconnect, Python's ProxyError, curl's "over
-# proxy" or "via") is not stamped. A client that ignores them (Java, Node's fetch, a raw
-# socket) is not held; fetch dependencies before the run.
+# case) at local port 9, where nothing normally listens, and NO_PROXY set to
+# loopback only, so a test's own local server is still reached: the red arm
+# of the test filed on teslamotors/vehicle-command #479 sent a real POST to
+# the vendor's production API. A client that honors them fails instead of
+# sending, and an arm whose output carries a client's failure at that port
+# (Go and curl naming 127.0.0.1:9, requests' "Unable to connect to proxy",
+# curl's "over proxy 127.0.0.1" or "via 127.0.0.1") is not stamped; a line naming a proxy variable is not read as
+# one. A client that ignores the variables (Java, Node's fetch, a raw socket)
+# is not held; one that fails without naming the proxy (urllib, httpx,
+# reqwest) is held but not reported, and a base arm red only for that is
+# still stamped. Fetch dependencies before the run.
 #
 # A change with nothing to prove red, a documentation fix or a refactor
 # whose behaviour the existing suite already pins, says so with --none and a
@@ -144,12 +149,14 @@ echo "proof: taking away ${#fixes[@]} file(s): ${fixes[*]}${kept[0]:+; keeping $
 hash_of() { if [ -f "$1" ]; then git hash-object -- "$1"; else echo absent; fi; }
 hashes() { local f; for f in "${fixes[@]}"; do printf '%s %s\n' "$(hash_of "$f")" "$f"; done; }
 blackhole=http://127.0.0.1:9
+loopback=localhost,127.0.0.1,::1
 run_arm() { # label -> rc in arm_rc, output tail in arm_out, a line showing a reach for the network in arm_net
   arm_out=$(HTTP_PROXY=$blackhole HTTPS_PROXY=$blackhole ALL_PROXY=$blackhole \
-    http_proxy=$blackhole https_proxy=$blackhole all_proxy=$blackhole NO_PROXY='' no_proxy='' \
+    http_proxy=$blackhole https_proxy=$blackhole all_proxy=$blackhole \
+    NO_PROXY=$loopback no_proxy=$loopback \
     bash -c "$cmd" 2>&1); arm_rc=$?
-  arm_net=$(printf '%s\n' "$arm_out" |
-    grep -m1 -E 'proxyconnect|ProxyError|127\.0\.0\.1(:| port )9([^0-9]|$)|(over proxy|via) 127\.0\.0\.1([^0-9.:]|$)' | cut -c1-200)
+  arm_net=$(printf '%s\n' "$arm_out" | grep -v -E '_PROXY|_proxy' |
+    grep -m1 -E '127\.0\.0\.1(:| port )9([^0-9]|$)|Unable to connect to proxy|(over proxy|via) 127\.0\.0\.1( |$)' | cut -c1-200)
   arm_out=$(printf '%s\n' "$arm_out" | tail -15)
   echo "== $1 arm: exit $arm_rc"
   printf '%s\n' "$arm_out" | sed 's/^/    /'
