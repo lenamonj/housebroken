@@ -301,7 +301,7 @@ printf '%s' "$out" | grep -q "REFUSED: the body is 121 words outside the project
 # the answer to the template's own AI question is the project's requirement,
 # not ours: 110 words plus a 30-word answer files; a 51-word answer is refused
 printf -- '- [ ] I used AI to create any part of this pull request. Which AI tool was used?\n' >> "$template"
-answer() { { printf -- '- [x] I used AI to create any part of this pull request. Which AI tool was used? '
+answer() { { printf -- '- [x] Read the contributing guidelines.\n- [x] I used AI to create any part of this pull request. Which AI tool was used? '
   for _ in $(seq 1 "$1"); do printf 'answer '; done; printf '\n'
   for _ in $(seq 1 110); do printf 'word '; done; printf '\n'; } > "$templated"; }
 answer 30
@@ -328,6 +328,28 @@ printf '%s' "$out" | grep -q "keeps none of" && fail "a body keeping one templat
 printf -- '<!-- only a comment -->\n' > "$template"
 out=$(bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1)
 printf '%s' "$out" | grep -q "keeps none of" && fail "a comment-only template was required: $out"
+
+# each checkbox line the template ships is kept, ticked or not (#11); a box
+# inside a comment is not required, and a reworded box is not the template's
+printf -- '## Checklist\n<!--\n- [ ] Hidden box.\n-->\n- [ ] I signed the CLA.\n* [ ] I ran the tests.\n' > "$template"
+boxes() { printf '## Checklist\n%s\n%s\n\none finding, one test\n' "$1" "$2" > "$templated"
+  out=$(bash "$script" octocat/Hello-World --title t --body-file "$templated" 2>&1); }
+boxes '- [ ] I signed the CLA.' '* [ ] I ran the tests.'
+printf '%s' "$out" | grep -q "template-checkbox-missing" && fail "a body keeping every box unticked was refused: $out"
+boxes '- [x] I signed the CLA.' '* [X] I ran the tests.'
+printf '%s' "$out" | grep -q "template-checkbox-missing" && fail "a body ticking every box was refused: $out"
+boxes '- [x] I signed the CLA. Signed today.' '* [x] I ran the tests.'
+printf '%s' "$out" | grep -q "template-checkbox-missing" && fail "a box with its answer after it was refused: $out"
+boxes '- [x] I signed the CLA.' ''
+printf '%s' "$out" | grep -q "\[common-template-checkbox-missing\]" || fail "a dropped box was not refused: $out"
+printf '%s' "$out" | grep -qF '    * [ ] I ran the tests.' || fail "the dropped box was not named: $out"
+printf '%s' "$out" | grep -qF 'I signed the CLA.' && fail "a kept box was named as dropped: $out"
+printf '%s' "$out" | grep -q "Hidden box" && fail "a box inside a comment was required: $out"
+boxes '- [x] I signed the CLA.' '- [x] I ran all the tests.'
+printf '%s' "$out" | grep -q "\[common-template-checkbox-missing\]" || fail "a reworded box was not refused: $out"
+printf -- '## Summary\n\n## Testing\n' > "$template"
+boxes '## Summary' 'one finding'
+printf '%s' "$out" | grep -q "template-checkbox-missing" && fail "a template with no boxes required one: $out"
 rm -f "$template"
 
 # the body file may be named either way gh reads it

@@ -15,8 +15,9 @@
 # this exact head and this exact body file and said POST AS IS. An inline
 # --body is refused, because a review cannot be bound to text that was never a
 # file. Around them: every file the branch changes was searched for prior art,
-# a body keeps the project's template and holds to 120 words of its own, every
-# reference exists, the base has not moved under the branch's files, a proof
+# a body keeps the project's template and each of its checkbox lines and holds
+# to 120 words of its own, every reference exists, the base has not moved
+# under the branch's files, a proof
 # and a declaration exist for the head, three open pull requests at most, and
 # ten minutes since the last filing.
 #
@@ -59,7 +60,9 @@ gates:
               en dash, in any case, in the --body-file or the --title; a
               body of at most 120 words of its own, the answer to the
               template's AI question counted apart and held to 50
-  branch      $HOUSEBROKEN_HOME/branch-checks/<head> must exist, written by
+  template    when the project ships a pull request template, the body
+              keeps some of it and every checkbox line of it, ticked or not
+  branch     $HOUSEBROKEN_HOME/branch-checks/<head> must exist, written by
               branch-check.sh when this head passed, against the branch this
               files into (--base, or the repository's default branch)
   review      run from the clone being filed; the report at

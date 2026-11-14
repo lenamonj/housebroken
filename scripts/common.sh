@@ -141,13 +141,16 @@ check_text() {
 # as its unticked line, are left out before the words are counted. The
 # answer written after or under a template line that asks about AI is the
 # project's requirement, not ours: it is counted on its own and held to 50
-# words. A body that keeps none of the template has dropped it. Sets
-# template, for the disclosure check that follows.
+# words. A body that keeps none of the template has dropped it, and each
+# checkbox line outside a comment is kept, ticked or not, as its own line or
+# with the answer after it. Sets template, for the disclosure check that
+# follows.
 prose_gate() { # repo body-file home
-  local repo="$1" bodyfile="$2" words ai_words kept wanted
+  local repo="$1" bodyfile="$2" read_out words ai_words kept wanted missing
   template="$3/policy/template-${repo%%/*}-${repo##*/}.md"
   [ -f "$template" ] || template=/dev/null
-  read -r words ai_words kept wanted < <(awk -v T="$template" '
+  # The first line is the counts; each line after it is a box the body dropped.
+  read_out=$(awk -v T="$template" '
     function norm(s) { gsub(/\[[xX]\]/, "[ ]", s); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
     function asks_ai(s) { return tolower(s) ~ /(^|[^a-z])ai([^a-z]|$)|artificial intelligence|generative|llm|language model/ }
     BEGIN { while ((getline l < T) > 0) {
@@ -155,23 +158,32 @@ prose_gate() { # repo body-file home
         inc = c
         if (l ~ /-->/) c = 0
         l = norm(l)
-        if (l != "") { t[l] = 1; if (!inc) { real[l] = 1 } }
+        if (l != "") { t[l] = 1; if (!inc) { real[l] = 1; if (l ~ /^[-*] \[ \]/ && !(l in box)) { box[l] = 1; order[++boxes] = l } } }
       }
       for (l in real) wanted++ }
     { l = norm($0)
-      if (l in t) { if (l in real) kept++; section_ai = asks_ai(l); next }
+      if (l in t) { if (l in real) kept++; seen[l] = 1; section_ai = asks_ai(l); next }
       best = ""
       for (k in t) if (index(l, k) == 1 && length(k) > length(best)) best = k
       if (best != "") {
         kept++
+        seen[best] = 1
         l = substr(l, length(best) + 1)
         if (asks_ai(best)) { ai += split(l, w); next }
       }
       if (section_ai) { ai += split(l, w); next }
       ours += split(l, w) }
-    END { print ours + 0, ai + 0, kept + 0, wanted + 0 }' "$bodyfile")
+    END { print ours + 0, ai + 0, kept + 0, wanted + 0
+      for (i = 1; i <= boxes; i++) if (!(order[i] in seen)) print order[i] }' "$bodyfile")
+  read -r words ai_words kept wanted <<< "${read_out%%$'\n'*}"
+  missing=$(printf '%s\n' "$read_out" | sed 1d)
   if [ "$wanted" -gt 0 ] && [ "$kept" -eq 0 ]; then
     refused common-template-dropped "the body keeps none of $repo's pull request template ($template) - fill it in rather than replacing it" >&2
+    exit 2
+  fi
+  if [ -n "$missing" ]; then
+    refused common-template-checkbox-missing "the body drops checkbox lines of $repo's pull request template ($template) - keep each one, ticked or not:" >&2
+    printf '%s\n' "$missing" | sed 's/^/    /' >&2
     exit 2
   fi
   if [ "$words" -gt 120 ]; then
