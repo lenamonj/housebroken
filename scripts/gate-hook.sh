@@ -84,7 +84,7 @@ IFS= read -r -d '' input || true
 # anywhere is refused and everything else runs: degraded, never open. Bash
 # alone does this, so a missing tool cannot open it.
 if ! command -v jq >/dev/null 2>&1; then
-  write_re='gh[[:space:]]+(pr|issue)[[:space:]]+(create|comment|review|edit|close|merge|ready|reopen|update-branch)|gh[[:space:]]+api|git[[:space:]].*push'
+  write_re='gh(\.exe)?[[:space:]]+(pr|issue)[[:space:]]+(create|comment|review|edit|close|merge|ready|reopen|update-branch)|gh(\.exe)?[[:space:]]+api|git(\.exe)?[[:space:]].*push'
   if [[ $input =~ $write_re ]]; then
     why_id=gate-jq-missing
     echo "housebroken: refused: jq is not on PATH, so this command could not be checked; install jq. [$why_id]" >&2
@@ -155,15 +155,17 @@ commands=$(printf '%s\n' "$text" | LC_ALL=C awk '
 
 shopt -s nocasematch
 # A command counts where it would run: past keywords, a VAR=value prefix, a
-# wrapper that runs it (timeout 60, nohup, env, sudo, nice, stdbuf, with their
-# options and a duration), and past the -R of gh and the -C and -c of git. gh
-# and git are themselves by any path and as gh.exe. Text after it is its
+# wrapper that runs it (time, command, exec, timeout 60, nohup, env, sudo,
+# doas, nice, ionice, stdbuf, setsid, winpty, with their options and a
+# duration), and past the -R of gh and the -C and -c of git. gh and git are
+# themselves by any unquoted path, a space in it escaped or not there, and as
+# gh.exe; a path after an = is a value, not a command. Text after it is its
 # arguments.
-at='^[[:space:]]*((then|do|else|elif|if|while|until|time|command|exec|!)[[:space:]]+|(sudo|nohup|env|nice|timeout|stdbuf)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-=[:space:]]+)?)*[[:space:]]+|[0-9]+(\.[0-9]+)?[smhd]?[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*'
+at='^[[:space:]]*((then|do|else|elif|if|while|until|!)[[:space:]]+|(time|command|exec|sudo|doas|nohup|env|nice|ionice|timeout|stdbuf|setsid|winpty)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-=[:space:]]+)?)*[[:space:]]+|[0-9]+(\.[0-9]+)?[smhd]?[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*'
 repo_flag='((-R|--repo)([[:space:]]+|=)[^[:space:]]+[[:space:]]+)*'
 end='([[:space:]]|$)'
 # shellcheck disable=SC1003  # a slash or a backslash, not an escaped quote
-by_path='([^[:space:]]*[/\\])?'
+by_path='(([^[:space:]\\=]|\\.)*[/\\])?'
 gh="${at}${by_path}gh(\.exe)?[[:space:]]+$repo_flag"
 pr_re="${gh}pr[[:space:]]+$repo_flag(create|comment|review|edit|close|merge|ready|reopen|update-branch)$end"
 issue_re="${gh}issue[[:space:]]+$repo_flag(create|comment|edit|close|reopen)$end"

@@ -65,6 +65,23 @@ hook 0 'sudo apt-get install gh'
 hook 0 'timeout 60 git push origin fix'
 hook 0 'echo timeout 60 gh pr create'
 hook 0 'ls /usr/bin/gh pr create'
+hook 2 'stdbuf -oL gh pr create -R a/b --title x'
+hook 2 'winpty gh pr create -R a/b --title x'
+hook 2 'setsid gh pr comment 5 -R a/b --body hi'
+hook 2 'ionice -c3 gh pr merge 5 -R a/b'
+hook 2 'doas gh pr close 5 -R a/b'
+hook 2 'command -p gh pr create -R a/b --title x'
+hook 2 'exec -a x gh pr create -R a/b --title x'
+hook 2 'time -p gh pr create -R a/b --title x'
+hook 2 'git.exe push -f origin fix'
+hook 2 'C:\tools\gh.exe pr create -R a/b --title x'
+hook 2 '/c/Program\ Files/GitHub\ CLI/gh.exe pr create -R a/b --title x'
+hook 2 'C:\tools\git.exe push --force origin fix'
+# a variable holding a path is not gh, and nor is a command a wrapper only names
+hook 0 'x=/opt/gh pr create'
+hook 0 'command -v gh'
+hook 0 'time -p gh pr view 5 -R a/b'
+hook 0 'winpty gh pr checks 5 -R a/b'
 
 # every verb the hook names, on both nouns, and every writing method
 for verb in create comment review edit close merge ready reopen update-branch; do
@@ -224,6 +241,12 @@ printf '{"tool_input": {"command": "gh pr create"}}' | PATH="$tmp/tools" "$BASH"
 [ "$?" = 2 ] || fail "a write with jq missing was not refused"
 grep -q '^housebroken: refused: jq is not on PATH.* \[gate-jq-missing\]$' "$tmp/err" || fail "the missing jq is not named: $(cat "$tmp/err")"
 [ "$(tail -n 1 "$log" | cut -f2,3)" = "gate-jq-missing$tab-" ] || fail "the log's last line is not gate-jq-missing: $(tail -n 1 "$log")"
+# Git for Windows ships no jq, and Windows is where gh.exe and git.exe are typed
+for c in 'gh.exe pr create' 'git.exe push -f origin x' 'gh.exe api repos/a/b/issues -f title=x'; do
+  printf '{"tool_input": {"command": "%s"}}' "$c" | PATH="$tmp/tools" "$BASH" "$script" 2>/dev/null
+  [ "$?" = 2 ] || fail "with jq missing, $c was not refused"
+done
+printf '{"tool_input": {"command": "ls gh.exe"}}' | PATH="$tmp/tools" "$BASH" "$script" 2>/dev/null || fail "with jq missing, a command that writes nothing was refused"
 # the hook's line and a gate's line are one shape: time, name, repository
 (
   # shellcheck source=scripts/refuse.sh
