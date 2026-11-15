@@ -1,0 +1,11 @@
+# The workflows pin every action to a commit. This keeps those pins current:
+# one grouped pull request a month, each new commit named with its version.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
