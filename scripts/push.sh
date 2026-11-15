@@ -71,7 +71,9 @@ patch_id() { # head
   local base
   base=$(sed -n 's/^base: //p' "$home/branch-checks/$1" 2>/dev/null | tr -d '\r')
   [ -n "$base" ] || return 1
-  git diff --no-ext-diff --no-textconv "$base" "$1" 2>/dev/null | git patch-id --stable | cut -d' ' -f1 | grep .
+  # --verbatim: spacing counts, as it does to Python and YAML. A git too old
+  # for the option gives no id, and no id carries no review.
+  git diff --no-ext-diff --no-textconv "$base" "$1" 2>/dev/null | git patch-id --verbatim 2>/dev/null | cut -d' ' -f1 | grep .
 }
 reviews="$home/reviews/review-${repo%%/*}-${repo##*/}"
 review="$reviews-${head:0:12}.md"
@@ -98,8 +100,26 @@ if [ -f "$log" ]; then
   fi
 fi
 
+# Whether this branch ever held a commit: it is in the history of a head the
+# branch has pointed at. What git's --force-if-includes asks, which git
+# ignores once a lease names the commit it expects.
+held() { # commit
+  local was
+  for was in $(git reflog show --format=%H "refs/heads/$branch" 2>/dev/null | sort -u); do
+    if git merge-base --is-ancestor "$1" "$was" 2>/dev/null; then return 0; fi
+  done
+  return 1
+}
+
 force=()
 if ! git merge-base --is-ancestor "$theirs" HEAD; then
+  # The lease below expects the tip fetched a moment ago, so it stops only a
+  # push that lands in between. A commit a maintainer added before that, which
+  # this clone never had, would be rewritten away unseen.
+  if ! held "$theirs"; then
+    refused push-remote-has-unseen-commits "$branch on $remote is at ${theirs:0:12}, a commit this clone never held: someone else pushed there. Fetch it, read it and build on it" >&2
+    exit 2
+  fi
   if [ -z "$rework" ]; then
     refused push-rewrites-branch "this push rewrites $branch on $remote, which the maintainer may have reviewed; pass --rework 'why' if it must" >&2
     exit 2

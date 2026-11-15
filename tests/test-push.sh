@@ -96,9 +96,32 @@ sed -i.bak '/^base: /d' "$HOUSEBROKEN_HOME/branch-checks/$old" && rm -f "$HOUSEB
 out=$(PUSH_DRY=1 bash "$script" o/r . --rework "rebased" 2>&1) && fail "a review was carried with no base to compare against"
 printf '%s' "$out" | grep -q "no review of head" || fail "the missing review was not named: $out"
 printf 'base: %s\n' "$(git rev-list --max-parents=0 HEAD)" >> "$HOUSEBROKEN_HOME/branch-checks/$old"
+# a change of spacing alone is a changed patch: in Python or YAML it is code
+sed -i.bak 's/^b$/  b/' a.txt && rm -f a.txt.bak && $G commit -q -a --amend --no-edit && stamp main
+out=$(PUSH_DRY=1 bash "$script" o/r . --rework "rebased and re-indented" 2>&1) && fail "a re-indented patch rode on the old review"
+printf '%s' "$out" | grep -q "no review of head" || fail "the missing review was not named: $out"
 # a changed patch is a new head to review
 printf 'd\n' >> a.txt && $G commit -q -a --amend --no-edit && stamp main
 out=$(PUSH_DRY=1 bash "$script" o/r . --rework "rebased and changed" 2>&1) && fail "a changed patch rode on the old review"
 printf '%s' "$out" | grep -q "no review of head" || fail "the missing review was not named: $out"
+
+# a commit someone else pushed to the branch, which this clone never held, is
+# not rewritten away, with --rework or without it
+git clone -q -b fix "$root/fork.git" "$root/maint" || fail "fixture failed"
+(cd "$root/maint" && printf 'theirs\n' > maint.txt && $G add maint.txt && $G commit -q -m "maintainer: fix the test name" && git push -q origin fix) || fail "fixture failed"
+theirs=$(git -C "$root/fork.git" rev-parse fix)
+$G reset -q --hard "$old" && printf 'e\n' >> a.txt && $G commit -q -a --amend --no-edit && ready
+out=$(bash "$script" o/r . --rework "the maintainer asked for one commit" 2>&1) && fail "a rework went over a commit this clone never held"
+printf '%s' "$out" | grep -q '\[push-remote-has-unseen-commits\]$' || fail "the unseen commit was not named: $out"
+out=$(bash "$script" o/r . 2>&1) && fail "a rewrite over an unseen commit went"
+printf '%s' "$out" | grep -q '\[push-remote-has-unseen-commits\]$' || fail "without --rework the unseen commit was not named: $out"
+[ "$(git -C "$root/fork.git" rev-parse fix)" = "$theirs" ] || fail "a refused rework reached the fork"
+# once the branch has held a commit built on theirs, the rework is the user's call
+tip=$(git rev-parse HEAD)
+git checkout -q --detach "$theirs" && printf 'ours\n' > ours.txt && $G add ours.txt && $G commit -q -m "on top of theirs" || fail "fixture failed"
+built=$(git rev-parse HEAD)
+git checkout -q fix && $G reset -q --hard "$built" && $G reset -q --hard "$tip" || fail "fixture failed"
+out=$(PUSH_DRY=1 bash "$script" o/r . --rework "the maintainer asked for one commit" 2>&1) || fail "a rework over a commit this clone built on was refused: $out"
+printf '%s' "$out" | grep -q -- "--force-with-lease=fix:$theirs" || fail "the rework was not a lease on the commit it read: $out"
 
 echo "PASS $name"
