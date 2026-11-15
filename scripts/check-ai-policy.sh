@@ -157,6 +157,17 @@ tmpl_repo=$(mktemp)
 tmpl_org=$(mktemp)
 trap 'rm -f "$errfile" "$tmpl_repo" "$tmpl_org"' EXIT
 
+# The word after the first RESULT: in a printout on stdin, and how much it holds.
+result_word() { awk '{ sub(/\r$/, "") } /^RESULT: / { print $2; exit }'; }
+rank() {
+  case "$1" in
+    BAN) echo 3 ;;
+    UNREAD) echo 2 ;;
+    DISCLOSE|MENTION) echo 1 ;;
+    *) echo 0 ;;
+  esac
+}
+
 # Policy text on stdin as sentences, one per line, each "LINE:SENTENCE". Lines
 # join into paragraphs and a list item starts its own; a heading is carried onto
 # the sentences of the paragraph under it, so "## AI policy" reads with the rule
@@ -319,18 +330,18 @@ for repo in "${repos[@]}"; do
   if [ "$out" -eq 1 ]; then
     mkdir -p "$home/policy"
     saved="$home/policy/policy-${repo%%/*}-${repo##*/}.md"
-    # One printout per repository, and a ban on one branch is a ban: a clean read
-    # of another branch today does not replace it. A reread of that branch does.
-    if [ -f "$saved" ] && grep -q '^RESULT: BAN' "$saved" && [ "$(file_age "$saved" || echo 86401)" -le 86400 ]; then
+    # One printout per repository, and a hold on one branch is a hold: a lesser
+    # read of another branch today does not replace it, nor its recorded call or
+    # template. A reread of that branch does. BAN outranks UNREAD, which outranks
+    # DISCLOSE and MENTION, which outrank CLEAN.
+    if [ -f "$saved" ] && [ "$(file_age "$saved" || echo 86401)" -le 86400 ]; then
       was=$(sed -n 's/^branch: //p' "$saved" | head -1 | tr -d '\r')
       now=$(printf '%s\n' "$report" | sed -n 's/^branch: //p' | head -1)
-      case "$report" in
-        *"RESULT: BAN"*) ;;
-        *) if [ "$was" != "$now" ]; then
-             echo "kept $saved: the BAN read on $was stands; this read of $now does not replace it"
-             continue
-           fi ;;
-      esac
+      held=$(result_word < "$saved")
+      if [ "$was" != "$now" ] && [ "$(rank "$held")" -gt "$(rank "$(printf '%s\n' "$report" | result_word)")" ]; then
+        echo "kept $saved: the $held read on $was stands; this read of $now does not replace it"
+        continue
+      fi
     fi
     printf '%s\n' "$report" "$legs" > "$saved"
     echo "saved: $saved"

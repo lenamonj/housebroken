@@ -269,6 +269,26 @@ grep -q '^RESULT: BAN' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "a clean
 bash "$script" --branch main --out o/r >/dev/null
 grep -q '^RESULT: CLEAN' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "a clean reread of the same branch did not replace the BAN"
 
+# nor are a DISCLOSE with its recorded call and template, or an UNREAD: every
+# hold of one branch stands against a lesser read of another
+printf 'CONTRIBUTING.md\n.github/pull_request_template.md\n' > "$root/tree.txt"
+mkdir -p "$root/files/.github" && printf '## Checklist\n- [ ] tests added\n' > "$root/files/.github/pull_request_template.md"
+printf 'AI use must be disclosed in the description.\n' > "$root/files/CONTRIBUTING.md"
+bash "$script" --out --reading "say which tool wrote it" --disclosure owed o/r >/dev/null
+printf 'nothing here\n' > "$root/files/CONTRIBUTING.md"
+out=$(bash "$script" --branch dev --out o/r)
+printf '%s\n' "$out" | grep -q "DISCLOSE read on main stands" || fail "a clean read of another branch did not say the DISCLOSE stands: $out"
+grep -q '^DISCLOSURE: owed' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "a clean read of another branch replaced a DISCLOSE owed"
+[ -s "$HOUSEBROKEN_HOME/policy/template-o-r.md" ] || fail "a clean read of another branch removed the template"
+rm -rf "$root/files/.github"; printf 'CONTRIBUTING.md\n' > "$root/tree.txt"
+STUB_CONTENTS_FAIL=1 bash "$script" --out o/r >/dev/null
+out=$(bash "$script" --branch dev --out o/r)
+printf '%s\n' "$out" | grep -q "UNREAD read on main stands" || fail "a clean read of another branch did not say the UNREAD stands: $out"
+grep -q '^RESULT: UNREAD' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "a clean read of another branch replaced an UNREAD"
+printf 'We do not accept AI-generated code.\n' > "$root/files/CONTRIBUTING.md"
+bash "$script" --branch dev --out o/r >/dev/null
+grep -q '^RESULT: BAN' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" || fail "a BAN on another branch did not replace an UNREAD"
+
 # a reading given on a BAN read is not saved, and that is said
 printf 'We do not accept AI-generated code.\n' > "$root/files/CONTRIBUTING.md"
 msg=$(bash "$script" --out --reading "they ban it" --disclosure none o/r 2>&1 >/dev/null)
