@@ -345,6 +345,30 @@ out=$(run); rc=$?
 grep -qx "file: a-$(printf '\303\251').py" "$HOUSEBROKEN_HOME/branch-checks/$(cd "$repo" && git rev-parse HEAD)" ||
   { echo "FAIL $name: the stamp does not hold the real name"; exit 1; }
 (cd "$repo" && $G reset -q --hard HEAD~1)
+# A diff is bytes. Apple's cut, in a UTF-8 locale, stops at the first line that
+# is not UTF-8 and drops every line after it; this cut does the same, so a scan
+# that reads the diff in the caller's locale misses the token and the NOLINT
+# after a Latin-1 accent.
+real_cut=$(command -v cut)
+mkdir -p "$root/bsdcut"
+cat > "$root/bsdcut/cut" <<'EOF'
+#!/bin/bash
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+  *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*) ;;
+  *) exec "$REAL_CUT" "$@" ;;
+esac
+while IFS= read -r l; do
+  printf '%s\n' "$l" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1 || { echo "cut: stdin: Illegal byte sequence" >&2; exit 1; }
+  printf '%s\n' "$l" | "$REAL_CUT" "$@"
+done
+EOF
+chmod +x "$root/bsdcut/cut"
+(cd "$repo" && printf 'int a; /* caf\351 */\nconst char *t = "%s";\nint b; // NOLINT\n' "$tok" > src/u.c && $G add -A && $G commit -q -m latin1) || exit 1
+out=$(cd "$repo" && REAL_CUT="$real_cut" PATH="$root/bsdcut:$PATH" LC_ALL=C.UTF-8 bash "$script" --base origin/main 2>&1); rc=$?
+[ "$rc" = "1" ] || { echo "FAIL $name: a token after a byte that is not UTF-8 exited $rc: $out"; exit 1; }
+printf '%s' "$out" | grep -q "src/u.c adds a personal path or a credential" || { echo "FAIL $name: the token after a byte that is not UTF-8 was not seen: $out"; exit 1; }
+printf '%s' "$out" | grep -q "adds a warning suppression" || { echo "FAIL $name: the NOLINT after a byte that is not UTF-8 was not seen: $out"; exit 1; }
+(cd "$repo" && $G reset -q --hard HEAD~1)
 
 # 18. The commits go up, not the net diff: a later commit that removes a secret
 # or an artifact leaves it in the history.

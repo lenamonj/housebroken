@@ -43,6 +43,10 @@
 #
 # Exits 0 when nothing blocks, 1 on a refusal, 2 on a usage error.
 set -u
+# A diff is bytes. In a UTF-8 locale Apple's cut stops at the first byte that
+# is not UTF-8 and its grep reads such a line as no match, so every scan below
+# would read only the diff up to a Latin-1 accent. In the C locale they read bytes.
+export LC_ALL=C
 # shellcheck source=scripts/refuse.sh
 . "$(cd "$(dirname "$0")" && pwd)/refuse.sh"
 
