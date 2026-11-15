@@ -27,7 +27,7 @@ expr="."; prev=""
 for a in "$@"; do [ "$prev" = "--jq" ] && expr="$a"; prev="$a"; done
 case "$*" in
   *notifications*) cat "$STUB_DIR/feed.json" ;;
-  "pr view 1 --repo o/r --json state"*) echo OPEN ;;
+  "pr view 1 --repo o/r --json state"*) [ -f "$STUB_DIR/state.fail" ] && exit 1; echo OPEN ;;
   "pr view 1 --repo o/r --json mergeable"*) cat "$STUB_DIR/pr.json" ;;
   *"issues/1/comments"*) serve ic ;;
   *"pulls/1/comments"*) serve rc ;;
@@ -136,7 +136,7 @@ feed "Fix the parser"
 
 # a read that failed is not an empty thread, and nothing can be acked past it
 comment maint "Blocking: this breaks the release." > "$tmp/ic.json"
-for failing in ic rc rv; do
+for failing in ic rc rv state; do
   touch "$tmp/$failing.fail"
   out=$(run --since 2026-11-01T09:00:00Z --no-ci); rc=$?
   rm -f "$tmp/$failing.fail"

@@ -98,16 +98,18 @@ others="$(printf '%s' "$feed" | jq -rs '(add // []) | [.[] | select(.subject.typ
 while IFS= read -r t; do
   [ -n "$t" ] || continue
   repo=$(jq -r .repo <<<"$t"); num=$(jq -r .num <<<"$t"); type=$(jq -r .type <<<"$t"); reason=$(jq -r .reason <<<"$t"); at=$(jq -r .at <<<"$t"); title=$(jq -r .title <<<"$t" | clean_line)
+  # A merge or a close can be the whole event, so a state that could not be
+  # read leaves the thread unread.
+  ok=1
   if [ "$type" = "PullRequest" ]; then
-    state=$(gh pr view "$num" --repo "$repo" --json state,isDraft,mergedBy --jq 'if .state == "MERGED" then "MERGED by " + (.mergedBy.login // "?") elif .isDraft then "OPEN, DRAFT" else .state end' 2>/dev/null || echo "?")
+    state=$(gh pr view "$num" --repo "$repo" --json state,isDraft,mergedBy --jq 'if .state == "MERGED" then "MERGED by " + (.mergedBy.login // "?") elif .isDraft then "OPEN, DRAFT" else .state end' 2>/dev/null) || { state="?"; ok=0; }
   else
-    state=$(gh issue view "$num" --repo "$repo" --json state --jq .state 2>/dev/null || echo "?")
+    state=$(gh issue view "$num" --repo "$repo" --json state --jq .state 2>/dev/null) || { state="?"; ok=0; }
   fi
   echo
   echo "--- $repo#$num [$reason, $at] $state"
   # Anyone who can @mention you chooses a title: it is theirs, not this script's.
   echo "    title (untrusted): $title"
-  ok=1
   read_all "repos/$repo/issues/$num/comments?since=$since&per_page=100" "$work/ic" || ok=0
   if [ "$type" = "PullRequest" ]; then
     read_all "repos/$repo/pulls/$num/comments?since=$since&per_page=100" "$work/rc" || ok=0
@@ -124,7 +126,7 @@ while IFS= read -r t; do
     | sort_by(.t) | .[]' 2>/dev/null)" || ok=0
   if [ "$ok" -eq 0 ]; then
     unread=$((unread + 1))
-    echo "    UNREAD: this thread's comments or reviews could not be read, which is not the same as none"
+    echo "    UNREAD: this thread's state, comments or reviews could not be read, which is not the same as none"
     continue
   fi
   shown=0
