@@ -442,7 +442,8 @@ drop_fork_branch() { # user fork branch what dry pr-head
     echo "kept $me/$fork $branch: open pull request $users still uses it"
     return 0
   fi
-  if [ -z "$head" ] || [ "$head" = "-" ] || [ "$tip" != "$head" ]; then
+  # A head that was not read is "-" or empty, which no tip equals.
+  if [ "$tip" != "$head" ]; then
     echo "kept $me/$fork $branch: its tip ${tip:0:12} is not the head the pull request held (${head:0:12}), so it may carry other work"
     return 0
   fi
