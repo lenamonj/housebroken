@@ -162,6 +162,7 @@ shopt -s nocasematch
 at='^[[:space:]]*((then|do|else|elif|if|while|until|time|command|exec|!)[[:space:]]+|(sudo|nohup|env|nice|timeout|stdbuf)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-=[:space:]]+)?)*[[:space:]]+|[0-9]+(\.[0-9]+)?[smhd]?[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*'
 repo_flag='((-R|--repo)([[:space:]]+|=)[^[:space:]]+[[:space:]]+)*'
 end='([[:space:]]|$)'
+# shellcheck disable=SC1003  # a slash or a backslash, not an escaped quote
 by_path='([^[:space:]]*[/\\])?'
 gh="${at}${by_path}gh(\.exe)?[[:space:]]+$repo_flag"
 pr_re="${gh}pr[[:space:]]+$repo_flag(create|comment|review|edit|close|merge|ready|reopen|update-branch)$end"
