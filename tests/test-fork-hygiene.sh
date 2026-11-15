@@ -19,12 +19,24 @@ trap 'rm -rf "$stub"' EXIT
 export STUB_DIR="$stub"
 cat > "$stub/gh" <<'STUB'
 #!/bin/bash
+# The pull request and the ref are served as GitHub gives them and read with
+# the caller's own --jq, so a field the script names wrongly reads as nothing.
+expr=""; prev=""
+for a in "$@"; do [ "$prev" = "--jq" ] && expr="$a"; prev="$a"; done
 case "$*" in
   "search prs --author u --state closed"*) echo "o/r 1" ;;
-  "pr view 1 --repo o/r"*) cat "$STUB_DIR/info" ;;
+  "pr view 1 --repo o/r"*)
+    IFS=$'\t' read -r owner fork branch state oid < "$STUB_DIR/info"
+    jq -n --arg o "$owner" --arg f "$fork" --arg b "$branch" --arg s "$state" --arg h "$oid" \
+      '{headRepositoryOwner: {login: $o}, headRepository: {name: $f}, headRefName: $b, state: $s,
+        headRefOid: (if $h == "-" then null else $h end)}' | jq -r "$expr" ;;
   "api graphql"*)
     [ -f "$STUB_DIR/graphql.fail" ] && exit 1
-    cat "$STUB_DIR/ref" ;;
+    IFS=$'\t' read -r isfork exists tip users < "$STUB_DIR/ref"
+    jq -n --argjson fork "$isfork" --arg exists "$exists" --arg tip "$tip" --arg users "$users" \
+      '{data: {repository: {isFork: $fork, ref: (if $exists != "yes" then null else
+          {target: {oid: $tip}, associatedPullRequests: {nodes: [$users | split(" ")[] | select(length > 0)
+            | {number: (split("#")[1] | tonumber), repository: {nameWithOwner: split("#")[0]}}]}} end)}}}' | jq -r "$expr" ;;
   "api -X DELETE"*) echo "$*" >> "$STUB_DIR/deleted" ;;
   "repo list"*) [ -f "$STUB_DIR/list.fail" ] && exit 1; printf 'o/r\nq/s\n' ;;
   "search prs --author u --json"*) printf 'o/r\n' ;;

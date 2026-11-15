@@ -32,12 +32,13 @@ case "$*" in
   "pr view 1 --repo o/r"*) [ -f "$STUB_DIR/view1.fail" ] && exit 1; cat "$STUB_DIR/pr.json" ;;
   "pr view 2 --repo o/r"*)
     [ -f "$STUB_DIR/view2.fail" ] && exit 1
-    echo "{\"state\":\"$(cat "$STUB_DIR/state2")\",\"mergedAt\":\"2026-10-30T10:00:00Z\",\"mergedBy\":{\"login\":\"maint\"},\"headRefName\":\"fix-2\",\"headRepository\":{\"name\":\"r\"},\"headRepositoryOwner\":{\"login\":\"me\"}}" ;;
+    echo "{\"state\":\"$(cat "$STUB_DIR/state2")\",\"mergedAt\":\"2026-10-30T10:00:00Z\",\"mergedBy\":{\"login\":\"maint\"},\"headRefName\":\"fix-2\",\"headRefOid\":\"abc222\",\"headRepository\":{\"name\":\"r\"},\"headRepositoryOwner\":{\"login\":\"me\"}}" ;;
   "api repos/me/r/git/ref/heads/fix-2"*)
     case "$(cat "$STUB_DIR/branch")" in
       gone) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
       throttled) echo "gh: API rate limit exceeded (HTTP 403)" >&2; exit 1 ;;
-      *) echo '{}' ;;
+      # the ref as the API gives it, read with the caller's own --jq
+      *) printf '{"ref":"refs/heads/fix-2","object":{"sha":"%s","type":"commit"}}\n' "$(cat "$STUB_DIR/tip" 2>/dev/null || echo abc222)" | jq -r "$expr" ;;
     esac ;;
   "api repos/o/r/actions/runs?head_sha=abc123&per_page=100 "*) jq -r "$expr" "$STUB_DIR/runs.head.json" ;;
   "api repos/o/r/actions/runs?event=pull_request_target&per_page=1 "*) jq -r "$expr" "$STUB_DIR/runs.target.json" ;;
@@ -94,6 +95,22 @@ echo "$out" | grep -q '^fork branches to tidy: 1' || fail "tidy count missing: $
 out=$(sweep) || fail "third run exited non-zero"
 echo "$out" | grep -q '^TIDY   o/r#2 ' || fail "TIDY line did not persist: $out"
 echo "$out" | grep -q '^MERGED o/r#2 ' && fail "merge reported twice"
+jq -e '.tidy == ["me/r fix-2 o/r#2 abc222"]' "$state" >/dev/null || fail "the entry does not carry the head the pull request held: $(jq -c .tidy "$state")"
+# a branch used again for other work has moved past that head: hygiene keeps
+# it, so it is said once and leaves the list
+printf 'def999\n' > "$tmp/tip"
+out=$(sweep) || fail "a moved branch exited non-zero"
+echo "$out" | grep -q '^KEPT   o/r#2 .*fork branch me/r fix-2 moved past the head' || fail "a moved branch was not named: $out"
+echo "$out" | grep -q '^TIDY' && fail "a moved branch still printed TIDY: $out"
+jq -e '.tidy | length == 0' "$state" >/dev/null || fail "a moved branch stayed in the state"
+out=$(sweep) || fail "the run after a moved branch exited non-zero"
+echo "$out" | grep -q '^KEPT' && fail "a moved branch was named twice: $out"
+# an entry written before the head was recorded carries none, and is asked about as before
+jq '.tidy = ["me/r fix-2 o/r#2"]' "$state" > "$state.new" && mv "$state.new" "$state" || fail "fixture failed"
+out=$(sweep) || fail "an entry with no head exited non-zero"
+echo "$out" | grep -q '^TIDY   o/r#2 ' || fail "an entry with no head was dropped: $out"
+rm -f "$tmp/tip"
+jq '.tidy = ["me/r fix-2 o/r#2 abc222"]' "$state" > "$state.new" && mv "$state.new" "$state" || fail "fixture failed"
 # a throttled answer is not a deleted branch; a 404 is
 printf 'throttled\n' > "$tmp/branch"
 out=$(sweep 2>&1) || fail "a throttled ref read exited non-zero: $out"

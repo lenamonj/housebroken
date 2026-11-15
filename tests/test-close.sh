@@ -28,7 +28,16 @@ case "$*" in
   "api repos/octocat/Hello-World/issues/"*"/comments -F body=@"*) printf '%s\n' "$*" >> "$STUB_WRITES"; echo "https://github.com/x" ;;
   "pr close 4 "*) exit 1 ;;
   "pr close "*) printf '%s\n' "$*" >> "$STUB_WRITES" ;;
-  "api graphql"*) [ -f "$STUB_DIR/graphql.fail" ] && exit 1; cat "$STUB_DIR/ref" ;;
+  "api graphql"*)
+    [ -f "$STUB_DIR/graphql.fail" ] && exit 1
+    # the ref as GitHub gives it, read with the caller's own --jq
+    expr=""; prev=""
+    for a in "$@"; do [ "$prev" = "--jq" ] && expr="$a"; prev="$a"; done
+    IFS=$'\t' read -r isfork exists tip users < "$STUB_DIR/ref"
+    jq -n --argjson fork "$isfork" --arg exists "$exists" --arg tip "$tip" --arg users "$users" \
+      '{data: {repository: {isFork: $fork, ref: (if $exists != "yes" then null else
+          {target: {oid: $tip}, associatedPullRequests: {nodes: [$users | split(" ")[] | select(length > 0)
+            | {number: (split("#")[1] | tonumber), repository: {nameWithOwner: split("#")[0]}}]}} end)}}}' | jq -r "$expr" ;;
   "api -X DELETE"*) printf '%s\n' "$*" >> "$STUB_WRITES" ;;
   *) exec "$STUBS/gh" "$@" ;;
 esac

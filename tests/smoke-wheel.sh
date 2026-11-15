@@ -18,7 +18,13 @@ trap 'rm -rf "$work"' EXIT
 
 # Windows has python and venv/Scripts where the others have python3 and venv/bin,
 # and its Python prints paths with backslashes and CRLF.
-py=$(command -v python3 || command -v python) || fail "no python on PATH"
+# A name on PATH is not a Python that runs: Windows keeps a python3 that only
+# opens the Store.
+py=""
+for c in python3 python; do
+  if "$c" -c 'import venv' >/dev/null 2>&1; then py=$c; break; fi
+done
+[ -n "$py" ] || fail "no python that runs on PATH"
 "$py" -m venv "$work/venv" || fail "cannot make a venv"
 bin="$work/venv/bin"; [ -d "$bin" ] || bin="$work/venv/Scripts"
 "$bin/python" -m pip install -q --no-index "$wheel" || fail "the wheel does not install"

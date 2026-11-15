@@ -17,8 +17,10 @@
 # run writes its open set to a state file and the next run reports what left
 # it. A PR that left still owns a branch on our fork until someone deletes it,
 # so the sweep records that branch in the state file and prints a TIDY line on
-# every run until `housebroken hygiene` has removed it. The obligation is in
-# the output, not in anyone's memory.
+# every run until `housebroken hygiene` has removed it. A branch that has moved
+# past the head its pull request held was used again for other work: hygiene
+# keeps it, so the sweep prints one KEPT line and stops asking. The obligation
+# is in the output, not in anyone's memory.
 #
 # Usage:
 #   bash pr-sweep.sh                  # only PRs where the ball is in our court
@@ -108,7 +110,7 @@ if [ -f "$STATE" ]; then
     gone_repo="${id%#*}"; gone_num="${id##*#}"
     # A pull request we could not read stays in the stored set, so the next run
     # reports it: the search below only looks forward from this run.
-    if ! v="$(gh pr view "$gone_num" --repo "$gone_repo" --json state,mergedAt,closedAt,mergedBy,headRefName,headRepository,headRepositoryOwner)"; then
+    if ! v="$(gh pr view "$gone_num" --repo "$gone_repo" --json state,mergedAt,closedAt,mergedBy,headRefName,headRefOid,headRepository,headRepositoryOwner)"; then
       echo "pr-sweep.sh: gh pr view $id failed; it is read again next run" >&2
       retry="$retry
 $id"
@@ -118,9 +120,10 @@ $id"
     head_owner="$(printf '%s' "$v" | jq -r '.headRepositoryOwner.login // "-"' | tr -d '\r')"
     head_fork="$(printf '%s' "$v" | jq -r '.headRepository.name // "-"' | tr -d '\r')"
     head_branch="$(printf '%s' "$v" | jq -r '.headRefName // "-"' | tr -d '\r')"
+    head_oid="$(printf '%s' "$v" | jq -r '.headRefOid // "-"' | tr -d '\r')"
     gone_state="$(printf '%s' "$v" | jq -r '.state // "-"' | tr -d '\r')"
     if [ "$gone_state" != OPEN ] && [ "$head_owner" = "$ME" ] && [ "$gone_repo" != "$ME/$head_fork" ] && [ "$head_branch" != "-" ]; then
-      tidy="$(printf '%s\n%s\n' "$tidy" "$ME/$head_fork $head_branch $id")"
+      tidy="$(printf '%s\n%s\n' "$tidy" "$ME/$head_fork $head_branch $id $head_oid")"
     fi
     case "$gone_state" in
       MERGED)
@@ -141,20 +144,32 @@ fi
 
 # every recorded fork branch is checked again; it leaves the list only once GitHub
 # says it is gone, which is a 404 and not any failure. The singular ref endpoint:
-# the plural one answers 200 for any branch the name is a prefix of.
+# the plural one answers 200 for any branch the name is a prefix of. An entry
+# carries the head its pull request held; one written before 0.21.0 carries
+# none and is asked about as before. A branch whose tip is no longer that head
+# was used again for other work: hygiene keeps it, so it is said once and
+# leaves the list.
+referr=$(mktemp) || { echo "pr-sweep.sh: mktemp failed" >&2; exit 1; }
+trap 'rm -f "$referr"' EXIT
 keep=""; ntidy=0
-while read -r fork branch id; do
+while read -r fork branch id oid; do
   [ -n "$fork" ] || continue
-  if ! err="$(gh api "repos/$fork/git/ref/heads/$(uri_path "$branch")" 2>&1 >/dev/null)"; then
-    case "$err" in *"(HTTP 404)"*) continue ;; esac
-    keep="$(printf '%s\n%s\n' "$keep" "$fork $branch $id")"
+  entry="$fork $branch $id${oid:+ $oid}"
+  if ! tip="$(gh api "repos/$fork/git/ref/heads/$(uri_path "$branch")" --jq .object.sha 2>"$referr")"; then
+    if grep -q '(HTTP 404)' "$referr"; then continue; fi
+    keep="$(printf '%s\n%s\n' "$keep" "$entry")"
     echo "pr-sweep.sh: cannot read $fork $branch; asked again next run" >&2
     continue
   fi
+  tip="$(printf '%s' "$tip" | tr -d '\r')"
+  if [ -n "$oid" ] && [ "$oid" != "-" ] && [ "$tip" != "$oid" ]; then
+    printf 'KEPT   %-38s fork branch %s %s moved past the head the pull request held: other work, not a leftover\n' "$id" "$fork" "$branch"
+    continue
+  fi
   ntidy=$((ntidy + 1))
-  keep="$(printf '%s\n%s\n' "$keep" "$fork $branch $id")"
+  keep="$(printf '%s\n%s\n' "$keep" "$entry")"
   printf 'TIDY   %-38s fork branch %s %s still exists: run housebroken hygiene\n' "$id" "$fork" "$branch"
-done <<< "$(printf '%s\n' "$tidy" | awk 'NF == 3 && !seen[$0]++')"
+done <<< "$(printf '%s\n' "$tidy" | awk '(NF == 3 || NF == 4) && !seen[$0]++')"
 
 if ! jq -n --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg open "$(printf '%s\n%s\n' "$open_ids" "$retry")" --arg tidy "$(printf '%s\n' "$keep")" \

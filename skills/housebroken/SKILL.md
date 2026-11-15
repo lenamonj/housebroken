@@ -321,7 +321,9 @@ report it in one line and do not proceed to the next step.
     `--settle` waits for the rest. `housebroken sweep` lists every open pull request where the ball
     is in your court, and prints a `TIDY` line for every merged or closed
     pull request whose fork branch still exists, on every run until
-    `housebroken hygiene` has deleted it. Both `sweep` and the inbox census
+    `housebroken hygiene` has deleted it; a branch that moved past the head
+    its pull request held is other work, which hygiene keeps, so `sweep`
+    prints one `KEPT` line for it and stops asking. Both `sweep` and the inbox census
     name two states that look quiet. A head no CI job ever started on reads
     `no-ci-on-head` when GitHub made no run for it and `ci-never-started`
     when the run it made finished without one. A new push or a close and
