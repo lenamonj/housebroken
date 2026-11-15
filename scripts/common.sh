@@ -253,16 +253,17 @@ dropped_boxes() { # template-file body-file
 }
 
 # Whether a body says AI was used, in its own words: a ticked box or a line that
-# names a tool beside its use ("written with Claude", "Copilot wrote",
-# "AI-generated"), or a tool named in answer to a template line that asks about
-# AI. A name alone is the code's subject as often as not: a cursor is a
+# names a tool beside its use ("written with Claude", "An AI tool (Claude)
+# helped", "AI-generated") or after a label ("AI disclosure: Claude Code",
+# "Tool used:", "Assisted-by:", "Generated-by:"), or a tool named in answer to a
+# template line that asks about AI. A name alone is the code's subject as often as not: a cursor is a
 # database's, ai/ is a path, "the LLM client" and "Home Assistant" say nothing.
 # So names are matched as written, and fenced code, code spans, quoted lines and
 # HTML comments are not the body's words. An unanswered template question says
 # nothing.
 discloses() { # body-file template-file
   local names='AI|LLMs?|Claude|Copilot|ChatGPT|Gemini|Codex|Cursor|([Ll]arge )?[Ll]anguage [Mm]odels?'
-  local said='\b('"$names"')( Code| CLI| tools?| assistance| assistants?)?(( (has|have|had))?[ -](wrote|written|generated|drafted|assisted|authored|helped|suggested)| (was|were|is|are) used)\b|\b(use|used|using|use of|with|by|via|help of|help from|assistance of|assistance from)( an?)?( [A-Z][A-Za-z]*)? ('"$names"')\b'
+  local said='\b('"$names"')( Code| CLI| tools?| assistance| assistants?)?\)?(( (has|have|had))?[ -](wrote|written|generated|drafted|assisted|authored|helped|suggested)| (was|were|is|are) used)\b|\b(use|used|using|use of|with|by|via|help of|help from|assistance of|assistance from)( an?)?( [A-Z][A-Za-z]*)? ('"$names"')\b|\b([Dd]isclos[a-z]*|[Aa]ssisted-[Bb]y|[Gg]enerated-[Bb]y|[Tt]ools? used):[[:space:]]*(an? )?('"$names"')\b'
   local own
   # shellcheck disable=SC2016  # the backticks are markdown, matched literally
   own=$(awk '

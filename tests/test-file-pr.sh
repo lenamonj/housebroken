@@ -166,6 +166,15 @@ printf 'one finding, one test\n\n```\n# written with Claude\n```\n' > "$b"; undi
 # shellcheck disable=SC2016  # the backticks are markdown, matched literally
 nosay 'Renames the `used Copilot` option.' "a code span"
 printf 'one finding, one test\n\n<!--\nWritten with AI? Say so.\n-->\n' > "$b"; undisclosed "$b" "a comment over three lines"
+nosay 'Moves the cursor to the end of the row.' "a cursor that moves"
+nosay 'Fixes the Gemini protocol client.' "a Gemini protocol client"
+nosay 'The LLM client retries on 429.' "an LLM client that retries"
+# A label the projects ask for, and a tool named in parentheses, say it too.
+say() { printf 'one finding, one test\n\n%s\n' "$1" > "$b"; said "$b" "$2"; }
+say 'AI disclosure: Claude Code.' "a disclosure label"
+say 'Tool used: Claude' "a tool-used label"
+say 'Assisted-by: Claude' "an Assisted-by line"
+say 'An AI tool (Claude) helped write the test.' "a tool named in parentheses"
 # What does say it passes: a tool named beside its use, and a tool named in
 # answer to the template's own AI line.
 printf 'one finding, one test\n\nThe test is AI-generated; Claude Code drafted the patch.\n' > "$b"
