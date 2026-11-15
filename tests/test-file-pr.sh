@@ -307,6 +307,28 @@ capped() { PATH="$HOUSEBROKEN_HOME/bin:$PATH" STUB_PRS="$1" bash "$script" octoc
 capped "[$old,$old,$old]" | grep -q "three is the most" || fail "a fourth open pull request was not refused"
 capped "[$old,$recent]" | grep -q "wait until ten minutes" || fail "a filing three minutes after the last was not refused"
 capped "[$old,$old]" | grep -q "DRY RUN, not filed" || fail "two old open pull requests stopped the filing"
+# a list whose times cannot be read is no count, and passes neither rule
+out=$(capped '[{"createdAt":"yesterday"}]'); rc=$?
+[ "$rc" -eq 2 ] || fail "an open pull request list that is not a list of times exited $rc: $out"
+printf '%s' "$out" | grep -q "file-pr-open-prs-not-a-list" || fail "an open pull request list that is not a list of times was not named: $out"
+
+# Without jq the count and the times read as nothing, and nothing is not under
+# the cap: the filing stops and says why. gh answers with its own --jq.
+nojq="$HOUSEBROKEN_HOME/nojq"
+mkdir -p "$nojq"
+# shellcheck disable=SC2016  # the stub's own $* and $@, written literally
+printf '#!/bin/bash\ncase "$*" in "pr list"*) printf "%%s\\n" "$STUB_LIST" ;; *) exec "%s" "$@" ;; esac\n' "$realgh" > "$nojq/gh"
+chmod +x "$nojq/gh"
+IFS=: read -r -a dirs <<< "$PATH"
+for d in "${dirs[@]}"; do
+  for x in "$d"/*; do
+    n=${x##*/}
+    [ "$n" = jq ] || [ -e "$nojq/$n" ] || [ ! -x "$x" ] || ln -s "$x" "$nojq/$n"
+  done
+done
+out=$(PATH="$nojq" STUB_LIST='["2026-01-01T00:00:00Z","2026-01-01T00:00:00Z","2026-01-01T00:00:00Z"]' bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
+[ "$rc" -eq 2 ] || fail "three open pull requests without jq exited $rc, expected 2: $out"
+printf '%s' "$out" | grep -q "jq is not on PATH" || fail "a missing jq was not named: $out"
 
 # the branch was checked against a different base from the one it is filed into
 # (Tencent/MMKV takes pull requests on dev; a branch checked against master

@@ -84,6 +84,9 @@ if [ "$#" -eq 0 ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
 fi
 
 command -v gh >/dev/null 2>&1 || { refused file-pr-gh-missing "gh is not on PATH" >&2; exit 2; }
+# Without jq the open pull request count and the time of the last one read as
+# nothing, and nothing is under the cap and past the ten minutes.
+command -v jq >/dev/null 2>&1 || { refused file-pr-jq-missing "jq is not on PATH" >&2; exit 2; }
 
 repo="$1"
 shift
@@ -230,12 +233,18 @@ if ! mine=$(gh pr list -R "$repo" --author @me --state open --json createdAt --j
   refused file-pr-open-prs-unreadable "cannot read your open pull requests on $repo" >&2
   exit 2
 fi
-open_count=$(printf '%s' "$mine" | jq 'length')
+# A count or an age that is not a number fails every test below, so it is no
+# answer at all.
+open_count=$(printf '%s' "$mine" | jq 'length' 2>/dev/null | tr -d '\r')
+since=$(printf '%s' "$mine" | jq -r --argjson now "$(date -u +%s)" 'if length > 0 then $now - (last | fromdateiso8601) else 99999 end' 2>/dev/null | tr -d '\r')
+if ! [[ "$open_count" =~ ^[0-9]+$ && "$since" =~ ^-?[0-9]+$ ]]; then
+  refused file-pr-open-prs-not-a-list "your open pull requests on $repo did not read as a list of creation times" >&2
+  exit 2
+fi
 if [ "$open_count" -ge 3 ]; then
   refused file-pr-open-pr-cap "you have $open_count open pull requests on $repo - three is the most a repository gets" >&2
   exit 2
 fi
-since=$(printf '%s' "$mine" | jq -r --argjson now "$(date -u +%s)" 'if length > 0 then $now - (last | fromdateiso8601) else 99999 end')
 if [ "$since" -lt 600 ]; then
   refused file-pr-too-soon-after-last "your last pull request on $repo was filed ${since}s ago - wait until ten minutes have passed" >&2
   exit 2
