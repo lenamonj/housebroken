@@ -18,7 +18,7 @@ mkdir -p "$tmp/thread" "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/bin/bash
 case "$*" in
-  "api repos/octocat/Hello-World/issues/1 --jq .pull_request"*) cat "$THREAD_DIR/kind" ;;
+  "api repos/octocat/Hello-World/issues/1 --jq .pull_request"*) [ -f "$THREAD_DIR/kind.fail" ] && exit 1; cat "$THREAD_DIR/kind" ;;
   "api --paginate repos/octocat/Hello-World/issues/1/comments"*) [ -f "$THREAD_DIR/ic.fail" ] && exit 1; cat "$THREAD_DIR/ic.json" ;;
   "api --paginate repos/octocat/Hello-World/pulls/1/reviews"*) cat "$THREAD_DIR/rv.json" ;;
   "api --paginate repos/octocat/Hello-World/pulls/1/comments"*) cat "$THREAD_DIR/rc.json" ;;
@@ -129,6 +129,11 @@ reply 2 "The parser checks its read on main."
 grep -q "cannot read" "$tmp/out" || fail "a failed read of the thread was not named: $(cat "$tmp/out")"
 rm -f "$tmp/thread/ic.fail"
 voice maint MEMBER | jq -s . > "$tmp/thread/ic.json"
+# nor is a failed read of whether the thread is a pull request an issue
+touch "$tmp/thread/kind.fail"
+reply 2 "The parser checks its read on main."
+grep -q "cannot read" "$tmp/out" || fail "a failed read of the thread's kind was not named: $(cat "$tmp/out")"
+rm -f "$tmp/thread/kind.fail"
 # an inline answer reads the comment it answers
 jq -n '{user: {login: "stranger"}, author_association: "NONE"}' > "$tmp/thread/one.json"
 reply 2 "The thread is answered in place." --in-reply-to 123456

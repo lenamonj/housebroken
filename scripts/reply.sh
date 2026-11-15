@@ -114,7 +114,9 @@ if [ -n "$thread" ]; then
   fi
 else
   ok=1
-  kind=$(gh api "repos/$repo/issues/$num" --jq '.pull_request.url // ""' 2>/dev/null | tr -d '\r') || ok=0
+  # gh's own status, not a pipe's: a failed read is not an issue.
+  kind=$(gh api "repos/$repo/issues/$num" --jq '.pull_request.url // ""' 2>/dev/null) || ok=0
+  kind=${kind%$'\r'}
   read_all "repos/$repo/issues/$num/comments?per_page=100" "$work/ic" || ok=0
   if [ "$ok" -eq 1 ] && [ -n "$kind" ]; then
     read_all "repos/$repo/pulls/$num/reviews?per_page=100" "$work/rv" || ok=0
