@@ -32,8 +32,10 @@ renamed_from() { printf '%s\n' "${renames:-}" | awk -F'\t' -v n="$1" '$2 == n {p
 
 # Whether a path is a test by where it lives or what it is called. A substring
 # is not enough: latest.c, inspect.go and special_cases.py say test or spec too.
+# A file named tests.py, tests.rs or test.js is a test too (Django, Rust, JS),
+# and so is Java's TestPager.java and SwiftPM's Tests/ directory.
 is_test_path() {
-  printf '%s\n' "$1" | grep -qE '(^|/)(tests?|specs?|__tests__|testdata)/|(^|/)test_[^/]*$|[._-](test|spec)s?\.[^/]+$|[a-z0-9]Tests?\.[^/]+$|(^|/)conftest\.py$'
+  printf '%s\n' "$1" | grep -qE '(^|/)([Tt]ests?|[Ss]pecs?|__tests__|testdata)/|(^|/)test_[^/]*$|(^|/|[._-])(test|spec)s?\.[^/]+$|(^|/|[A-Za-z0-9])Tests?\.[^/]+$|(^|/)Test[A-Z][^/]*\.[^/]+$|(^|/)conftest\.py$'
 }
 
 # Seconds since a file last changed. stat differs between GNU and BSD.

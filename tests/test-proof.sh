@@ -166,6 +166,22 @@ git update-ref refs/remotes/origin/main upstream-main
 out=$(bash "$script" . --test "$inline_cmd" --base-file "src/lib.txt=$root/base-plus-test.txt"); rc=$?
 [ "$rc" -eq 0 ] || fail "the origin/main fallback failed: $out"
 
+# a test file named tests.EXT stays in the base arm, so a test that passes on
+# the base too is refuted, not stamped red because the gate took it away
+git checkout -q -b tests-file upstream-main
+printf 'fixed\n' > src/lib.txt && printf '#!/bin/bash\n[ -f src/lib.txt ]\n' > src/tests.sh && $G add -A && $G commit -q -m "no fix"
+out=$(bash "$script" . --base upstream-main --test 'bash src/tests.sh'); rc=$?
+[ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "passes without the fix" || fail "a test in tests.sh was taken away with the fix: $out"
+
+# what is_test_path takes for a test, and the names that only contain the word
+for p in app/tests.py test.js src/x/tests.rs spec.rb Tests/PagerTests/Helpers.swift pkg/TestPager.java ATest.java \
+  src/a_test.go test_a.py a.test.ts tests/helpers/util.go conftest.py; do
+  bash -c '. "$1"; is_test_path "$2"' _ "$here/../scripts/common.sh" "$p" || fail "is_test_path missed $p"
+done
+for p in latest.c contest.py Contest.java attest.rs protests.md special_cases.py inspect.go src/Testament.java; do
+  bash -c '. "$1"; is_test_path "$2"' _ "$here/../scripts/common.sh" "$p" && fail "is_test_path took $p for a test"
+done
+
 # Both arms run with HTTP_PROXY, HTTPS_PROXY and ALL_PROXY at local port 9 and
 # NO_PROXY at loopback only, whatever the caller had, so a test that reaches for
 # the network fails here instead of sending a request
