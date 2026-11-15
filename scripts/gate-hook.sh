@@ -199,9 +199,9 @@ shopt -s nocasematch
 # options and a duration), and past the -R of gh and git's own options before
 # its verb. gh and git are themselves by any unquoted path, a space in it
 # escaped or not there, and as gh.exe; a path after an = is a value, not a
-# command. A value, a directory or a refspec may be quoted and hold a space.
-# Text after the command is its arguments.
-piece="(\"[^\"]*\"|'[^']*'|[^[:space:]\"'])"
+# command. A value, a directory or a refspec may hold a space, quoted or
+# escaped. Text after the command is its arguments.
+piece="(\"[^\"]*\"|'[^']*'|\\\\.|[^[:space:]\"'\\\\])"
 # shellcheck disable=SC1003  # a slash or a backslash, not an escaped quote
 by_path='(([^[:space:]\\=]|\\.)*[/\\])?'
 wrapper='(time|command|exec|sudo|doas|nohup|env|nice|ionice|g?timeout|stdbuf|setsid|winpty)'

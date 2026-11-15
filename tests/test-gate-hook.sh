@@ -207,6 +207,10 @@ hook 2 'GIT_SSH_COMMAND="ssh -i ~/.ssh/work" git push --force origin fix'
 hook 2 'GH_EDITOR="code --wait" gh pr create -R a/b --title x'
 hook 0 'GIT_SSH_COMMAND="ssh -i ~/.ssh/work" git push origin fix'
 hook 0 'git -C "/c/my repo" push origin fix'
+# and so is a space escaped in it
+hook 2 'git -C ~/my\ repo push --force origin fix'
+hook 2 'GIT_SSH_COMMAND=ssh\ -i\ key git push --force origin fix'
+hook 0 'git -C ~/my\ repo push origin fix'
 
 # the other names of a write, and a help page is not one
 hook 2 'gh pr new -R a/b --title x --body y'
