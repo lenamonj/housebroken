@@ -382,6 +382,17 @@ fires "adds a warning suppression" && { echo "FAIL $name: an edited line keeping
 (cd "$repo" && printf 'from m import a, b  # noqa: E402\nfrom n import c  # noqa: E402\n' > src/k.py && $G add -A && $G commit -q --amend -m "edit k") || exit 1
 fires "adds a warning suppression" || { echo "FAIL $name: a second suppression beside a kept one was not refused"; exit 1; }
 (cd "$repo" && $G reset -q --hard HEAD~1)
+# The removed lines are read whatever their size: Linux caps one argument or
+# environment string at 128 KB, and a branch that deletes more than that still
+# has its added suppression seen.
+(cd "$repo" && awk 'BEGIN { for (i = 0; i < 4000; i++) printf "{\"row\": %d, \"pad\": \"%s\"},\n", i, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }' > src/big.json &&
+  $G add -A && $G commit -q -m big && setbase HEAD) || exit 1
+(cd "$repo" && git rm -q src/big.json && printf 'f() //nolint\n' > src/z.go && $G add -A && $G commit -q -m "drop big, add z") || exit 1
+out=$(run); rc=$?
+if [ "$rc" != "1" ] || ! printf '%s\n' "$out" | grep -q "adds a warning suppression"; then
+  echo "FAIL $name: a suppression beside a removal over 128 KB was not refused (exit $rc): $(printf '%s\n' "$out" | head -5)"; exit 1
+fi
+(cd "$repo" && $G reset -q --hard HEAD~1)
 
 # 21. A refused branch prints each moved comment once, beside the refusal.
 (cd "$repo" && printf '// n is one.\nexport const n = 1;\n' > src/n.ts && $G add -A && $G commit -q -m n && setbase HEAD) || exit 1
