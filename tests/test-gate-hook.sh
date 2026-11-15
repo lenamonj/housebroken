@@ -338,7 +338,7 @@ printf '{"tool_input": {"command": "gh pr create"}}' | PATH="$tmp/nojq" "$BASH" 
 [ "$?" = 2 ] || fail "a write with jq missing was not refused"
 grep -q "jq is not on PATH" "$tmp/err" || fail "a missing jq was not named"
 printf '{"tool_input": {"command": "ls -la"}}' | PATH="$tmp/nojq" "$BASH" "$script" 2>/dev/null || fail "a read with jq missing was refused"
-for c in 'gh pr -R a/b create --title x' 'gh issue -R a/b new --title x' 'gh api -X POST repos/a/b/issues/1/comments' 'git push --force origin fix'; do
+for c in 'gh pr -R a/b create --title x' 'gh issue -R a/b new --title x' 'gh api -X POST repos/a/b/issues/1/comments' 'git push --force origin fix' 'GH.EXE pr create -R a/b --title x' 'gh -R a/b pr create --title x' 'GIT push -f origin fix'; do
   printf '{"tool_input": {"command": "%s"}}' "$c" | PATH="$tmp/nojq" "$BASH" "$script" 2>/dev/null
   [ "$?" = 2 ] || fail "with jq missing, $c was not refused"
 done

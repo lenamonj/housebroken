@@ -96,7 +96,8 @@ IFS= read -r -d '' input || true
 # anywhere is refused and everything else runs. Degraded, never open, and
 # bash alone does it, so a missing tool cannot open it.
 unparsed() { # reason, under the name in why_id
-  local write_re='gh(\.exe)?[[:space:]]+(pr|issue)[[:space:]]([^|;&]*[[:space:]])?(create|new|comment|review|edit|close|merge|ready|reopen|update-branch|revert|delete|transfer|develop|lock|unlock|pin|unpin)([^a-z-]|$)|gh(\.exe)?[[:space:]]+api|git(\.exe)?[[:space:]].*push'
+  shopt -s nocasematch
+  local write_re='gh(\.exe)?[[:space:]]+([^|;&]*[[:space:]])?(pr|issue)[[:space:]]([^|;&]*[[:space:]])?(create|new|comment|review|edit|close|merge|ready|reopen|update-branch|revert|delete|transfer|develop|lock|unlock|pin|unpin)([^a-z-]|$)|gh(\.exe)?[[:space:]]+api|git(\.exe)?[[:space:]].*push'
   [[ $input =~ $write_re ]] || exit 0
   echo "housebroken: refused: $1. [$why_id]" >&2
   log_refusal "$why_id"
