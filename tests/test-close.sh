@@ -15,14 +15,14 @@ mkdir -p "$tmp/stub" "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/bin/bash
 pr() { # author state
-  printf '{"author":{"login":"%s"},"state":"%s","headRefName":"fix-it","headRepository":{"name":"Hello-World"},"headRepositoryOwner":{"login":"%s"}}\n' "$1" "$2" "$(cat "$STUB_DIR/owner" 2>/dev/null || echo me)"
+  printf '{"author":{"login":"%s"},"state":"%s","headRefName":"fix-it","headRefOid":"abc123","headRepository":{"name":"Hello-World"},"headRepositoryOwner":{"login":"%s"}}\n' "$1" "$2" "$(cat "$STUB_DIR/owner" 2>/dev/null || echo me)"
 }
 case "$*" in
-  "pr view 9 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner"*) pr me OPEN ;;
-  "pr view 5 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner"*) pr me OPEN ;;
-  "pr view 4 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner"*) pr me OPEN ;;
-  "pr view 8 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner"*) pr other OPEN ;;
-  "pr view 7 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner"*) pr me MERGED ;;
+  "pr view 9 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner,headRefOid"*) pr me OPEN ;;
+  "pr view 5 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner,headRefOid"*) pr me OPEN ;;
+  "pr view 4 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner,headRefOid"*) pr me OPEN ;;
+  "pr view 8 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner,headRefOid"*) pr other OPEN ;;
+  "pr view 7 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner,headRefOid"*) pr me MERGED ;;
   "pr view 6 --repo octocat/Hello-World"*) exit 1 ;;
   "api repos/octocat/Hello-World/issues/5/comments "*) exit 1 ;;
   "api repos/octocat/Hello-World/issues/"*"/comments -F body=@"*) printf '%s\n' "$*" >> "$STUB_WRITES"; echo "https://github.com/x" ;;
@@ -40,7 +40,7 @@ fail() { echo "FAIL $name: $1" >&2; exit 1; }
 fresh() { # a clean home, no writes, a fork branch nobody else uses
   rm -rf "${tmp:?}/home" "$STUB_WRITES" "$STUB_DIR/graphql.fail" "$STUB_DIR/owner"
   export HOUSEBROKEN_HOME="$tmp/home"
-  printf 'true\tyes\t\n' > "$STUB_DIR/ref"
+  printf 'true\tyes\tabc123\t\n' > "$STUB_DIR/ref"
 }
 closepr() { # expected-exit number text
   local want="$1" num="$2"
@@ -120,11 +120,17 @@ closepr 2 9 "$note"; grep -q "ten minutes" "$tmp/out" || fail "the spacing refus
 
 # a branch already gone, or not on a fork, is left without a failure
 fresh
-printf 'true\tno\t\n' > "$STUB_DIR/ref"
+printf 'true\tno\t-\t\n' > "$STUB_DIR/ref"
 closepr 0 9 "$note"
 grep -q "DELETE" "$STUB_WRITES" && fail "a branch that is gone was deleted"
+# a branch whose tip is no longer the head the pull request held carries other work
 fresh
-printf 'false\tyes\t\n' > "$STUB_DIR/ref"
+printf 'true\tyes\tdef456\t\n' > "$STUB_DIR/ref"
+closepr 0 9 "$note"
+grep -q "DELETE" "$STUB_WRITES" && fail "a branch that moved past the pull request's head was deleted"
+grep -q "kept me/Hello-World fix-it: its tip def456 is not the head the pull request held (abc123)" "$tmp/out" || fail "the kept branch was not named: $(cat "$tmp/out")"
+fresh
+printf 'false\tyes\tabc123\t\n' > "$STUB_DIR/ref"
 closepr 0 9 "$note"
 grep -q "DELETE" "$STUB_WRITES" && fail "a branch of a repository that is not a fork was deleted"
 # a head on someone else's repository is never ours to delete

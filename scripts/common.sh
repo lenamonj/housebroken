@@ -414,29 +414,36 @@ ref_query='query($o: String!, $r: String!, $q: String!) {
   repository(owner: $o, name: $r) {
     isFork
     ref(qualifiedName: $q) {
+      target { oid }
       associatedPullRequests(states: OPEN, first: 20) { nodes { number repository { nameWithOwner } } }
     }
   }
 }'
 
-# Deletes one branch of a fork of ours once no open pull request uses it, and
-# says so; a repository that is not a fork, or a branch already gone, is left
-# without a word. Returns 1 when the ref could not be read or the delete failed.
-drop_fork_branch() { # user fork branch what dry
-  local me="$1" fork="$2" branch="$3" what="$4" dry="$5" ref isfork exists users
+# Deletes one branch of a fork of ours once no open pull request uses it and
+# its tip is still the head the finished pull request held, and says so; a
+# repository that is not a fork, or a branch already gone, is left without a
+# word. A branch name used again for other work has another tip, and is kept.
+# Returns 1 when the ref could not be read or the delete failed.
+drop_fork_branch() { # user fork branch what dry pr-head
+  local me="$1" fork="$2" branch="$3" what="$4" dry="$5" head="${6:-}" ref isfork exists tip users
   if ! ref=$(gh api graphql -f query="$ref_query" -f o="$me" -f r="$fork" -f q="refs/heads/$branch" \
-    --jq '.data.repository | [(.isFork | tostring), (if .ref then "yes" else "no" end),
+    --jq '.data.repository | [(.isFork | tostring), (if .ref then "yes" else "no" end), (.ref.target.oid // "-"),
           ([.ref.associatedPullRequests.nodes[]? | "\(.repository.nameWithOwner)#\(.number)"] | join(" "))] | @tsv' 2>/dev/null); then
     echo "$(basename "$0"): cannot read $me/$fork $branch; kept" >&2
     return 1
   fi
-  IFS=$'\t' read -r isfork exists users <<< "$ref"
+  IFS=$'\t' read -r isfork exists tip users <<< "$ref"
   [ "$isfork" = "true" ] || return 0
   [ "$exists" = "yes" ] || return 0
   # A closed pull request refiled from the same branch still needs it, and
   # deleting the branch would close the open one.
   if [ -n "$users" ]; then
     echo "kept $me/$fork $branch: open pull request $users still uses it"
+    return 0
+  fi
+  if [ -z "$head" ] || [ "$head" = "-" ] || [ "$tip" != "$head" ]; then
+    echo "kept $me/$fork $branch: its tip ${tip:0:12} is not the head the pull request held (${head:0:12}), so it may carry other work"
     return 0
   fi
   if [ "$dry" = 1 ]; then

@@ -33,8 +33,9 @@ esac
 STUB
 chmod +x "$stub/gh"
 hyg() { PATH="$stub:$PATH" HOUSEBROKEN_USER=u bash "$script" "$@"; }
-printf 'u\tr\tfix-it\tCLOSED\n' > "$stub/info"
-ref() { printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}" > "$stub/ref"; }
+info() { printf 'u\tr\t%s\tCLOSED\t%s\n' "$1" "${2:-abc123}" > "$stub/info"; } # branch, the head the pull request held
+ref() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "${4:-abc123}" "${3:-}" > "$stub/ref"; } # fork, exists, open users, tip
+info fix-it
 
 ref true yes
 out=$(hyg --dry-run)
@@ -67,12 +68,23 @@ echo "$out" | grep -q "^deleted u/r fix-it" || fail "a branch no open pull reque
 grep -q "repos/u/r/git/refs/heads/fix-it" "$stub/deleted" || fail "the wrong ref was deleted: $(cat "$stub/deleted")"
 rm -f "$stub/deleted"
 
+# a branch name used again for other work has another tip, and is kept
+ref true yes "" def456
+out=$(hyg)
+echo "$out" | grep -q "^kept u/r fix-it: its tip def456 is not the head the pull request held (abc123)" || fail "a branch that moved past the pull request's head was not kept: $out"
+[ ! -f "$stub/deleted" ] || fail "a branch carrying other work was deleted"
+# a pull request whose head could not be read deletes nothing
+info fix-it -
+ref true yes
+hyg >/dev/null; [ ! -f "$stub/deleted" ] || fail "a branch was deleted with the pull request's head unread"
+info fix-it
+
 # a # would end the URL, and | is not a separator
-printf 'u\tr\tfeature/wip|fix#123\tCLOSED\n' > "$stub/info"
+info 'feature/wip|fix#123'
 out=$(hyg)
 echo "$out" | grep -q "^deleted u/r feature/wip|fix#123" || fail "an odd branch name was not read whole: $out"
 grep -q "heads/feature/wip%7Cfix%23123" "$stub/deleted" || fail "the branch name was not encoded: $(cat "$stub/deleted")"
-printf 'u\tr\tfix-it\tCLOSED\n' > "$stub/info"
+info fix-it
 
 # a failed listing is not every fork an orphan
 touch "$stub/list.fail"

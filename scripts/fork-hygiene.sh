@@ -51,14 +51,14 @@ while read -r repo n; do
   case "$repo" in "$ME"/*) continue ;; esac
   # Tabs and @tsv: a branch name can hold a | or a #.
   # shellcheck disable=SC2016  # jq text
-  info=$(gh pr view "$n" --repo "$repo" --json headRefName,headRepository,headRepositoryOwner,state \
-    --jq '[(.headRepositoryOwner.login // "-"), (.headRepository.name // "-"), (.headRefName // "-"), .state] | @tsv' 2>/dev/null) || {
+  info=$(gh pr view "$n" --repo "$repo" --json headRefName,headRepository,headRepositoryOwner,state,headRefOid \
+    --jq '[(.headRepositoryOwner.login // "-"), (.headRepository.name // "-"), (.headRefName // "-"), .state, (.headRefOid // "-")] | @tsv' 2>/dev/null) || {
     echo "fork-hygiene.sh: gh pr view $repo#$n failed" >&2
     continue
   }
-  IFS=$'\t' read -r owner fork branch state <<< "$info"
+  IFS=$'\t' read -r owner fork branch state oid <<< "$info"
   if [ "$owner" != "$ME" ] || [ "$fork" = "-" ] || [ "$branch" = "-" ]; then continue; fi
-  drop_fork_branch "$ME" "$fork" "$branch" "$state $repo#$n" "$DRY"
+  drop_fork_branch "$ME" "$fork" "$branch" "$state $repo#$n" "$DRY" "$oid"
 done <<< "$closed"
 
 echo "--- forks with no PR (delete by hand when a wave is over):"

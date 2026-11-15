@@ -81,13 +81,14 @@ fi
 
 user="${HOUSEBROKEN_USER:-$(gh api user --jq .login 2>/dev/null)}"
 [ -n "$user" ] || { refused close-gh-unauthenticated "gh is not authenticated, so whose pull request this is cannot be read" >&2; exit 2; }
-fork_owner=""; fork=""; branch=""
-if pr=$(gh pr view "$num" --repo "$repo" --json author,state,headRefName,headRepository,headRepositoryOwner 2>/dev/null); then
+fork_owner=""; fork=""; branch=""; oid=""
+if pr=$(gh pr view "$num" --repo "$repo" --json author,state,headRefName,headRepository,headRepositoryOwner,headRefOid 2>/dev/null); then
   author=$(printf '%s' "$pr" | jq -r '.author.login // "?"' | tr -d '\r')
   state=$(printf '%s' "$pr" | jq -r '.state // "?"' | tr -d '\r')
   fork_owner=$(printf '%s' "$pr" | jq -r '.headRepositoryOwner.login // ""' | tr -d '\r')
   fork=$(printf '%s' "$pr" | jq -r '.headRepository.name // ""' | tr -d '\r')
   branch=$(printf '%s' "$pr" | jq -r '.headRefName // ""' | tr -d '\r')
+  oid=$(printf '%s' "$pr" | jq -r '.headRefOid // ""' | tr -d '\r')
   [ "$author" = "$user" ] || refuse close-not-yours "$repo#$num is $author's, not yours"
   [ "$state" = "OPEN" ] || refuse close-not-open "$repo#$num is $state; only an open pull request is closed"
 else
@@ -128,7 +129,7 @@ fi
 rc=0
 bash "$here/notes.sh" "$repo" add "we closed #$num: $(printf '%s' "$own" | clean_line | cut -c1-200)" || rc=1
 if [ "$fork_owner" = "$user" ] && [ -n "$fork" ] && [ -n "$branch" ]; then
-  if ! drop_fork_branch "$user" "$fork" "$branch" "CLOSED $repo#$num" 0; then
+  if ! drop_fork_branch "$user" "$fork" "$branch" "CLOSED $repo#$num" 0 "$oid"; then
     echo "housebroken hygiene deletes it on its next run" >&2
     rc=1
   fi
