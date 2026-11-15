@@ -107,9 +107,6 @@ git rev-parse --git-dir >/dev/null 2>&1 || { refused branch-check-not-a-clone "$
 # Git prints paths from the top and reads pathspecs from here, so anywhere else
 # every scan below would match nothing.
 cd "$(git rev-parse --show-toplevel)" || { refused branch-check-top-unreachable "cannot reach the top of $clone" >&2; exit 2; }
-# This run is the answer now: a stamp an earlier run left for this head does
-# not outlive a refusal.
-now_head=$(git rev-parse --verify -q HEAD 2>/dev/null) && rm -f "$home/branch-checks/$now_head"
 
 if [ -z "$base" ]; then
   for candidate in upstream/main upstream/master origin/main origin/master; do
@@ -118,6 +115,15 @@ if [ -z "$base" ]; then
 fi
 [ -n "$base" ] || { refused branch-check-no-base-resolved "no base ref resolved - pass --base REF" >&2; exit 2; }
 git rev-parse --verify -q "$base" >/dev/null 2>&1 || { refused branch-check-base-unresolvable "base $base does not resolve" >&2; exit 2; }
+# From here the run is the answer: a stamp an earlier run left for this head
+# does not outlive a refusal. A head that already went out, filed (its body is
+# kept under filed/) or pushed (a line in a push log), keeps its stamp:
+# verify-filed-pr.sh and push.sh read it, and nothing waits to be filed on it.
+now_head=$(git rev-parse --verify -q HEAD 2>/dev/null) || now_head=""
+if [ -n "$now_head" ] && ! compgen -G "$home/filed/*-$now_head.md" >/dev/null \
+   && ! grep -qs " $now_head " "$home"/pushes/*.log; then
+  rm -f "$home/branch-checks/$now_head"
+fi
 # What the branch changed, read from where it left the base. Two unrelated
 # histories have no merge base: that is refused below, before any scan reads
 # an unrelated tree as the branch's change.

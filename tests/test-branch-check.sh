@@ -61,6 +61,24 @@ run >/dev/null 2>&1 && { echo "FAIL $name: dirty tree exited 0"; exit 1; }
 [ ! -f "$stamp" ] || { echo "FAIL $name: a refused run left the stamp an earlier run wrote for the same head"; exit 1; }
 (cd "$repo" && $G checkout -q -- src/a.test.ts)
 fires "working tree is dirty" && { echo "FAIL $name: dirty refusal survived cleaning the tree"; exit 1; }
+# A head that already went out keeps its stamp through a refusal: verify and
+# push read it. Filed is a copy of the body kept for the head; pushed is a line
+# in a push log.
+[ -f "$stamp" ] || { echo "FAIL $name: the clean run did not write the stamp again"; exit 1; }
+mkdir -p "$HOUSEBROKEN_HOME/filed" "$HOUSEBROKEN_HOME/pushes"
+: > "$HOUSEBROKEN_HOME/filed/o-r-${stamp##*/}.md"
+printf 'export const a = 99;\n' > "$repo/src/a.test.ts"
+run >/dev/null 2>&1 && { echo "FAIL $name: dirty tree exited 0"; exit 1; }
+[ -f "$stamp" ] || { echo "FAIL $name: a refused run took the stamp of a head already filed"; exit 1; }
+rm -f "$HOUSEBROKEN_HOME/filed/o-r-${stamp##*/}.md"
+printf '1794700000 %s fast-forward\n' "${stamp##*/}" > "$HOUSEBROKEN_HOME/pushes/o-r-fix.log"
+run >/dev/null 2>&1 && { echo "FAIL $name: dirty tree exited 0"; exit 1; }
+[ -f "$stamp" ] || { echo "FAIL $name: a refused run took the stamp of a head already pushed"; exit 1; }
+rm -f "$HOUSEBROKEN_HOME/pushes/o-r-fix.log"
+(cd "$repo" && $G checkout -q -- src/a.test.ts)
+# a usage error is not a verdict on the branch, wherever it is caught
+bash "$script" "$repo" --base no/such-ref >/dev/null 2>&1; [ "$?" = 2 ] || { echo "FAIL $name: a base that does not resolve did not exit 2"; exit 1; }
+[ -f "$stamp" ] || { echo "FAIL $name: a usage error took the stamp"; exit 1; }
 
 # 2. executable bit that disagrees with the file's siblings
 (cd "$repo" && $G update-index --chmod=+x src/c.test.ts && $G commit -q -m "mode")
