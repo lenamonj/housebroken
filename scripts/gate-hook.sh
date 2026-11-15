@@ -210,7 +210,8 @@ end='([[:space:]<>]|$)'
 gh="${at}${by_path}gh(\.exe)?[[:space:]]+$repo_flag"
 pr_re="${gh}pr[[:space:]]+$repo_flag(create|new|comment|review|edit|close|merge|ready|reopen|update-branch|revert|lock|unlock)$end"
 issue_re="${gh}issue[[:space:]]+$repo_flag(create|new|comment|edit|close|reopen|delete|transfer|develop|lock|unlock|pin|unpin)$end"
-# --help anywhere among the words prints the help and writes nothing.
+# --help as a word of its own, outside quotes, prints the help and writes
+# nothing; quoted, as in a title or a body, it is text and the write stands.
 help_re='[[:space:]]--help([[:space:]]|$)'
 graphql_re="${gh}api([[:space:]]+(--paginate|--slurp|--include|-i|--silent|--verbose))*[[:space:]]+graphql$end"
 api_re="${gh}api$end"
@@ -235,12 +236,12 @@ judge() {
   # nocasematch is on, so these read GH.EXE too.
   case "$1" in *gh*)
     if [[ $1 =~ $pr_re ]]; then
-      if [[ $1 =~ $help_re ]]; then return; fi
+      if [[ " $(unquoted "$1" all)" =~ $help_re ]]; then return; fi
       why="it writes to a pull request outside the gate; open one with housebroken file, answer one with housebroken reply, withdraw one with housebroken close"
       why_id=gate-pr-write
       return
     elif [[ $1 =~ $issue_re ]]; then
-      if [[ $1 =~ $help_re ]]; then return; fi
+      if [[ " $(unquoted "$1" all)" =~ $help_re ]]; then return; fi
       why="it writes to an issue outside the gate; open one with housebroken issue, answer one with housebroken reply"
       why_id=gate-issue-write
       return
@@ -250,11 +251,11 @@ judge() {
       return
     elif [[ $1 =~ $api_re ]]; then
       # gh api reads unless it names a writing method, or sends fields without
-      # saying GET.
+      # saying GET; a GET in a field's prose says nothing.
       if [[ $1 =~ $write_method_re ]]; then
         why="gh api with a writing method changes GitHub outside the gate"
         why_id=gate-api-write-method
-      elif [[ $1 =~ $fields_re ]] && ! [[ $1 =~ $get_method_re ]]; then
+      elif [[ $1 =~ $fields_re ]] && ! [[ " $(unquoted "$1")" =~ $get_method_re ]]; then
         why="gh api with fields and no -X GET is a POST, which changes GitHub outside the gate"
         why_id=gate-api-fields-post
       fi
@@ -270,14 +271,15 @@ judge() {
 }
 
 # The command with its quotes gone: quoted text that holds a space is prose (a
-# body, a title) and is dropped, any other is the word it quotes.
-unquoted() {
-  local s="$1" out="" buf="" q="" c i
+# body, a title) and is dropped, any other is the word it quotes. With "all",
+# every quoted text is dropped, so nothing quoted is ever read as a flag.
+unquoted() { # command [all]
+  local s="$1" all="${2:-}" out="" buf="" q="" c i
   for ((i = 0; i < ${#s}; i++)); do
     c=${s:i:1}
     if [ -n "$q" ]; then
       if [ "$c" != "$q" ]; then buf+=$c; continue; fi
-      case "$buf" in *[[:space:]]*) ;; *) out+=$buf ;; esac
+      case "$buf" in *[[:space:]]*) ;; *) [ -n "$all" ] || out+=$buf ;; esac
       q=""; buf=""
     elif [ "$c" = '"' ] || [ "$c" = "'" ]; then q=$c
     else out+=$c
