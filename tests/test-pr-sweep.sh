@@ -106,11 +106,12 @@ jq -e '.tidy | length == 0' "$state" >/dev/null || fail "a moved branch stayed i
 out=$(sweep) || fail "the run after a moved branch exited non-zero"
 echo "$out" | grep -q '^KEPT' && fail "a moved branch was named twice: $out"
 # an entry written before the head was recorded carries none, and is asked about as before
-jq '.tidy = ["me/r fix-2 o/r#2"]' "$state" > "$state.new" && mv "$state.new" "$state" || fail "fixture failed"
+tidy_is() { jq --arg entry "$1" '.tidy = [$entry]' "$state" > "$state.new" && mv "$state.new" "$state"; }
+tidy_is "me/r fix-2 o/r#2" || fail "fixture failed"
 out=$(sweep) || fail "an entry with no head exited non-zero"
 echo "$out" | grep -q '^TIDY   o/r#2 ' || fail "an entry with no head was dropped: $out"
 rm -f "$tmp/tip"
-jq '.tidy = ["me/r fix-2 o/r#2 abc222"]' "$state" > "$state.new" && mv "$state.new" "$state" || fail "fixture failed"
+tidy_is "me/r fix-2 o/r#2 abc222" || fail "fixture failed"
 # a throttled answer is not a deleted branch; a 404 is
 printf 'throttled\n' > "$tmp/branch"
 out=$(sweep 2>&1) || fail "a throttled ref read exited non-zero: $out"
