@@ -20,8 +20,11 @@
 # command inside it by itself, and the command around it with the substitution
 # as one word. It still reads text, so it holds the accident, not the intent:
 # a write behind bash -c, eval, xargs, a script file, an alias, a quoted path
-# to gh or a command that is itself a substitution passes it. A command typed
-# in the PowerShell tool is read the same way, as if it were bash.
+# to gh or a command that is itself a substitution passes it, and so does one
+# inside a here-document whose delimiter is unquoted, which bash runs but this
+# hook drops as text. A command typed in the PowerShell tool is read the same
+# way, as if it were bash, so there a quoted string that ends in a backslash
+# hides the rest of its line.
 #
 # Writes to your own repositories pass when the owner is listed, one per
 # line, in $HOUSEBROKEN_HOME/own (default ~/.housebroken/own); the owner is
@@ -113,7 +116,8 @@ if ! cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/nu
 fi
 [ -n "$cmd" ] || exit 0
 
-# A here-document is text, not commands: its lines are dropped before the read.
+# A here-document is read as text: its lines are dropped before the read, a
+# substitution among them included (the header names that limit).
 # <<- may indent its terminator with tabs, and <<< opens nothing. The delimiter
 # is the whole word, quoted or not. A << that is no here-document (a shift, an
 # operator in a message) has no terminator, so the lines after it are read as

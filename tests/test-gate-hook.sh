@@ -161,6 +161,7 @@ hook 0 'echo "$(printf "%s" "(")"; echo "a"; check '"'"'gh pr create -R a/b'"'"
   hook 2 'gh api "repos/a/b/git/refs/heads/$(git branch --show-current)" -X DELETE'
   hook 2 'git push origin "$(git branch --show-current)" --force'
   hook 2 'git push origin $(git branch --show-current) --force-with-lease'
+  hook 2 'git push origin +$(git branch --show-current)'
   hook 2 'git push "$(git remote get-url origin)" --delete fix'
   hook 2 'GH_TOKEN="$(gh auth token --user other)" gh pr create -R a/b --title x'
   hook 2 'gh api `echo repos/a/b/issues` -f title=x'
@@ -195,6 +196,7 @@ hook 0 $'cat > b.md <<\'END-BODY\'\ngh pr create is refused by the hook\nEND-BOD
 hook 0 $'cat > b.md <<\'EOF\'\r\ngh pr create is refused by the hook\r\nEOF\r\nls\r\n'
 hook 0 $'cat > b.md <<\'END OF BODY\'\ngh pr create is refused by the hook\nEND OF BODY\nls'
 hook 0 $'cat > b.md <<END-BODY\ngh pr create is refused by the hook\nEND-BODY\nls'
+hook 0 $'cat <<-EOF > b.md\n\tgh pr create is refused by the hook\n\tEOF'
 
 # a quoted word is still the word: a sign, a directory or a value with a space
 hook 2 'git push origin "+fix"'
