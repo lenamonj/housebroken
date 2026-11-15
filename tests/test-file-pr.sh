@@ -115,8 +115,11 @@ printf '%s' "$out" | grep -q "requires AI use to be disclosed" && fail "a disclo
 # an unanswered template question, or a word with "assist" in it, discloses nothing
 undisclosed() { out=$(bash "$script" octocat/Hello-World --title t --body-file "$1" 2>&1)
   printf '%s' "$out" | grep -q "requires AI use to be disclosed" || fail "$2 passed the DISCLOSE gate: $out"; }
+# a disclosure passes the gate and is stopped by the next one, so a refusal
+# before the disclosure gate cannot read as a pass
 said() { out=$(bash "$script" octocat/Hello-World --title t --body-file "$1" 2>&1)
-  printf '%s' "$out" | grep -q "requires AI use to be disclosed" && fail "$2 was refused by the DISCLOSE gate: $out"; }
+  printf '%s' "$out" | grep -q "requires AI use to be disclosed" && fail "$2 was refused by the DISCLOSE gate: $out"
+  printf '%s' "$out" | grep -q "file-pr-head-not-stamped" || fail "$2 did not reach the gate after the DISCLOSE gate: $out"; }
 b="$HOUSEBROKEN_HOME/d.md"
 printf -- '- [ ] I used AI to create any part of this pull request.\n\none finding, one test\n' > "$b"
 undisclosed "$b" "an unticked box"
@@ -129,6 +132,33 @@ said "$b" "a named tool"
 printf -- '- [ ] Which AI tool was used?\n' > "$HOUSEBROKEN_HOME/policy/template-octocat-Hello-World.md"
 printf -- '- [ ] Which AI tool was used?\n\none finding, one test\n' > "$b"
 undisclosed "$b" "a template question left as it was"
+# A tool's name is not a disclosure: a cursor is a database's, a client or an
+# adapter is the code's subject, and code, a quoted line, a comment over several
+# lines and a ticked box that only says the policy was read are not the body
+# saying a tool was used. Each says nothing, and is held.
+printf 'one finding, one test\n' > "$HOUSEBROKEN_HOME/policy/template-octocat-Hello-World.md"
+nosay() { printf 'one finding, one test\n\n%s\n' "$1" > "$b"; undisclosed "$b" "$2"; }
+nosay 'The cursor is left open when the query fails.' "the word cursor"
+nosay 'The Cursor class leaks its handle, and precursor rows are dropped.' "Cursor as a class name"
+nosay 'Fixes the retry loop of the LLM client.' "an LLM client"
+nosay 'Fixes streaming in the Gemini adapter.' "a Gemini adapter"
+nosay 'The codex of error names misses one, in src/ai/client.py.' "codex and a path with ai/"
+nosay '- [x] I have read the AI policy.' "a ticked box that only read the policy"
+nosay '> was this written with AI?' "a quoted question"
+# shellcheck disable=SC2016  # the backticks are markdown, matched literally
+printf 'one finding, one test\n\n```\n# written with Claude\n```\n' > "$b"; undisclosed "$b" "a fenced block"
+# shellcheck disable=SC2016  # the backticks are markdown, matched literally
+nosay 'Renames the `used Copilot` option.' "a code span"
+printf 'one finding, one test\n\n<!--\nWritten with AI? Say so.\n-->\n' > "$b"; undisclosed "$b" "a comment over three lines"
+# What does say it passes: a tool named beside its use, and a tool named in
+# answer to the template's own AI line.
+printf 'one finding, one test\n\nThe test is AI-generated; Claude Code drafted the patch.\n' > "$b"
+said "$b" "a tool beside its use"
+printf 'one finding, one test\nAI tool used:\n' > "$HOUSEBROKEN_HOME/policy/template-octocat-Hello-World.md"
+printf 'one finding, one test\nAI tool used: Claude Code\n' > "$b"
+said "$b" "a tool named after the template's AI line"
+printf 'one finding, one test\nAI tool used:\nClaude Code\n' > "$b"
+said "$b" "a tool named under the template's AI line"
 rm -f "$HOUSEBROKEN_HOME/policy/template-octocat-Hello-World.md"
 policy "CLEAN (no policy file names AI)"
 

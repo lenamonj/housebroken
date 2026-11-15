@@ -240,19 +240,44 @@ dropped_boxes() { # template-file body-file
     END { for (i = 1; i <= boxes; i++) { k = order[i]; if (have[k] > 0) have[k]--; else print k } }' "$2"
 }
 
-# Whether a body says AI was used, in its own words: a ticked box naming it, or
-# a line that is not the project's template. An unanswered template question
-# says nothing, and "Home Assistant" names no tool.
+# Whether a body says AI was used, in its own words: a ticked box or a line that
+# names a tool beside its use ("written with Claude", "Copilot wrote",
+# "AI-generated"), or a tool named in answer to a template line that asks about
+# AI. A name alone is the code's subject as often as not: a cursor is a
+# database's, ai/ is a path, "the LLM client" and "Home Assistant" say nothing.
+# So names are matched as written, and fenced code, code spans, quoted lines and
+# HTML comments are not the body's words. An unanswered template question says
+# nothing.
 discloses() { # body-file template-file
-  local names='\bAI\b|\bLLMs?\b|Claude|Copilot|ChatGPT|Gemini|Codex|Cursor|language model'
-  grep -qiE "^[[:space:]]*[-*] \[x\].*($names)" "$1" && return 0
-  sed 's/<!--.*-->//' "$1" | awk -v T="$2" '
+  local names='AI|LLMs?|Claude|Copilot|ChatGPT|Gemini|Codex|Cursor|([Ll]arge )?[Ll]anguage [Mm]odels?'
+  local said='\b('"$names"')( Code| CLI| tools?| assistance| assistants?)?(( (has|have|had))?[ -](wrote|written|generated|drafted|assisted|authored|helped|suggested)| (was|were|is|are) used)\b|\b(use|used|using|use of|with|by|via|help of|help from|assistance of|assistance from)( an?)?( [A-Z][A-Za-z]*)? ('"$names"')\b'
+  local own
+  # shellcheck disable=SC2016  # the backticks are markdown, matched literally
+  own=$(awk '
+    /^[[:space:]]*(```|~~~)/ { f = !f; next }
+    f { next }
+    { s = $0; out = ""
+      while (s != "") {
+        if (cs) { i = index(s, "-->"); if (!i) break; s = substr(s, i + 3); cs = 0 }
+        else { i = index(s, "<!--"); if (!i) { out = out s; break }; out = out substr(s, 1, i - 1); s = substr(s, i + 4); cs = 1 }
+      }
+      if (out ~ /^[[:space:]]*>/) next
+      gsub(/`[^`]*`/, "", out)
+      print out }' "$1")
+  printf '%s\n' "$own" | grep -qE "^[[:space:]]*[-*] \[[xX]\].*($said)" && return 0
+  # Each line that is not the template is printed after A when it answers the
+  # template's AI line, where a tool's name alone is the answer, else after B.
+  printf '%s\n' "$own" | awk -v T="$2" '
     function norm(s) { gsub(/\[[xX]\]/, "[ ]", s); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+    function asks_ai(s) { return tolower(s) ~ /(^|[^a-z])ai([^a-z]|$)|artificial intelligence|generative|llm|language model/ }
     BEGIN { while ((getline l < T) > 0) { l = norm(l); if (l != "") t[l] = 1 } }
-    { l = norm($0); if (l in t || l ~ /^[-*] \[ \]/) next
+    { l = norm($0)
+      if (l in t) { answer = asks_ai(l); next }
+      if (l ~ /^[-*] \[ \]/) next
       best = ""
       for (k in t) if (index(l, k) == 1 && length(k) > length(best)) best = k
-      print substr(l, length(best) + 1) }' | grep -qiE "$names"
+      if (best != "") print (asks_ai(best) ? "A " : "B ") substr(l, length(best) + 1)
+      else print (answer ? "A " : "B ") l }' | grep -qE "^A .*\b($names)\b|^B .*($said)"
 }
 
 # Ten minutes between filings on one repository, issues and pull requests alike.
