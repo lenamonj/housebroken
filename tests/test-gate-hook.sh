@@ -316,13 +316,18 @@ hook 2 'gh pr comment 5 --body "same as -R acme/widgets" -R victim/repo'
 hook 2 'gh pr comment https://github.com/victim/repo/pull/5 -R acme/widgets --body hi'
 hook 2 'gh pr comment 5 -R acme/widgets -R victim/repo --body hi'
 hook 2 'gh api repos/acme/widgets/issues repos/victim/repo/issues -f title=x'
-# a link is the repository only as the pull request or issue the verb acts on;
-# in a body it is text, and a command that sets GH_REPO is never yours
+# a link makes the command yours only as the pull request or issue the verb
+# acts on; anywhere else it grants nothing, but a bare one that is not yours
+# still refuses, since gh takes a link wherever it stands; a command that sets
+# GH_REPO is never yours
 hook 2 'gh pr comment 5 --body https://github.com/acme/widgets/pull/9'
 hook 2 'gh pr comment 5 --body "https://github.com/acme/widgets/pull/9"'
 hook 2 'GH_REPO=victim/repo gh pr create --title x --body https://github.com/acme/w/pull/1'
 hook 2 'GH_REPO=victim/repo gh api repos/acme/widgets/issues -f title=x'
-hook 0 'gh pr comment 5 -R acme/widgets --body https://github.com/victim/repo/pull/1'
+hook 2 'gh pr comment 5 -R acme/widgets --body https://github.com/victim/repo/pull/1'
+hook 2 'gh pr comment --body hi https://github.com/victim/repo/pull/5 -R acme/widgets'
+hook 0 'gh pr comment 5 -R acme/widgets --body https://github.com/acme/widgets/pull/1'
+hook 0 'gh pr comment 5 -R acme/widgets --body "see https://github.com/victim/repo/pull/1"'
 hook 0 'gh pr comment https://github.com/acme/widgets/pull/5 --body hi'
 # the own file as an editor leaves it: no last newline, a space after the name, CRLF
 printf 'other\nacme' > "$HOUSEBROKEN_HOME/own"

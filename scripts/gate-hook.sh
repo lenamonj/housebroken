@@ -28,11 +28,12 @@
 #
 # Writes to your own repositories pass when the owner is listed, one per
 # line, in $HOUSEBROKEN_HOME/own (default ~/.housebroken/own); the owner is
-# read from that same command, from each -R/--repo, a link given as the pull
-# request or issue it acts on and each repos/OWNER/... path it names, and
-# every one of them must be listed. A link in a body is text, and a command
-# that sets GH_REPO is never yours. The owner is never read from the clone, because in a fork's clone gh writes to the
-# upstream parent while origin names you. A forced push is refused
+# read from that same command, from a -R/--repo, a link given as the pull
+# request or issue it acts on or a repos/OWNER/... path, and every repository
+# the command names, any other link included, must be listed. A link in a
+# body alone makes nothing yours, and a command that sets GH_REPO is never
+# yours. The owner is never read from the clone, because in a fork's clone gh
+# writes to the upstream parent while origin names you. A forced push is refused
 # everywhere, because a fork carries your name too: push a rework with
 # housebroken push, or run it yourself.
 #
@@ -301,11 +302,12 @@ unquoted() { # command [all]
 }
 
 # Your own repositories: the door is for other people's. Only a repository this
-# command names as its target counts: each -R or --repo, a link given as the
-# pull request or issue the verb acts on, each repos/OWNER/ path of gh api. A
-# link anywhere else, as in a body, is text. Every one named must be yours:
-# with none named, gh picks one from the clone, and in a fork's clone that is
-# the upstream parent; with two, gh takes the last, and a link outranks -R. A
+# command names as its target makes it yours: a -R or --repo, a link given as
+# the pull request or issue the verb acts on, a repos/OWNER/ path of gh api. A
+# link anywhere else, as in a body, makes nothing yours, but it is still a
+# repository named, and every one named must be yours: with none named, gh
+# picks one from the clone, and in a fork's clone that is the upstream parent;
+# with two, gh takes the last, and a link outranks -R wherever it stands. A
 # command that sets GH_REPO is never yours, since gh writes where it says. The
 # flag is read as typed, because -r is a reviewer.
 link_re="${gh}(pr|issue)[[:space:]]+${repo_flag}[a-z-]+[[:space:]]+https?://[^/[:space:]]+/([A-Za-z0-9_.-]+)/"
@@ -327,8 +329,17 @@ is_own() {
     owners="$owners${BASH_REMATCH[${#BASH_REMATCH[@]} - 1]}"$'\n'
     rest=${rest#*"${BASH_REMATCH[0]}"}
   done
+  [ -n "$owners" ] || { shopt -s nocasematch; return 1; }
+  if [ -z "$api" ]; then
+    re='[[:space:]]https?://[^/[:space:]]+/([A-Za-z0-9_.-]+)/'
+    rest=$text
+    while [[ $rest =~ $re ]]; do
+      owners="$owners${BASH_REMATCH[1]}"$'
+'
+      rest=${rest#*"${BASH_REMATCH[0]}"}
+    done
+  fi
   shopt -s nocasematch
-  [ -n "$owners" ] || return 1
   while IFS= read -r owner; do
     [ -n "$owner" ] || continue
     listed=0
