@@ -84,6 +84,8 @@ hook 2 'command -p gh pr create -R a/b --title x'
 hook 2 'exec -a x gh pr create -R a/b --title x'
 hook 2 'time -p gh pr create -R a/b --title x'
 hook 2 'git.exe push -f origin fix'
+hook 2 'GH.EXE pr create -R a/b --title x'
+hook 2 'Git push -f origin fix'
 hook 2 'C:\tools\gh.exe pr create -R a/b --title x'
 hook 2 '/c/Program\ Files/GitHub\ CLI/gh.exe pr create -R a/b --title x'
 hook 2 'C:\tools\git.exe push --force origin fix'
@@ -149,6 +151,98 @@ hook 0 'echo "n: $(ls "x" | wc -l)"; check '"'"'git push --force origin fix'"'"
 # shellcheck disable=SC2016
 hook 0 'echo "$(printf "%s" "(")"; echo "a"; check '"'"'gh pr create -R a/b'"'"
 
+# a substitution does not end the command it sits in: the words after it are
+# still that command's, what runs inside it is read too, and one left open
+# loses nothing
+# shellcheck disable=SC2016  # every command in the block is text for the hook, never run
+{
+  hook 2 'gh api "repos/a/b/issues/$(cat n)/comments" -f body=hi'
+  hook 2 'gh api repos/a/b/issues/$(cat n)/comments -f body=hi'
+  hook 2 'gh api "repos/a/b/git/refs/heads/$(git branch --show-current)" -X DELETE'
+  hook 2 'git push origin "$(git branch --show-current)" --force'
+  hook 2 'git push origin $(git branch --show-current) --force-with-lease'
+  hook 2 'git push "$(git remote get-url origin)" --delete fix'
+  hook 2 'GH_TOKEN="$(gh auth token --user other)" gh pr create -R a/b --title x'
+  hook 2 'gh api `echo repos/a/b/issues` -f title=x'
+  hook 2 'gh api graphql -F id="$(cat id)" -f query="mutation { x }"'
+  hook 2 'gh api repos/a/b/issues --paginate <(echo x) -X POST'
+  hook 2 'n=$(gh api repos/a/b/issues -f title=x --jq .number); echo "$n"'
+  hook 2 'echo "a $( (ls) '"'"'it"s'"'"' ) b"; gh pr create -R a/b --title x'
+  hook 2 'gh pr create -R a/b --title "$(cat t'
+  hook 2 'gh api repos/a/b/issues -f title="$(cat t'
+  hook 0 'gh api "repos/a/b/issues/$(cat n)/comments"'
+  hook 0 'echo "$(gh pr view 5 -R a/b --json title)" > t.json'
+  hook 0 'git push origin "$(git branch --show-current)"'
+  hook 0 'diff <(gh pr view 5 -R a/b) <(gh pr view 6 -R a/b)'
+}
+
+# a << that opens no here-document drops nothing, a delimiter is the whole
+# word, and a mutation in a here-document is still a mutation
+hook 2 $'git commit -am "Fix operator<< overload for Foo"\ngit push --force origin fix'
+hook 2 $'grep -rn "os << value" src/\ngh pr create -R a/b --title x'
+hook 2 $'n=$((1 << bits))\ngh pr create -R a/b --title x'
+hook 2 $'# x << y\ngh pr create -R a/b --title x'
+hook 2 $'cat > b.md <<\'END-BODY\'\ntext\nEND-BODY\ngh pr create -R a/b --title x'
+hook 2 $'cat > b.md <<"EOF.md"\ntext\nEOF.md\ngh pr create -R a/b --title x'
+hook 2 $'cat > b.md <<EOF\r\ntext\r\nEOF\r\ngh pr create -R a/b --title x\r\n'
+hook 2 $'gh api graphql -f query="$(cat <<\'EOF\'\nmutation { addStar(input: {}) { clientMutationId } }\nEOF\n)"'
+hook 2 $'gh api graphql -F query=@- <<\'EOF\'\nmutation { x }\nEOF'
+hook 0 $'gh api graphql -F query=@- <<\'EOF\'\nquery { viewer { login } }\nEOF'
+hook 0 $'cat > b.md <<\'END-BODY\'\ngh pr create is refused by the hook\nEND-BODY\nls'
+hook 0 $'cat > b.md <<\'EOF\'\r\ngh pr create is refused by the hook\r\nEOF\r\nls\r\n'
+hook 0 $'cat > b.md <<\'END OF BODY\'\ngh pr create is refused by the hook\nEND OF BODY\nls'
+
+# a quoted word is still the word: a sign, a directory or a value with a space
+hook 2 'git push origin "+fix"'
+hook 2 "git push origin ':fix'"
+hook 2 'git push "--force" origin fix'
+hook 2 'git -C "/c/my repo" push --force origin fix'
+hook 2 "git -C '/c/my repo' push -f origin fix"
+hook 2 'git --git-dir="/c/my repo/.git" push -f origin fix'
+hook 2 'GIT_SSH_COMMAND="ssh -i ~/.ssh/work" git push --force origin fix'
+hook 2 'GH_EDITOR="code --wait" gh pr create -R a/b --title x'
+hook 0 'GIT_SSH_COMMAND="ssh -i ~/.ssh/work" git push origin fix'
+hook 0 'git -C "/c/my repo" push origin fix'
+
+# the other names of a write, and a help page is not one
+hook 2 'gh pr new -R a/b --title x --body y'
+hook 2 'gh issue new -R a/b --title x --body y'
+hook 2 'gh issue develop 5 -R a/b --name fix'
+hook 2 'gh pr create>/dev/null -R a/b --title x'
+hook 2 'gh pr create -R a/b --title "--help"'
+hook 0 'gh pr create --help'
+hook 0 'gh issue create -R a/b --help'
+hook 2 "gh api --paginate graphql -f query='mutation { x }'"
+hook 0 "gh api --paginate graphql -f query='query { viewer { login } }'"
+
+# a wrapper by its path, with a variable for its time or a name for its user
+hook 2 '/usr/bin/env gh pr create -R a/b --title x'
+hook 2 '/usr/bin/timeout 60 gh pr create -R a/b --title x'
+hook 2 'gtimeout 60 gh pr create -R a/b --title x'
+# shellcheck disable=SC2016
+hook 2 'timeout $T gh pr create -R a/b --title x'
+# shellcheck disable=SC2016
+hook 2 'timeout "${T}s" gh pr create -R a/b --title x'
+hook 2 'sudo -u build-bot gh pr create -R a/b --title x'
+hook 0 'sudo -u build-bot gh pr view 5 -R a/b'
+hook 0 '/usr/bin/env gh pr view 5 -R a/b'
+
+# every way gh api takes a field, and every way a push deletes
+hook 2 'gh api repos/a/b/issues/1/comments -F body=x'
+hook 2 'gh api repos/a/b/issues/1/comments --field body=x'
+hook 2 'gh api repos/a/b/issues/1/comments --raw-field body=x'
+hook 2 'gh api repos/a/b/issues --input b.json'
+hook 2 'gh api repos/a/b/issues/1/comments -if body=x'
+hook 2 'git push -d origin fix'
+hook 2 'git push --mirror origin'
+hook 2 'git push --force origin gh-pages'
+hook 0 'gh api --method GET search/issues -f q=x'
+hook 0 'gh api repos/a/b/pulls -q .[0].title'
+# a comment ends at its line, whatever it holds
+hook 2 $'# don\'t forget the title\ngh pr create -R a/b --title x'
+# a line that goes on inside double quotes is still inside them
+hook 0 $'git commit -m "one \\\ngh pr create is refused by the hook"'
+
 # text that only mentions a write is not one, and a push is read for its own flags
 hook 0 "grep -n -E 'unset X|gh pr create|gh issue create' tests/x.sh"
 hook 0 "git commit -m 'file: refuse (gh pr create without a body)'"
@@ -195,6 +289,28 @@ hook 2 'git push --force --repo=acme/widgets origin fix'
 git init -q "$tmp/own-clone" && git -C "$tmp/own-clone" remote add origin https://github.com/acme/widgets.git
 hook 2 'gh pr create --title x --body y'
 hook 2 'git push --force origin fix'
+# a quoted owner is the owner; -r is a reviewer, not a repository; a body or a
+# link that names another repository is not yours; every repository named counts
+hook 0 'gh pr create -R "acme/widgets" --title x --body y'
+hook 0 'gh api "repos/acme/widgets/issues/1/comments" -f body=x'
+hook 0 "gh api 'repos/acme/widgets/issues' -f title=x"
+hook 0 'gh pr comment 5 -R acme/widgets --body "see -R other/thing for the rest"'
+hook 0 'gh pr create -R Acme/widgets --title x --body y'
+hook 2 'gh pr create --title x --body y -r acme/core'
+hook 2 'gh pr create -r acme/core -R victim/repo --title x --body y'
+hook 2 'gh pr comment 5 --body "same as -R acme/widgets" -R victim/repo'
+hook 2 'gh pr comment https://github.com/victim/repo/pull/5 -R acme/widgets --body hi'
+hook 2 'gh pr comment 5 -R acme/widgets -R victim/repo --body hi'
+hook 2 'gh api repos/acme/widgets/issues repos/victim/repo/issues -f title=x'
+# the own file as an editor leaves it: no last newline, a space after the name, CRLF
+printf 'other\nacme' > "$HOUSEBROKEN_HOME/own"
+hook 0 'gh pr create -R acme/widgets --title x --body y'
+printf 'acme \n' > "$HOUSEBROKEN_HOME/own"
+hook 0 'gh pr create -R acme/widgets --title x --body y'
+printf 'acme\r\nother\r\n' > "$HOUSEBROKEN_HOME/own"
+hook 0 'gh pr create -R acme/widgets --title x --body y'
+hook 2 'gh pr create -R acm/widgets --title x --body y'
+printf 'acme\n' > "$HOUSEBROKEN_HOME/own"
 
 # without jq a write is refused unparsed, and anything else runs
 mkdir -p "$tmp/nojq"
@@ -202,10 +318,32 @@ printf '{"tool_input": {"command": "gh pr create"}}' | PATH="$tmp/nojq" "$BASH" 
 [ "$?" = 2 ] || fail "a write with jq missing was not refused"
 grep -q "jq is not on PATH" "$tmp/err" || fail "a missing jq was not named"
 printf '{"tool_input": {"command": "ls -la"}}' | PATH="$tmp/nojq" "$BASH" "$script" 2>/dev/null || fail "a read with jq missing was refused"
+for c in 'gh pr -R a/b create --title x' 'gh issue -R a/b new --title x' 'gh api -X POST repos/a/b/issues/1/comments' 'git push --force origin fix'; do
+  printf '{"tool_input": {"command": "%s"}}' "$c" | PATH="$tmp/nojq" "$BASH" "$script" 2>/dev/null
+  [ "$?" = 2 ] || fail "with jq missing, $c was not refused"
+done
+for c in 'gh pr view 5 --json comments' 'gh pr list --state merged' 'gh pr diff 5 | grep create'; do
+  printf '{"tool_input": {"command": "%s"}}' "$c" | PATH="$tmp/nojq" "$BASH" "$script" 2>/dev/null || fail "with jq missing, the read $c was refused"
+done
+# a jq that fails, or a call it cannot read, is the same as no jq: never open
+mkdir -p "$tmp/badjq"
+printf '#!/bin/sh\necho "jq: no version is set" >&2\nexit 126\n' > "$tmp/badjq/jq"
+chmod +x "$tmp/badjq/jq"
+printf '{"tool_input": {"command": "git push --force origin fix"}}' | PATH="$tmp/badjq:$PATH" bash "$script" 2>"$tmp/err"
+[ "$?" = 2 ] || fail "a write behind a jq that fails was not refused"
+grep -q ' \[gate-jq-failed\]$' "$tmp/err" || fail "a jq that fails is not named: $(cat "$tmp/err")"
+printf '{"tool_input": {"command": "ls -la"}}' | PATH="$tmp/badjq:$PATH" bash "$script" 2>/dev/null || fail "a read behind a jq that fails was refused"
+printf '{"tool_input": {"command": "gh pr create -R a/b --title x' | bash "$script" 2>/dev/null
+[ "$?" = 2 ] || fail "a write in a call jq cannot read was not refused"
 
 HOME="$tmp" bash "$script" --install > "$tmp/out" || fail "--install failed"
 [ -f "$tmp/.claude/hooks/housebroken-gate.sh" ] || fail "--install wrote no hook"
-grep -q '"matcher": "Bash"' "$tmp/out" || fail "--install printed no settings entry"
+# the entry covers both shells Claude Code runs commands in, and a hook that
+# times out or cannot start blocks the command
+grep -q '"matcher": "Bash|PowerShell"' "$tmp/out" || fail "--install printed no settings entry for both shells"
+[ "$(sed -n '/"matcher"/p' "$tmp/out" | jq -r '.hooks[0].onFailure')" = block ] || fail "the printed entry lets a failed hook through"
+printf '%s' 'gh pr create -R a/b --title x' | jq -Rs '{tool_name: "PowerShell", tool_input: {command: .}}' | bash "$script" 2>/dev/null
+[ "$?" = 2 ] || fail "a write through the PowerShell tool was not refused"
 
 # the printed entry runs from a home with a space, and refuses
 spaced="$tmp/home space/First Last"
