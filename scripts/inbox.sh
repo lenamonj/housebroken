@@ -206,6 +206,15 @@ if [ "$unread" -gt 0 ]; then
   echo "$unread thread(s) UNREAD, $human human item(s) since $since. Run it again before you ack: the cursor cannot pass what was not read."
   exit 1
 fi
+# A read that began after the cursor left the time between unread, so it arms
+# no ack; a pending read from an earlier full run stays as it was. The times
+# are ISO 8601 in UTC, so they compare as text.
+cursor=""
+[ ! -s "$cursor_file" ] || cursor="$(head -1 "$cursor_file" | tr -d '\r')"
+if [ -n "$cursor" ] && [[ "$since" > "$cursor" ]]; then
+  echo "$human human item(s) since $since. This read began after the cursor at $cursor, so it leaves nothing to ack; run inbox without --since to read from the cursor."
+  exit 0
+fi
 printf '%s\n' "$now" > "$pending_file"
 echo "$human human item(s) since $since. Act on each, then: housebroken inbox --ack"
 exit 0

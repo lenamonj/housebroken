@@ -172,6 +172,15 @@ sleep 1
 run --ack | grep -q "inbox cursor is now $read_at" || fail "--ack did not store the read's own time"
 [ "$(head -1 "$tmp/home/inbox-cursor")" = "$read_at" ] || fail "the cursor is not the time of the read"
 run --ack >/dev/null 2>&1 && fail "a second --ack with no read in between passed"
+# a --since read that began after the cursor leaves the time between unread,
+# so it arms no ack; one that began at or before the cursor does
+out=$(run --since 2099-01-01T00:00:00Z --no-ci) || fail "a --since read after the cursor failed: $out"
+echo "$out" | grep -q "inbox --ack" && fail "a --since read after the cursor asked for an ack: $out"
+echo "$out" | grep -q "began after the cursor" || fail "a --since read after the cursor did not say why there is no ack: $out"
+run --ack >/dev/null 2>&1 && fail "--ack after a --since read that began after the cursor passed"
+[ "$(head -1 "$tmp/home/inbox-cursor")" = "$read_at" ] || fail "the cursor moved after a --since read"
+out=$(run --since "$read_at" --no-ci) || fail "a --since read at the cursor failed: $out"
+run --ack >/dev/null || fail "--ack after a --since read at the cursor was refused"
 
 # the census reads anything but a pass as not green, and its names are stripped
 jq -n --arg n "$(printf 'build %s[2J' "$esc")" '{mergeable: "MERGEABLE", reviewDecision: "", statusCheckRollup: [{name: $n, conclusion: "TIMED_OUT", status: "COMPLETED"}]}' > "$tmp/pr.json"
