@@ -28,9 +28,9 @@
 #
 # Assumes: gh is installed and authenticated with read access to the repo. The
 # intended head is the sha passed in, else one branch-check stamped: a head
-# neither names was not meant by anyone. Exits non-zero when the head does not
-# match, when a read fails, when checks are not green, or when they do not settle
-# before the watch gives up.
+# neither names was not meant by anyone. Exits non-zero when the pull request
+# was closed unmerged, when the head does not match, when a read fails, when
+# checks are not green, or when they do not settle before the watch gives up.
 # Exits 3, and says NOT SETTLED, when nothing is wrong but CI has not run: a
 # workflow on the head waits for a maintainer's approval, no check has started,
 # or the runs could not be read.
@@ -87,6 +87,12 @@ view() {
 state=$(view state .state) || exit 1
 head=$(view headRefOid .headRefOid) || exit 1
 note "state" "$state"
+# A pull request closed unmerged did not land, however green its head: the
+# report prints, with the comment that closed it.
+case "$state" in
+  OPEN|MERGED) ;;
+  *) note "NOT OPEN" "the pull request is $state; read the comments below for why"; fail=1 ;;
+esac
 note "head" "${head:0:12}"
 if [ -n "$want" ]; then
   case "$head" in

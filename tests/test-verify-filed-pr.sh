@@ -115,6 +115,20 @@ for running in '{"name":"t","conclusion":"","status":"IN_PROGRESS"}' '{"context"
 done
 rollup '[{"name":"t","conclusion":"SUCCESS"},{"name":"u","conclusion":"NEUTRAL"},{"name":"v","conclusion":"SKIPPED"}]'
 out=$(vrun) || fail "green, neutral and skipped were refused: $out"
+
+# a pull request closed unmerged is not OK, however green: the report prints with
+# the comment that closed it; a merged one is
+state_is() { jq --arg s "$1" --argjson c "${2:-[]}" '.state = $s | .comments = $c' "$stub/pr.json" > "$stub/pr.new" && mv "$stub/pr.new" "$stub/pr.json"; }
+state_is CLOSED '[{"author":{"login":"mirror-bot"},"body":"This repository is a read-only mirror."}]'
+out=$(vrun); rc=$?
+[ "$rc" -eq 1 ] || fail "a closed pull request exited $rc: $out"
+echo "$out" | grep -q "^NOT OPEN  *the pull request is CLOSED" || fail "a closed pull request was not named: $out"
+echo "$out" | grep -q '^   | mirror-bot: This repository is a read-only mirror' || fail "the comment that closed it was not shown: $out"
+state_is MERGED
+out=$(vrun) || fail "a merged pull request was refused: $out"
+state_is OPEN
+rollup '[{"name":"t","conclusion":"SUCCESS"},{"name":"u","conclusion":"NEUTRAL"},{"name":"v","conclusion":"SKIPPED"}]'
+out=$(vrun) || fail "green, neutral and skipped were refused: $out"
 echo "$out" | grep -q "; checks NEUTRAL=1, SKIPPED=1, SUCCESS=1$" || fail "the one line does not list each state of the checks: $out"
 
 # the watch ends at the first red check, and --settle, wherever it stands, waits
