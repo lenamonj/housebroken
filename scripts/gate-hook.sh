@@ -115,8 +115,8 @@ fi
 # A here-document is text, not commands: its lines are dropped before the read.
 # <<- may indent its terminator with tabs, and <<< opens nothing. The delimiter
 # is the whole word, quoted or not. A << that is no here-document (a shift, an
-# operator in a message) has no terminator, so what was dropped after it is
-# given back and read.
+# operator in a message) has no terminator, so the lines after it are read as
+# they stand, and a here-document among them is still dropped.
 text=$(printf '%s\n' "$cmd" | awk -v q="'" '
   function delimiter(rest,   c, w) {
     c = substr(rest, 1, 1)
@@ -125,18 +125,21 @@ text=$(printf '%s\n' "$cmd" | awk -v q="'" '
     w = substr(rest, 1, RLENGTH); gsub(/\\/, "", w); gsub(/"/, "", w); gsub(q, "", w)
     return w
   }
-  { sub(/\r$/, "") }
-  stop != "" {
-    l = $0; if (strip) sub(/^\t+/, "", l)
-    if (l == stop) { stop = ""; kept = "" } else kept = kept $0 "\n"
-    next
-  }
-  match($0, /(^|[^<])<<-?[ \t]*/) {
-    strip = (substr($0, RSTART, RLENGTH) ~ /<<-/)
-    stop = delimiter(substr($0, RSTART + RLENGTH))
-  }
-  { print }
-  END { if (stop != "") printf "%s", kept }')
+  { sub(/\r$/, ""); line[++n] = $0 }
+  END {
+    for (i = 1; i <= n; i++) {
+      print line[i]
+      if (match(line[i], /(^|[^<])<<-?[ \t]*/) == 0) continue
+      strip = (substr(line[i], RSTART, RLENGTH) ~ /<<-/)
+      stop = delimiter(substr(line[i], RSTART + RLENGTH))
+      if (stop == "") continue
+      for (j = i + 1; j <= n; j++) {
+        l = line[j]; if (strip) sub(/^\t+/, "", l)
+        if (l == stop) break
+      }
+      if (j <= n) i = j
+    }
+  }')
 
 # One command per line: split at the separators a shell would run them at, and
 # never inside quotes, so text that only mentions a write is not one. A $(...),

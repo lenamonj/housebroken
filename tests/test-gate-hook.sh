@@ -182,6 +182,9 @@ hook 2 $'git commit -am "Fix operator<< overload for Foo"\ngit push --force orig
 hook 2 $'grep -rn "os << value" src/\ngh pr create -R a/b --title x'
 hook 2 $'n=$((1 << bits))\ngh pr create -R a/b --title x'
 hook 2 $'# x << y\ngh pr create -R a/b --title x'
+# and a here-document after it is still dropped, so its prose opens no quote
+hook 2 $'git commit -m "Support << in templates"\ncat > b.md <<\'EOF\'\nIt\'s fixed\nEOF\ngh pr create -R a/b --title x --body-file b.md'
+hook 0 $'git commit -m "Support << in templates"\ncat > b.md <<\'EOF\'\ngh pr create is refused by the hook\nEOF\nls'
 hook 2 $'cat > b.md <<\'END-BODY\'\ntext\nEND-BODY\ngh pr create -R a/b --title x'
 hook 2 $'cat > b.md <<"EOF.md"\ntext\nEOF.md\ngh pr create -R a/b --title x'
 hook 2 $'cat > b.md <<EOF\r\ntext\r\nEOF\r\ngh pr create -R a/b --title x\r\n'
