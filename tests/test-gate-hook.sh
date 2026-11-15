@@ -45,6 +45,16 @@ hook 2 'git push origin +fix'
 hook 2 'git push origin :fix'
 hook 2 'git push --delete origin fix'
 hook 2 'git -C clone push --force-with-lease=fix:abc origin fix'
+# git's own options before the verb do not hide the push, and --prune deletes
+hook 2 'git --no-pager push -f origin fix'
+hook 2 'git -c push.default=current push --force origin fix'
+hook 2 'git --git-dir=/x/.git push -f origin fix'
+hook 2 'git --git-dir /x/.git --work-tree /x push -f origin fix'
+hook 2 'git -C clone --no-pager push -f origin fix'
+hook 2 'git push --prune origin'
+hook 0 'git --no-pager push origin fix'
+hook 0 'git --no-pager log -f'
+hook 0 'git -c core.pager=cat diff --force'
 
 # a wrapper that runs the command, gh by a path, and gh.exe are the same write
 hook 2 'timeout 60 gh pr create -R a/b --title x'
@@ -84,11 +94,17 @@ hook 0 'time -p gh pr view 5 -R a/b'
 hook 0 'winpty gh pr checks 5 -R a/b'
 
 # every verb the hook names, on both nouns, and every writing method
-for verb in create comment review edit close merge ready reopen update-branch; do
+for verb in create comment review edit close merge ready reopen update-branch lock unlock revert; do
   hook 2 "gh pr $verb 5 -R a/b"
 done
-for verb in create comment edit close reopen; do
+for verb in create comment edit close reopen delete transfer lock unlock pin unpin; do
   hook 2 "gh issue $verb 5 -R a/b"
+done
+for verb in view list status checks diff checkout; do
+  hook 0 "gh pr $verb 5 -R a/b"
+done
+for verb in view list status; do
+  hook 0 "gh issue $verb 5 -R a/b"
 done
 for method in POST PATCH PUT DELETE; do
   hook 2 "gh api -X $method repos/a/b/x"
@@ -242,7 +258,7 @@ printf '{"tool_input": {"command": "gh pr create"}}' | PATH="$tmp/tools" "$BASH"
 grep -q '^housebroken: refused: jq is not on PATH.* \[gate-jq-missing\]$' "$tmp/err" || fail "the missing jq is not named: $(cat "$tmp/err")"
 [ "$(tail -n 1 "$log" | cut -f2,3)" = "gate-jq-missing$tab-" ] || fail "the log's last line is not gate-jq-missing: $(tail -n 1 "$log")"
 # Git for Windows ships no jq, and Windows is where gh.exe and git.exe are typed
-for c in 'gh.exe pr create' 'git.exe push -f origin x' 'gh.exe api repos/a/b/issues -f title=x'; do
+for c in 'gh.exe pr create' 'git.exe push -f origin x' 'gh.exe api repos/a/b/issues -f title=x' 'gh pr lock 5' 'gh issue delete 5' 'gh issue transfer 5 a/c'; do
   printf '{"tool_input": {"command": "%s"}}' "$c" | PATH="$tmp/tools" "$BASH" "$script" 2>/dev/null
   [ "$?" = 2 ] || fail "with jq missing, $c was not refused"
 done

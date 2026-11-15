@@ -5,8 +5,9 @@
 # The skill says never run the pull request creation command directly, and
 # a rule an agent must remember is followed when remembered. This hook reads
 # each Bash command before it runs and refuses one that writes to GitHub on
-# its own: opening, commenting on, reviewing, editing, closing, merging or
-# updating a pull request or an issue, a write through gh api (a writing
+# its own: opening, commenting on, reviewing, editing, closing, merging,
+# reverting, locking or updating a pull request, the same for an issue with
+# deleting, transferring and pinning, a write through gh api (a writing
 # method, fields without -X GET, or a GraphQL mutation), and a forced git
 # push or a branch delete. The same action through its gate (housebroken
 # file, issue, reply, close, push or hygiene) passes, because the gate runs gh
@@ -84,7 +85,7 @@ IFS= read -r -d '' input || true
 # anywhere is refused and everything else runs: degraded, never open. Bash
 # alone does this, so a missing tool cannot open it.
 if ! command -v jq >/dev/null 2>&1; then
-  write_re='gh(\.exe)?[[:space:]]+(pr|issue)[[:space:]]+(create|comment|review|edit|close|merge|ready|reopen|update-branch)|gh(\.exe)?[[:space:]]+api|git(\.exe)?[[:space:]].*push'
+  write_re='gh(\.exe)?[[:space:]]+(pr|issue)[[:space:]]+(create|comment|review|edit|close|merge|ready|reopen|update-branch|revert|delete|transfer|lock|unlock|pin|unpin)|gh(\.exe)?[[:space:]]+api|git(\.exe)?[[:space:]].*push'
   if [[ $input =~ $write_re ]]; then
     why_id=gate-jq-missing
     echo "housebroken: refused: jq is not on PATH, so this command could not be checked; install jq. [$why_id]" >&2
@@ -157,28 +158,31 @@ shopt -s nocasematch
 # A command counts where it would run: past keywords, a VAR=value prefix, a
 # wrapper that runs it (time, command, exec, timeout 60, nohup, env, sudo,
 # doas, nice, ionice, stdbuf, setsid, winpty, with their options and a
-# duration), and past the -R of gh and the -C and -c of git. gh and git are
-# themselves by any unquoted path, a space in it escaped or not there, and as
-# gh.exe; a path after an = is a value, not a command. Text after it is its
-# arguments.
+# duration), and past the -R of gh and git's own options before its verb. gh
+# and git are themselves by any unquoted path, a space in it escaped or not
+# there, and as gh.exe; a path after an = is a value, not a command. Text
+# after it is its arguments.
 at='^[[:space:]]*((then|do|else|elif|if|while|until|!)[[:space:]]+|(time|command|exec|sudo|doas|nohup|env|nice|ionice|timeout|stdbuf|setsid|winpty)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-=[:space:]]+)?)*[[:space:]]+|[0-9]+(\.[0-9]+)?[smhd]?[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*'
 repo_flag='((-R|--repo)([[:space:]]+|=)[^[:space:]]+[[:space:]]+)*'
 end='([[:space:]]|$)'
 # shellcheck disable=SC1003  # a slash or a backslash, not an escaped quote
 by_path='(([^[:space:]\\=]|\\.)*[/\\])?'
 gh="${at}${by_path}gh(\.exe)?[[:space:]]+$repo_flag"
-pr_re="${gh}pr[[:space:]]+$repo_flag(create|comment|review|edit|close|merge|ready|reopen|update-branch)$end"
-issue_re="${gh}issue[[:space:]]+$repo_flag(create|comment|edit|close|reopen)$end"
+pr_re="${gh}pr[[:space:]]+$repo_flag(create|comment|review|edit|close|merge|ready|reopen|update-branch|revert|lock|unlock)$end"
+issue_re="${gh}issue[[:space:]]+$repo_flag(create|comment|edit|close|reopen|delete|transfer|lock|unlock|pin|unpin)$end"
 graphql_re="${gh}api[[:space:]]+graphql$end"
 api_re="${gh}api$end"
-push_re="${at}${by_path}git(\.exe)?([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push$end"
+# Git's options before the verb: -C, -c, --git-dir, --work-tree and --namespace
+# may take their value as the next word; every other one is a single word.
+git_opts='([[:space:]]+(-[Cc]|--git-dir|--work-tree|--namespace)[[:space:]]+[^[:space:]]+|[[:space:]]+-[^[:space:]]+)*'
+push_re="${at}${by_path}git(\.exe)?${git_opts}[[:space:]]+push$end"
 quote="[\"']?"
 mutation_re="(^|[^a-z])mutation([^a-z]|$)"
 write_method_re="(-X|--method)[[:space:]=]*${quote}(POST|PATCH|PUT|DELETE)$quote$end"
 get_method_re="(-X|--method)[[:space:]=]*${quote}GET$quote$end"
 # -f and -F take their value glued too, as in -fbody=x.
 fields_re='[[:space:]](-f|--field|--raw-field|--input)([[:space:]=]|$)|[[:space:]]-f[^[:space:]-]'
-force_re='[[:space:]](--force(-with-lease)?|--delete|--mirror|-[a-zA-Z]*[fd][a-zA-Z]*)([[:space:]=]|$)|[[:space:]][+:][^[:space:]]'
+force_re='[[:space:]](--force(-with-lease)?|--delete|--mirror|--prune|-[a-zA-Z]*[fd][a-zA-Z]*)([[:space:]=]|$)|[[:space:]][+:][^[:space:]]'
 
 why=""; why_id=""; push=""
 judge() {
