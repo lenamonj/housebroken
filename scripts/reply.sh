@@ -20,9 +20,10 @@
 # check` for this text, which the skill requires for a reply that concedes,
 # disagrees or rides on a code change.
 #
-# Whom it answers is read before it posts: the newest voice on the thread
-# that is not ours and not a bot (the comment named by --in-reply-to, for an
-# inline answer), with the role GitHub records for them on the repository.
+# Whom it answers is read before it posts: the newest voice on the thread,
+# its opening post included, that is not ours and not a bot (the comment
+# named by --in-reply-to, for an inline answer), with the role GitHub records
+# for them on the repository.
 # The skill answers maintainers. A voice with no role (NONE, CONTRIBUTOR,
 # FIRST_TIME_CONTRIBUTOR) is refused unless --outsider carries the user's
 # word to answer them, and a thread that could not be read is refused, not
@@ -114,8 +115,10 @@ if [ -n "$thread" ]; then
   fi
 else
   ok=1
-  # gh's own status, not a pipe's: a failed read is not an issue.
-  kind=$(gh api "repos/$repo/issues/$num" --jq '.pull_request.url // ""' 2>/dev/null) || ok=0
+  # The opening post says whether this is a pull request, and its author is a
+  # voice too. gh's own status, not a pipe's: a failed read is not an issue.
+  gh api "repos/$repo/issues/$num" > "$work/op" 2>/dev/null || ok=0
+  kind=$(jq -r '.pull_request.url // ""' "$work/op" 2>/dev/null) || ok=0
   kind=${kind%$'\r'}
   read_all "repos/$repo/issues/$num/comments?per_page=100" "$work/ic" || ok=0
   if [ "$ok" -eq 1 ] && [ -n "$kind" ]; then
@@ -126,8 +129,9 @@ else
   fi
   if [ "$ok" -eq 1 ]; then
     # Newest first, ours and GitHub's bots left out; a bot by name is skipped below.
-    voices=$(jq -r -n --slurpfile ic "$work/ic" --slurpfile rv "$work/rv" --slurpfile rc "$work/rc" --arg me "$user" '
-      [ ($ic[0][] | {t: .created_at, who: .user.login, type: .user.type, r: .author_association}),
+    voices=$(jq -r -n --slurpfile op "$work/op" --slurpfile ic "$work/ic" --slurpfile rv "$work/rv" --slurpfile rc "$work/rc" --arg me "$user" '
+      [ ($op[0] | {t: .created_at, who: .user.login, type: .user.type, r: .author_association}),
+        ($ic[0][] | {t: .created_at, who: .user.login, type: .user.type, r: .author_association}),
         ($rv[0][] | {t: .submitted_at, who: .user.login, type: .user.type, r: .author_association}),
         ($rc[0][] | {t: .created_at, who: .user.login, type: .user.type, r: .author_association}) ]
       | map(select(.who != null and .who != $me and (.type // "") != "Bot")) | sort_by(.t) | reverse

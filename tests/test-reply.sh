@@ -18,7 +18,11 @@ mkdir -p "$tmp/thread" "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/bin/bash
 case "$*" in
-  "api repos/octocat/Hello-World/issues/1 --jq .pull_request"*) [ -f "$THREAD_DIR/kind.fail" ] && exit 1; cat "$THREAD_DIR/kind" ;;
+  "api repos/octocat/Hello-World/issues/1"|"api repos/octocat/Hello-World/issues/1 --jq "*)
+    # the opening post, a pull request's when kind holds its url, through the caller's --jq
+    [ -f "$THREAD_DIR/kind.fail" ] && exit 1
+    jq -c --arg k "$(cat "$THREAD_DIR/kind")" '. + (if $k == "" then {} else {pull_request: {url: $k}} end)' "$THREAD_DIR/opener.json" |
+      if [ "${3:-}" = --jq ]; then jq -r "$4"; else cat; fi ;;
   "api --paginate repos/octocat/Hello-World/issues/1/comments"*) [ -f "$THREAD_DIR/ic.fail" ] && exit 1; cat "$THREAD_DIR/ic.json" ;;
   "api --paginate repos/octocat/Hello-World/pulls/1/reviews"*) cat "$THREAD_DIR/rv.json" ;;
   "api --paginate repos/octocat/Hello-World/pulls/1/comments"*) cat "$THREAD_DIR/rc.json" ;;
@@ -32,6 +36,7 @@ voice() { # login association [when]
   jq -n --arg l "$1" --arg r "$2" --arg t "${3:-2026-11-01T10:10:00Z}" '{created_at: $t, user: {login: $l, type: "User"}, author_association: $r, body: "x"}'
 }
 printf '' > "$tmp/thread/kind"
+voice me OWNER 2026-11-01T09:00:00Z > "$tmp/thread/opener.json"
 voice maint MEMBER | jq -s . > "$tmp/thread/ic.json"
 echo '[]' > "$tmp/thread/rv.json"; echo '[]' > "$tmp/thread/rc.json"
 jq -n '{user: {login: "maint"}, author_association: "MEMBER"}' > "$tmp/thread/one.json"
@@ -120,9 +125,19 @@ reply 2 "The parser checks its read on main."
 echo '[]' > "$tmp/thread/rc.json"
 reply 0 "The parser checks its read on main."
 printf '' > "$tmp/thread/kind"
-# an empty thread answers nobody in particular
+# an empty thread we opened answers nobody in particular
 echo '[]' > "$tmp/thread/ic.json"
 reply 0 "The parser checks its read on main."
+# the opener is a voice: an outsider's thread with no other comment, or only ours, answers them
+voice stranger NONE 2026-11-01T09:00:00Z > "$tmp/thread/opener.json"
+reply 2 "The parser checks its read on main."
+grep -q "stranger (NONE) has no role in octocat/Hello-World" "$tmp/out" || fail "an outsider's uncommented thread was not refused for that: $(cat "$tmp/out")"
+voice me OWNER | jq -s . > "$tmp/thread/ic.json"
+reply 2 "The parser checks its read on main."
+voice maint MEMBER | jq -s . > "$tmp/thread/ic.json"
+reply 0 "The parser checks its read on main."
+voice me OWNER 2026-11-01T09:00:00Z > "$tmp/thread/opener.json"
+echo '[]' > "$tmp/thread/ic.json"
 # a read that failed is not an empty thread
 touch "$tmp/thread/ic.fail"
 reply 2 "The parser checks its read on main."
