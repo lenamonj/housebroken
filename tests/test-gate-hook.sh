@@ -46,6 +46,26 @@ hook 2 'git push origin :fix'
 hook 2 'git push --delete origin fix'
 hook 2 'git -C clone push --force-with-lease=fix:abc origin fix'
 
+# a wrapper that runs the command, gh by a path, and gh.exe are the same write
+hook 2 'timeout 60 gh pr create -R a/b --title x'
+hook 2 'timeout -k 5 60s gh pr comment 5 -R a/b --body hi'
+hook 2 'nohup gh pr comment 5 -R a/b --body hi'
+hook 2 'env GH_TOKEN=x gh pr create -R a/b --title x'
+hook 2 'env -u GH_HOST gh issue create -R a/b --title t'
+hook 2 'sudo -E gh pr merge 5 -R a/b'
+hook 2 'nice -n 5 timeout 30 gh pr close 5 -R a/b'
+hook 2 'gh.exe pr create -R a/b --title x'
+hook 2 '/usr/bin/gh pr create -R a/b --title x'
+hook 2 'C:/tools/gh.exe api -X POST repos/a/b/issues/1/comments'
+hook 2 'timeout 60 git push --force origin fix'
+hook 2 '/usr/bin/git push -f origin fix'
+hook 0 'timeout 60 gh pr view 5 -R a/b'
+hook 0 'env GH_TOKEN=x gh pr checks 5 -R a/b'
+hook 0 'sudo apt-get install gh'
+hook 0 'timeout 60 git push origin fix'
+hook 0 'echo timeout 60 gh pr create'
+hook 0 'ls /usr/bin/gh pr create'
+
 # every verb the hook names, on both nouns, and every writing method
 for verb in create comment review edit close merge ready reopen update-branch; do
   hook 2 "gh pr $verb 5 -R a/b"

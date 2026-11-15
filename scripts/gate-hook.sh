@@ -16,8 +16,8 @@
 #
 # Each command in a line is judged by itself, so a read beside a write does
 # not excuse it, and quoted text is not a command. It still reads text, so it
-# holds the accident, not the intent: a write behind bash -c, eval, xargs,
-# env, a script file, a full path to gh or an alias passes it.
+# holds the accident, not the intent: a write behind bash -c, eval, xargs, a
+# script file, an alias or a quoted path to gh passes it.
 #
 # Writes to your own repositories pass when the owner is listed, one per
 # line, in $HOUSEBROKEN_HOME/own (default ~/.housebroken/own); the owner is
@@ -154,17 +154,21 @@ commands=$(printf '%s\n' "$text" | LC_ALL=C awk '
   }')
 
 shopt -s nocasematch
-# A command counts where it would run: past keywords, a VAR=value prefix, and
-# past the -R of gh and the -C and -c of git. Text after it is its arguments.
-at='^[[:space:]]*((then|do|else|elif|if|while|until|time|command|exec|!)[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*'
+# A command counts where it would run: past keywords, a VAR=value prefix, a
+# wrapper that runs it (timeout 60, nohup, env, sudo, nice, stdbuf, with their
+# options and a duration), and past the -R of gh and the -C and -c of git. gh
+# and git are themselves by any path and as gh.exe. Text after it is its
+# arguments.
+at='^[[:space:]]*((then|do|else|elif|if|while|until|time|command|exec|!)[[:space:]]+|(sudo|nohup|env|nice|timeout|stdbuf)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-=[:space:]]+)?)*[[:space:]]+|[0-9]+(\.[0-9]+)?[smhd]?[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*'
 repo_flag='((-R|--repo)([[:space:]]+|=)[^[:space:]]+[[:space:]]+)*'
 end='([[:space:]]|$)'
-gh="${at}gh[[:space:]]+$repo_flag"
+by_path='([^[:space:]]*[/\\])?'
+gh="${at}${by_path}gh(\.exe)?[[:space:]]+$repo_flag"
 pr_re="${gh}pr[[:space:]]+$repo_flag(create|comment|review|edit|close|merge|ready|reopen|update-branch)$end"
 issue_re="${gh}issue[[:space:]]+$repo_flag(create|comment|edit|close|reopen)$end"
 graphql_re="${gh}api[[:space:]]+graphql$end"
 api_re="${gh}api$end"
-push_re="${at}git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push$end"
+push_re="${at}${by_path}git(\.exe)?([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push$end"
 quote="[\"']?"
 mutation_re="(^|[^a-z])mutation([^a-z]|$)"
 write_method_re="(-X|--method)[[:space:]=]*${quote}(POST|PATCH|PUT|DELETE)$quote$end"
