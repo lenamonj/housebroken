@@ -136,22 +136,34 @@ check_text() {
   fi
 }
 
-# A title, held to what any text is and to one thing more. Git Bash rewrites an
-# argument that starts with a slash into a path under its own directory on the
-# way to a Windows program, and gh is one: "/healthz returns 500" would be filed
-# as "C:/Program Files/Git/healthz returns 500". Under Git Bash such a title is
-# refused, as typed or as it arrives already rewritten.
-check_title() {
-  local title="$1" root
-  check_text "--title" "$title"
-  case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*) ;; *) return 0 ;; esac
-  root=$(cygpath -m / 2>/dev/null) || root=""
-  case "$title" in
-    /*) ;;
-    "${root:-/}"*) ;;
-    *) return 0 ;;
+# Git Bash rewrites an argument that starts with a slash into a path under its
+# own directory on the way to a Windows program, and gh is one: "/healthz
+# returns 500" would be filed as "C:/Program Files/Git/healthz returns 500".
+# True under Git Bash for a value that starts with a slash, as typed or as it
+# arrives already rewritten; sets slash_root to that directory.
+rewritten_by_git_bash() { # value
+  case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*) ;; *) return 1 ;; esac
+  slash_root=$(cygpath -m / 2>/dev/null) || slash_root=""
+  case "$1" in
+    /*|"${slash_root:-/}"*) return 0 ;;
   esac
-  refused common-title-leading-slash "the title starts with a slash, which Git Bash turns into a path under ${root:-its own directory} before gh reads it - start the title with a word" >&2
+  return 1
+}
+
+# A title, held to what any text is and to one thing more: under Git Bash it
+# does not start with a slash.
+check_title() {
+  check_text "--title" "$1"
+  rewritten_by_git_bash "$1" || return 0
+  refused common-title-leading-slash "the title starts with a slash, which Git Bash turns into a path under ${slash_root:-its own directory} before gh reads it - start the title with a word" >&2
+  exit 2
+}
+
+# A label, a milestone or a project is free text gh takes by name, and Git Bash
+# rewrites it as it does a title.
+check_value() { # flag value
+  rewritten_by_git_bash "$2" || return 0
+  refused common-value-leading-slash "$1 $2 starts with a slash, which Git Bash turns into a path under ${slash_root:-its own directory} before gh reads it - give it without the slash" >&2
   exit 2
 }
 

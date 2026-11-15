@@ -92,6 +92,15 @@ chmod +x "$HOUSEBROKEN_HOME/win/uname" "$HOUSEBROKEN_HOME/win/cygpath"
 out=$(PATH="$HOUSEBROKEN_HOME/win:$PATH" run --title '/healthz returns 500 on an empty page' --body-file "$bodyfile"); rc=$?
 [ "$rc" -eq 2 ] || fail "under Git Bash a title that starts with a slash exited $rc, expected 2"
 printf '%s' "$out" | grep -q ' \[common-title-leading-slash\]$' || fail "the title Git Bash rewrites was not named: $out"
+# and so would a label or a milestone
+for v in --label=/triage --milestone=/v2; do
+  out=$(PATH="$HOUSEBROKEN_HOME/win:$PATH" run --title t "$v" --body-file "$bodyfile"); rc=$?
+  [ "$rc" -eq 2 ] || fail "under Git Bash $v exited $rc, expected 2"
+  printf '%s' "$out" | grep -q ' \[common-value-leading-slash\]$' || fail "under Git Bash $v was not named: $out"
+done
+out=$(PATH="$HOUSEBROKEN_HOME/win:$PATH" run --title t -l /triage --body-file "$bodyfile"); rc=$?
+[ "$rc" -eq 2 ] || fail "under Git Bash -l /triage exited $rc, expected 2"
+printf '%s' "$out" | grep -q ' \[common-value-leading-slash\]$' || fail "under Git Bash -l /triage was not named: $out"
 
 # only --body-file carries the body; --body, --web and --template are refused
 for extra in "--body x" "--web" "--template t"; do

@@ -115,8 +115,10 @@ while [ "$#" -gt 0 ]; do
     --title=*) title="${1#--title=}"; pass+=("$1") ;;
     -B|--base) filebase="${2:-}"; pass+=("$1" "${2:-}"); shift ;;
     --base=*) filebase="${1#--base=}"; pass+=("$1") ;;
-    -l|--label|-a|--assignee|-r|--reviewer|-m|--milestone|-p|--project) pass+=("$1" "${2:-}"); shift ;;
-    --label=*|--assignee=*|--reviewer=*|--milestone=*|--project=*) pass+=("$1") ;;
+    -l|--label|-m|--milestone|-p|--project) check_value "$1" "${2:-}"; pass+=("$1" "${2:-}"); shift ;;
+    --label=*|--milestone=*|--project=*) check_value "${1%%=*}" "${1#*=}"; pass+=("$1") ;;
+    -a|--assignee|-r|--reviewer) pass+=("$1" "${2:-}"); shift ;;
+    --assignee=*|--reviewer=*) pass+=("$1") ;;
     -d|--draft|--no-maintainer-edit) pass+=("$1") ;;
     *)
       refused file-pr-argument-not-passed "file-pr.sh does not pass $1 to gh pr create: the body comes from one --body-file, the head is the branch you are on, the repository is the first argument" >&2

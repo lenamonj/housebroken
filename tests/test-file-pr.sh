@@ -83,6 +83,22 @@ out=$(PATH="$HOUSEBROKEN_HOME/win:$PATH" bash "$script" octocat/Hello-World --ti
 printf '%s' "$out" | grep -q 'common-title-leading-slash' && fail "under Git Bash a slash inside the title was refused: $out"
 out=$(PATH="$HOUSEBROKEN_HOME/lin:$PATH" bash "$script" octocat/Hello-World --title '/healthz returns 500 on an empty page' --body-file "$clean" 2>&1)
 printf '%s' "$out" | grep -q 'common-title-leading-slash' && fail "off Windows a title that starts with a slash was refused: $out"
+# a label, a milestone or a project is rewritten the same way
+slashed() { # gh-args...
+  out=$(PATH="$HOUSEBROKEN_HOME/win:$PATH" bash "$script" octocat/Hello-World --title t "$@" --body-file "$clean" 2>&1); rc=$?
+  [ "$rc" -eq 2 ] || fail "under Git Bash '$*' exited $rc, expected 2: $out"
+  printf '%s' "$out" | grep -q ' \[common-value-leading-slash\]$' || fail "under Git Bash '$*' was not named: $out"
+}
+slashed --label /triage
+slashed --label=/triage
+slashed -l 'C:/Program Files/Git/triage'
+slashed --milestone /v2
+slashed --milestone=/v2
+slashed -p /roadmap
+out=$(PATH="$HOUSEBROKEN_HOME/win:$PATH" bash "$script" octocat/Hello-World --title t --label 'area/api' --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q 'common-value-leading-slash' && fail "under Git Bash a slash inside a label was refused: $out"
+out=$(PATH="$HOUSEBROKEN_HOME/lin:$PATH" bash "$script" octocat/Hello-World --title t --label /triage --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q 'common-value-leading-slash' && fail "off Windows a label that starts with a slash was refused: $out"
 
 # gate two, disclosure: a DISCLOSE policy is held until a reading of its lines is
 # recorded, then refuses a body that says nothing about AI and accepts one that does

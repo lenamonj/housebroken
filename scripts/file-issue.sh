@@ -100,8 +100,10 @@ while [ "$#" -gt 0 ]; do
     --body-file=*) bodyfile="${1#--body-file=}"; pass+=("$1") ;;
     -t|--title) title="${2:-}"; pass+=("$1" "${2:-}"); shift ;;
     --title=*) title="${1#--title=}"; pass+=("$1") ;;
-    -l|--label|-a|--assignee|-m|--milestone|-p|--project) pass+=("$1" "${2:-}"); shift ;;
-    --label=*|--assignee=*|--milestone=*|--project=*) pass+=("$1") ;;
+    -l|--label|-m|--milestone|-p|--project) check_value "$1" "${2:-}"; pass+=("$1" "${2:-}"); shift ;;
+    --label=*|--milestone=*|--project=*) check_value "${1%%=*}" "${1#*=}"; pass+=("$1") ;;
+    -a|--assignee) pass+=("$1" "${2:-}"); shift ;;
+    --assignee=*) pass+=("$1") ;;
     *)
       refused file-issue-argument-not-passed "file-issue.sh does not pass $1 to gh issue create: the body comes from one --body-file, the repository is the first argument" >&2
       exit 2
