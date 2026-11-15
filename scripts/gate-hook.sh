@@ -273,8 +273,11 @@ judge() {
 
 # The command with its quotes gone: quoted text that holds a space is prose (a
 # body, a title) and is dropped, any other is the word it quotes. With "all",
-# every quoted text is dropped, so nothing quoted is ever read as a flag.
+# every quoted text is dropped, so nothing quoted is ever read as a flag. It
+# reads bytes: in a multibyte locale each ${s:i:1} starts from the front, and a
+# long body would outlast the hook's timeout.
 unquoted() { # command [all]
+  local LC_ALL=C
   local s="$1" all="${2:-}" out="" buf="" q="" c i
   for ((i = 0; i < ${#s}; i++)); do
     c=${s:i:1}
