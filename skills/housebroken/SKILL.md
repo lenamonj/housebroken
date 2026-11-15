@@ -415,7 +415,9 @@ report it in one line and do not proceed to the next step.
 
 11. **Clean up.**
     `housebroken hygiene` deletes the fork branch of every merged or closed
-    pull request, unless an open one still uses it, and lists forks with no
+    pull request, unless an open one still uses it or its tip is no longer
+    the head that pull request held (a name used again for other work is
+    kept, and it says so), and lists forks with no
     pull request left; delete those when
     the work is over. A close through `housebroken close` deletes its own
     branch. No planning file, agent directory, journal or build
