@@ -57,6 +57,8 @@ grep -q "^base-ref: origin/main$" "$stamp" || { echo "FAIL $name: the stamp does
 printf 'export const a = 99;\n' > "$repo/src/a.test.ts"
 fires "working tree is dirty" || { echo "FAIL $name: dirty tree not refused"; exit 1; }
 run >/dev/null 2>&1 && { echo "FAIL $name: dirty tree exited 0"; exit 1; }
+# the stamp the clean run left for this head does not outlive the refusal
+[ ! -f "$stamp" ] || { echo "FAIL $name: a refused run left the stamp an earlier run wrote for the same head"; exit 1; }
 (cd "$repo" && $G checkout -q -- src/a.test.ts)
 fires "working tree is dirty" && { echo "FAIL $name: dirty refusal survived cleaning the tree"; exit 1; }
 

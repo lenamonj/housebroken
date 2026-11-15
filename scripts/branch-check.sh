@@ -107,6 +107,9 @@ git rev-parse --git-dir >/dev/null 2>&1 || { refused branch-check-not-a-clone "$
 # Git prints paths from the top and reads pathspecs from here, so anywhere else
 # every scan below would match nothing.
 cd "$(git rev-parse --show-toplevel)" || { refused branch-check-top-unreachable "cannot reach the top of $clone" >&2; exit 2; }
+# This run is the answer now: a stamp an earlier run left for this head does
+# not outlive a refusal.
+now_head=$(git rev-parse --verify -q HEAD 2>/dev/null) && rm -f "$home/branch-checks/$now_head"
 
 if [ -z "$base" ]; then
   for candidate in upstream/main upstream/master origin/main origin/master; do
