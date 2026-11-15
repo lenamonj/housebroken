@@ -30,7 +30,7 @@ got=$(housebroken version | tr -d '\r')
 [ "$got" = "housebroken $want" ] || fail "the wheel says $got, the tree says $want"
 housebroken help | grep -q "prior-art" || fail "housebroken help printed no door"
 
-scripts="$(dirname "$(housebroken skill-path | tr -d '\r' | tr '\\' '/')")/../scripts"
+scripts="$(dirname "$(housebroken skill-path | tr -d '\r' | sed 's|\\|/|g')")/../scripts"
 for f in "$here"/../scripts/*; do
   shipped="$scripts/$(basename "$f")"
   [ -f "$shipped" ] || fail "$(basename "$f") is not in the wheel"
