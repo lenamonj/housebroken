@@ -29,10 +29,14 @@ for a in "$@"; do [ "$prev" = "--jq" ] && expr="$a"; prev="$a"; done
 case "$*" in
   "search prs --author me --state open"*) cat "$STUB_DIR/open" ;;
   "search prs --author me --state closed"*) cat "$STUB_DIR/closed" 2>/dev/null || true ;;
+  # the count GitHub reports, by default the rows the open search returns
+  "api search/issues?q=is:pr+author:me+is:open"*)
+    [ -f "$STUB_DIR/total.fail" ] && exit 1
+    printf '{"total_count":%s}\n' "$(cat "$STUB_DIR/total" 2>/dev/null || grep -c . "$STUB_DIR/open")" | jq -r "$expr" ;;
   "pr view 1 --repo o/r"*) [ -f "$STUB_DIR/view1.fail" ] && exit 1; cat "$STUB_DIR/pr.json" ;;
   "pr view 2 --repo o/r"*)
     [ -f "$STUB_DIR/view2.fail" ] && exit 1
-    echo "{\"state\":\"$(cat "$STUB_DIR/state2")\",\"mergedAt\":\"2026-10-30T10:00:00Z\",\"mergedBy\":{\"login\":\"maint\"},\"headRefName\":\"fix-2\",\"headRefOid\":\"abc222\",\"headRepository\":{\"name\":\"r\"},\"headRepositoryOwner\":{\"login\":\"me\"}}" ;;
+    echo "{\"state\":\"$(cat "$STUB_DIR/state2")\",\"url\":\"$(cat "$STUB_DIR/url2" 2>/dev/null || echo https://github.com/o/r/pull/2)\",\"mergedAt\":\"2026-10-30T10:00:00Z\",\"mergedBy\":{\"login\":\"maint\"},\"headRefName\":\"fix-2\",\"headRefOid\":\"abc222\",\"headRepository\":{\"name\":\"r\"},\"headRepositoryOwner\":{\"login\":\"me\"}}" ;;
   "api repos/me/r/git/ref/heads/fix-2"*)
     case "$(cat "$STUB_DIR/branch")" in
       gone) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
@@ -129,12 +133,33 @@ out=$(sweep) || fail "between-runs run exited non-zero"
 : > "$tmp/closed"
 printf 'gone\n' > "$tmp/branch"; sweep >/dev/null
 
-# an open pull request the search dropped is not something to tidy
+# an open pull request the search dropped is not something to tidy, nor a
+# clean sweep: it is named, kept in the state for the next run, and the run fails
 jq '.open += ["o/r#2"]' "$state" > "$state.new" && mv "$state.new" "$state"
 printf 'OPEN\n' > "$tmp/state2"; printf 'there\n' > "$tmp/branch"
-out=$(sweep)
+out=$(sweep 2>&1); rc=$?
 echo "$out" | grep -q '^TIDY' && fail "an open pull request was recorded for tidying: $out"
+[ "$rc" -eq 1 ] || fail "an open pull request the search dropped exited $rc: $out"
+echo "$out" | grep -q '^SWEEP INCOMPLETE: o/r#2 is open and the search did not return it' || fail "an open pull request the search dropped was not named: $out"
+jq -e '.open | index("o/r#2") != null' "$state" >/dev/null || fail "an open pull request the search dropped left the state"
+# one whose old number now names a pull request the search returned was renamed or moved
+printf 'https://github.com/o/r/pull/1\n' > "$tmp/url2"
+out=$(sweep 2>&1) || fail "a pull request the search returned under its new name exited non-zero: $out"
+echo "$out" | grep -q 'SWEEP INCOMPLETE' && fail "a pull request the search returned under its new name was named: $out"
+rm -f "$tmp/url2"
 printf 'MERGED\n' > "$tmp/state2"; printf 'gone\n' > "$tmp/branch"
+
+# a short search page, or a count that could not be read, is not the whole list
+printf '2\n' > "$tmp/total"
+out=$(sweep 2>&1); rc=$?
+[ "$rc" -eq 1 ] || fail "a short search page exited $rc: $out"
+echo "$out" | grep -q '^SWEEP INCOMPLETE: the search returned 1 of 2 open pull requests' || fail "a short search page was not named: $out"
+rm -f "$tmp/total"; touch "$tmp/total.fail"
+out=$(sweep 2>&1); rc=$?
+[ "$rc" -eq 1 ] || fail "an unread open count exited $rc: $out"
+echo "$out" | grep -q '^SWEEP INCOMPLETE: could not read the open pull request count' || fail "an unread open count was not named: $out"
+rm -f "$tmp/total.fail"
+sweep >/dev/null || fail "a full search page after a short one exited non-zero"
 
 # whose turn it is, and what the checks say
 ball() { # expected-word rollup comments

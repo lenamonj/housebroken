@@ -35,8 +35,9 @@
 #                     says otherwise.
 #
 # Assumes: gh is installed and authenticated, and that the PRs of interest are
-# the ones authored by that login. Exits non-zero when gh fails or a pull request
-# could not be read; no open pull requests left is a result, not a failure.
+# the ones authored by that login. Exits non-zero when gh fails, a pull request
+# could not be read, or the search returned part of the list (SWEEP
+# INCOMPLETE); no open pull requests left is a result, not a failure.
 set -u
 set -o pipefail
 
@@ -82,7 +83,20 @@ if ! list="$(gh search prs --author "$ME" --state open --limit "$MAX" --json rep
   echo "pr-sweep.sh: gh search prs failed for author $ME" >&2
   exit 1
 fi
-[ "$(printf '%s\n' "$list" | grep -c .)" -lt "$MAX" ] || echo "SWEEP INCOMPLETE: the search stopped at $MAX open pull requests"
+rows="$(printf '%s\n' "$list" | grep -c .)"
+[ "$rows" -lt "$MAX" ] || echo "SWEEP INCOMPLETE: the search stopped at $MAX open pull requests"
+# GitHub search returns a short page when it is throttled, and a sweep of part
+# of the list reads exactly like a clean one, so the rows are held to the count
+# the API reports.
+incomplete=0
+claimed="$(gh api "search/issues?q=is:pr+author:$ME+is:open&per_page=1" --jq .total_count 2>/dev/null | tr -d '\r')"
+case "$claimed" in
+  ''|*[!0-9]*) echo "SWEEP INCOMPLETE: could not read the open pull request count, so the search may have returned part of the list"; incomplete=1 ;;
+  *) if [ "$rows" -lt "$claimed" ]; then
+       echo "SWEEP INCOMPLETE: the search returned $rows of $claimed open pull requests; run it again when the search rate limit recovers"
+       incomplete=1
+     fi ;;
+esac
 
 open_ids="$(printf '%s\n' "$list" | tr -d '\r' | awk -F'\t' 'NF > 1 { print $1 "#" $2 }' | sort)"
 retry=""
@@ -110,7 +124,7 @@ if [ -f "$STATE" ]; then
     gone_repo="${id%#*}"; gone_num="${id##*#}"
     # A pull request we could not read stays in the stored set, so the next run
     # reports it: the search below only looks forward from this run.
-    if ! v="$(gh pr view "$gone_num" --repo "$gone_repo" --json state,mergedAt,closedAt,mergedBy,headRefName,headRefOid,headRepository,headRepositoryOwner)"; then
+    if ! v="$(gh pr view "$gone_num" --repo "$gone_repo" --json state,url,mergedAt,closedAt,mergedBy,headRefName,headRefOid,headRepository,headRepositoryOwner)"; then
       echo "pr-sweep.sh: gh pr view $id failed; it is read again next run" >&2
       retry="$retry
 $id"
@@ -134,6 +148,19 @@ $id"
       CLOSED)
         printf 'CLOSED %s at %s\n' "$id" \
           "$(printf '%s' "$v" | jq -r '.closedAt // "-"' | tr -d '\r')"
+        ;;
+      OPEN)
+        # Still open and not in the search: a short page, unless GitHub now
+        # names it as a pull request the search did return (a renamed or
+        # transferred repository). One the search missed stays in the stored
+        # set, so the next run reads it again.
+        now_id="$(printf '%s' "$v" | jq -r '.url // ""' | tr -d '\r' | sed -n 's|^https://github.com/\([^/]*/[^/]*\)/pull/\([0-9]*\)$|\1#\2|p')"
+        if [ -z "$now_id" ] || ! printf '%s\n' "$open_ids" | grep -qxF -- "$now_id"; then
+          echo "SWEEP INCOMPLETE: $id is open and the search did not return it; it is kept for the next run"
+          retry="$retry
+$id"
+          incomplete=1
+        fi
         ;;
     esac
   done <<< "$gone"
@@ -235,4 +262,5 @@ if [ "$unreadable" -gt 0 ]; then
   echo "SWEEP UNREADABLE: $unreadable pull request(s) could not be read, so their state is unknown, not clean" >&2
   exit 1
 fi
+[ "$incomplete" -eq 0 ] || exit 1
 exit 0
