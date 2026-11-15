@@ -25,9 +25,10 @@
 #
 # Writes to your own repositories pass when the owner is listed, one per
 # line, in $HOUSEBROKEN_HOME/own (default ~/.housebroken/own); the owner is
-# read from that same command, from each -R/--repo, each link and each
-# repos/OWNER/... path it names, and every one of them must be listed. It is
-# never read from the clone, because in a fork's clone gh writes to the
+# read from that same command, from each -R/--repo, a link given as the pull
+# request or issue it acts on and each repos/OWNER/... path it names, and
+# every one of them must be listed. A link in a body is text, and a command
+# that sets GH_REPO is never yours. The owner is never read from the clone, because in a fork's clone gh writes to the
 # upstream parent while origin names you. A forced push is refused
 # everywhere, because a fork carries your name too: push a rework with
 # housebroken push, or run it yourself.
@@ -289,23 +290,30 @@ unquoted() { # command [all]
 }
 
 # Your own repositories: the door is for other people's. Only a repository this
-# command names counts, and every one it names must be yours: with none named,
-# gh picks one from the clone, and in a fork's clone that is the upstream
-# parent; with two, gh takes the last, and a link outranks -R. The flag is read
-# as typed, because -r is a reviewer.
+# command names as its target counts: each -R or --repo, a link given as the
+# pull request or issue the verb acts on, each repos/OWNER/ path of gh api. A
+# link anywhere else, as in a body, is text. Every one named must be yours:
+# with none named, gh picks one from the clone, and in a fork's clone that is
+# the upstream parent; with two, gh takes the last, and a link outranks -R. A
+# command that sets GH_REPO is never yours, since gh writes where it says. The
+# flag is read as typed, because -r is a reviewer.
+link_re="${gh}(pr|issue)[[:space:]]+${repo_flag}[a-z-]+[[:space:]]+https?://[^/[:space:]]+/([A-Za-z0-9_.-]+)/"
 is_own() {
-  local text rest re group owners="" owner o listed
+  local text rest re api="" owners="" owner o listed
   [ -s "$own" ] || return 1
-  if [[ $1 =~ $api_re ]]; then
-    re='[[:space:]]/?repos/([A-Za-z0-9_.-]+)/'; group=1
-  else
-    re='[[:space:]]((-R|--repo)([[:space:]]+|=)|https?://[^/[:space:]]+/)([A-Za-z0-9_.-]+)/'; group=4
-  fi
   text=" $(unquoted "$1")"
+  case "$text" in *[[:space:]]GH_REPO=*) return 1 ;; esac
+  if [[ $1 =~ $api_re ]]; then api=1; fi
   shopt -u nocasematch
+  if [ -n "$api" ]; then
+    re='[[:space:]]/?repos/([A-Za-z0-9_.-]+)/'
+  else
+    re='[[:space:]](-R|--repo)([[:space:]]+|=)([A-Za-z0-9_.-]+)/'
+    if [[ $text =~ $link_re ]]; then owners="${BASH_REMATCH[${#BASH_REMATCH[@]} - 1]}"$'\n'; fi
+  fi
   rest=$text
   while [[ $rest =~ $re ]]; do
-    owners="$owners${BASH_REMATCH[$group]}"$'\n'
+    owners="$owners${BASH_REMATCH[${#BASH_REMATCH[@]} - 1]}"$'\n'
     rest=${rest#*"${BASH_REMATCH[0]}"}
   done
   shopt -s nocasematch

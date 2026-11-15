@@ -294,8 +294,8 @@ hook 2 'git push --force --repo=acme/widgets origin fix'
 git init -q "$tmp/own-clone" && git -C "$tmp/own-clone" remote add origin https://github.com/acme/widgets.git
 hook 2 'gh pr create --title x --body y'
 hook 2 'git push --force origin fix'
-# a quoted owner is the owner; -r is a reviewer, not a repository; a body or a
-# link that names another repository is not yours; every repository named counts
+# a quoted owner is the owner; -r is a reviewer, not a repository; a body that
+# names another repository is text; every repository named as the target counts
 hook 0 'gh pr create -R "acme/widgets" --title x --body y'
 hook 0 'gh api "repos/acme/widgets/issues/1/comments" -f body=x'
 hook 0 "gh api 'repos/acme/widgets/issues' -f title=x"
@@ -307,6 +307,14 @@ hook 2 'gh pr comment 5 --body "same as -R acme/widgets" -R victim/repo'
 hook 2 'gh pr comment https://github.com/victim/repo/pull/5 -R acme/widgets --body hi'
 hook 2 'gh pr comment 5 -R acme/widgets -R victim/repo --body hi'
 hook 2 'gh api repos/acme/widgets/issues repos/victim/repo/issues -f title=x'
+# a link is the repository only as the pull request or issue the verb acts on;
+# in a body it is text, and a command that sets GH_REPO is never yours
+hook 2 'gh pr comment 5 --body https://github.com/acme/widgets/pull/9'
+hook 2 'gh pr comment 5 --body "https://github.com/acme/widgets/pull/9"'
+hook 2 'GH_REPO=victim/repo gh pr create --title x --body https://github.com/acme/w/pull/1'
+hook 2 'GH_REPO=victim/repo gh api repos/acme/widgets/issues -f title=x'
+hook 0 'gh pr comment 5 -R acme/widgets --body https://github.com/victim/repo/pull/1'
+hook 0 'gh pr comment https://github.com/acme/widgets/pull/5 --body hi'
 # the own file as an editor leaves it: no last newline, a space after the name, CRLF
 printf 'other\nacme' > "$HOUSEBROKEN_HOME/own"
 hook 0 'gh pr create -R acme/widgets --title x --body y'
