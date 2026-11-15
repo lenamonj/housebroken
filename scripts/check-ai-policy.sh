@@ -62,7 +62,8 @@
 #   HOUSEBROKEN_HOME  work directory, default $HOME/.housebroken; --out writes
 #                     to its policy/ subdirectory, created if missing.
 #
-# Assumes gh is installed and authenticated. Read-only: GET calls only.
+# Assumes gh is installed and authenticated, and jq is on PATH. Read-only: GET
+# calls only.
 set -u
 
 usage() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
@@ -145,6 +146,9 @@ if [ -z "$reading" ] && [ -n "$disclosure" ]; then
 fi
 
 command -v gh >/dev/null 2>&1 || { echo "check-ai-policy.sh: gh is not on PATH" >&2; exit 1; }
+# Without jq the tree listing parses to nothing, no file is read, and a
+# repository that bans AI would read CLEAN.
+command -v jq >/dev/null 2>&1 || { echo "check-ai-policy.sh: jq is not on PATH" >&2; exit 1; }
 # shellcheck source=scripts/common.sh
 . "$(cd "$(dirname "$0")" && pwd)/common.sh"
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"

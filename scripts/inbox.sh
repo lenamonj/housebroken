@@ -67,6 +67,9 @@ if [ "$ack" -eq 1 ]; then
   echo "inbox.sh: could not write $cursor_file" >&2; exit 1
 fi
 
+# Without jq the feed parses to no thread, and that read would be acked past
+# every thread in it.
+command -v jq >/dev/null 2>&1 || { echo "inbox.sh: jq is not on PATH" >&2; exit 1; }
 user="${HOUSEBROKEN_USER:-$(gh api user --jq .login 2>/dev/null)}"
 [ -n "$user" ] || { echo "inbox.sh: gh is not authenticated" >&2; exit 1; }
 if [ -z "$since" ]; then

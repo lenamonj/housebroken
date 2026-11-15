@@ -148,6 +148,23 @@ msg=$(run --ack 2>&1); rc=$?
 [ "$rc" -eq 1 ] || fail "--ack after a failed read exited $rc: $msg"
 printf '%s' "$msg" | grep -q "nothing to acknowledge" || fail "--ack after a failed read did not say why: $msg"
 
+# Without jq the feed parses to no thread, and no thread is not an empty inbox:
+# the read stops and says why, so nothing can be acked past the thread.
+nojq="$tmp/nojq"
+mkdir -p "$nojq"
+IFS=: read -r -a dirs <<< "$tmp/bin:$PATH"
+for d in "${dirs[@]}"; do
+  for x in "$d"/*; do
+    n=${x##*/}
+    [ "$n" = jq ] || [ -e "$nojq/$n" ] || [ ! -x "$x" ] || ln -s "$x" "$nojq/$n"
+  done
+done
+out=$(PATH="$nojq" HOUSEBROKEN_USER=me HOUSEBROKEN_HOME="$tmp/home" bash "$script" --since 2026-11-01T09:00:00Z --no-ci 2>&1); rc=$?
+[ "$rc" -eq 1 ] || fail "a read without jq exited $rc, expected 1: $out"
+printf '%s' "$out" | grep -q "jq is not on PATH" || fail "a missing jq was not named: $out"
+msg=$(run --ack 2>&1); rc=$?
+[ "$rc" -eq 1 ] || fail "--ack after a read without jq exited $rc: $msg"
+
 # --ack stores when the read began, so what arrives while you act is not skipped
 out=$(run --since 2026-11-01T09:00:00Z --no-ci) || fail "the read before an ack failed: $out"
 read_at=$(printf '%s\n' "$out" | sed -n 's/.*(now \(.*\)) ==$/\1/p')

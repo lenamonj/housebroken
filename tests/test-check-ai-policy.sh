@@ -99,4 +99,22 @@ out=$(STUB_RUNS_FAIL=1 bash "$script" o/r); rc=$?
 [ "$rc" -eq 4 ] || fail "a failed CI read changed a ban's exit to $rc: $out"
 printf '%s\n' "$out" | grep -q "^RESULT: BAN" || fail "a failed CI read changed a ban's RESULT: $out"
 
+# Without jq the tree listing parses to nothing, and an empty listing is not a
+# clean repository: the read stops, says why, and saves nothing.
+nojq="$root/nojq"
+mkdir -p "$nojq"
+IFS=: read -r -a dirs <<< "$PATH"
+for d in "${dirs[@]}"; do
+  for x in "$d"/*; do
+    n=${x##*/}
+    [ "$n" = jq ] || [ -e "$nojq/$n" ] || [ ! -x "$x" ] || ln -s "$x" "$nojq/$n"
+  done
+done
+rm -f "$HOUSEBROKEN_HOME/policy/policy-o-r.md"
+out=$(PATH="$nojq" bash "$script" --out o/r 2>&1); rc=$?
+[ "$rc" -eq 1 ] || fail "a ban read without jq exited $rc, expected 1: $out"
+printf '%s\n' "$out" | grep -q "jq is not on PATH" || fail "a missing jq was not named: $out"
+printf '%s\n' "$out" | grep -q "^RESULT: " && fail "a read without jq printed a reading: $out"
+[ ! -f "$HOUSEBROKEN_HOME/policy/policy-o-r.md" ] || fail "a read without jq saved a printout"
+
 echo "PASS $name"
