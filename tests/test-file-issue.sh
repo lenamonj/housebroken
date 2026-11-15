@@ -84,6 +84,14 @@ for bad in 'the parser \xe2\x80\x94 one line' 'see https://claude.ai/code/sessio
 done
 out=$(run --title "$(printf 'a \xe2\x80\x93 b')" --body-file "$bodyfile"); rc=$?
 [ "$rc" -eq 2 ] || fail "en dash title exited $rc, expected 2"
+# under Git Bash a title that starts with a slash would be filed as a path
+mkdir -p "$HOUSEBROKEN_HOME/win"
+printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$HOUSEBROKEN_HOME/win/uname"
+printf '#!/bin/sh\necho "C:/Program Files/Git/"\n' > "$HOUSEBROKEN_HOME/win/cygpath"
+chmod +x "$HOUSEBROKEN_HOME/win/uname" "$HOUSEBROKEN_HOME/win/cygpath"
+out=$(PATH="$HOUSEBROKEN_HOME/win:$PATH" run --title '/healthz returns 500 on an empty page' --body-file "$bodyfile"); rc=$?
+[ "$rc" -eq 2 ] || fail "under Git Bash a title that starts with a slash exited $rc, expected 2"
+printf '%s' "$out" | grep -q ' \[common-title-leading-slash\]$' || fail "the title Git Bash rewrites was not named: $out"
 
 # only --body-file carries the body; --body, --web and --template are refused
 for extra in "--body x" "--web" "--template t"; do

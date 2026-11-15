@@ -68,7 +68,7 @@ case "$policy_result" in
 esac
 
 check_text "body file $bodyfile" "$(cat "$bodyfile")"
-check_text "--title" "$title"
+check_title "$title"
 prose_gate "$repo" "$bodyfile" "$home"
 # The reader's call decides whether the body is held to a disclosure. An edit
 # is not held for a reading, so a printout with no call falls back on the list.

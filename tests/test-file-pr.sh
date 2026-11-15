@@ -63,6 +63,27 @@ printf '%s' "$out" | grep -q "REFUSED" || fail "em dash body file printed no ref
 clean="$HOUSEBROKEN_HOME/clean.md"
 printf 'one finding, one test\n' > "$clean"
 
+# under Git Bash a title that starts with a slash reaches gh rewritten into a
+# path under the Git directory: refused there, as typed or as it arrives, and
+# nowhere else
+plat() { # name uname-output: a directory whose uname and cygpath say where this runs
+  mkdir -p "$HOUSEBROKEN_HOME/$1"
+  printf '#!/bin/sh\necho %s\n' "$2" > "$HOUSEBROKEN_HOME/$1/uname"
+  printf '#!/bin/sh\necho "C:/Program Files/Git/"\n' > "$HOUSEBROKEN_HOME/$1/cygpath"
+  chmod +x "$HOUSEBROKEN_HOME/$1/uname" "$HOUSEBROKEN_HOME/$1/cygpath"
+}
+plat win MINGW64_NT-10.0
+plat lin Linux
+for t in '/healthz returns 500 on an empty page' 'C:/Program Files/Git/healthz returns 500 on an empty page'; do
+  out=$(PATH="$HOUSEBROKEN_HOME/win:$PATH" bash "$script" octocat/Hello-World --title "$t" --body-file "$clean" 2>&1); rc=$?
+  [ "$rc" -eq 2 ] || fail "under Git Bash the title '$t' exited $rc, expected 2"
+  printf '%s' "$out" | grep -q ' \[common-title-leading-slash\]$' || fail "the rewritten title was not named: $out"
+done
+out=$(PATH="$HOUSEBROKEN_HOME/win:$PATH" bash "$script" octocat/Hello-World --title 'Fix /healthz on an empty page' --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q 'common-title-leading-slash' && fail "under Git Bash a slash inside the title was refused: $out"
+out=$(PATH="$HOUSEBROKEN_HOME/lin:$PATH" bash "$script" octocat/Hello-World --title '/healthz returns 500 on an empty page' --body-file "$clean" 2>&1)
+printf '%s' "$out" | grep -q 'common-title-leading-slash' && fail "off Windows a title that starts with a slash was refused: $out"
+
 # gate two, disclosure: a DISCLOSE policy is held until a reading of its lines is
 # recorded, then refuses a body that says nothing about AI and accepts one that does
 policy "DISCLOSE (a policy file requires AI use to be disclosed)"

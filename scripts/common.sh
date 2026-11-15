@@ -136,6 +136,25 @@ check_text() {
   fi
 }
 
+# A title, held to what any text is and to one thing more. Git Bash rewrites an
+# argument that starts with a slash into a path under its own directory on the
+# way to a Windows program, and gh is one: "/healthz returns 500" would be filed
+# as "C:/Program Files/Git/healthz returns 500". Under Git Bash such a title is
+# refused, as typed or as it arrives already rewritten.
+check_title() {
+  local title="$1" root
+  check_text "--title" "$title"
+  case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*) ;; *) return 0 ;; esac
+  root=$(cygpath -m / 2>/dev/null) || root=""
+  case "$title" in
+    /*) ;;
+    "${root:-/}"*) ;;
+    *) return 0 ;;
+  esac
+  refused common-title-leading-slash "the title starts with a slash, which Git Bash turns into a path under ${root:-its own directory} before gh reads it - start the title with a word" >&2
+  exit 2
+}
+
 # The project's own template text is kept verbatim and is not ours to count:
 # HTML comments and every line the saved template carries, a ticked box read
 # as its unticked line, are left out before the words are counted. The

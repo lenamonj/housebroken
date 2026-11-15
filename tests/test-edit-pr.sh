@@ -43,6 +43,13 @@ edit 2 "$(printf 'The loader checks its read \xe2\x80\x94 before it returns.')"
 edit 2 "The loader checks its read. Generated with Claude Code"
 edit 2 "The loader checks its read before it returns." --title "$(printf 'fix \xe2\x80\x93 loader')"
 edit 0 "The loader checks its read before it returns." --title "fix: loader checks its read"
+# under Git Bash a title that starts with a slash would be filed as a path
+mkdir -p "$tmp/win"
+printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$tmp/win/uname"
+printf '#!/bin/sh\necho "C:/Program Files/Git/"\n' > "$tmp/win/cygpath"
+chmod +x "$tmp/win/uname" "$tmp/win/cygpath"
+PATH="$tmp/win:$PATH" edit 2 "The loader checks its read before it returns." --title "/loader checks its read"
+grep -q ' \[common-title-leading-slash\]$' "$tmp/out" || fail "the title Git Bash rewrites was not named: $(cat "$tmp/out")"
 long=$(for _ in $(seq 1 121); do printf 'word '; done)
 edit 2 "$long"
 grep -q "REFUSED: the body is 121 words" "$tmp/out" || fail "121 words printed no refusal: $(cat "$tmp/out")"

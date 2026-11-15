@@ -131,7 +131,7 @@ if [ "$bodyfile" = "-" ] || [ ! -f "$bodyfile" ]; then
   exit 2
 fi
 check_text "body file $bodyfile" "$(cat "$bodyfile")"
-check_text "--title" "$title"
+check_title "$title"
 prose_gate "$repo" "$bodyfile" "$home"
 if [ "$disclosure_owed" -eq 1 ] && ! discloses "$bodyfile" "$template"; then
   refused file-pr-disclosure-missing "$repo requires AI use to be disclosed ($policy) and the body does not name it" >&2
