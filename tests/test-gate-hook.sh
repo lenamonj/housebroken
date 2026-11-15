@@ -191,6 +191,7 @@ hook 0 $'gh api graphql -F query=@- <<\'EOF\'\nquery { viewer { login } }\nEOF'
 hook 0 $'cat > b.md <<\'END-BODY\'\ngh pr create is refused by the hook\nEND-BODY\nls'
 hook 0 $'cat > b.md <<\'EOF\'\r\ngh pr create is refused by the hook\r\nEOF\r\nls\r\n'
 hook 0 $'cat > b.md <<\'END OF BODY\'\ngh pr create is refused by the hook\nEND OF BODY\nls'
+hook 0 $'cat > b.md <<END-BODY\ngh pr create is refused by the hook\nEND-BODY\nls'
 
 # a quoted word is still the word: a sign, a directory or a value with a space
 hook 2 'git push origin "+fix"'

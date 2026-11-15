@@ -232,7 +232,8 @@ judge() {
   why=""; why_id=""; push=""
   # A pattern costs, and a long script is mostly other commands: one with no
   # "gh" in it is none of the first four, one with no "push" is not the last.
-  case "$1" in *[Gg][Hh]*)
+  # nocasematch is on, so these read GH.EXE too.
+  case "$1" in *gh*)
     if [[ $1 =~ $pr_re ]]; then
       if [[ $1 =~ $help_re ]]; then return; fi
       why="it writes to a pull request outside the gate; open one with housebroken file, answer one with housebroken reply, withdraw one with housebroken close"
@@ -260,7 +261,7 @@ judge() {
       return
     fi ;;
   esac
-  case "$1" in *[Pp][Uu][Ss][Hh]*) ;; *) return ;; esac
+  case "$1" in *push*) ;; *) return ;; esac
   if [[ $1 =~ $push_re ]] && [[ $1 =~ $force_re ]]; then
     why="a forced push or a branch delete rewrites what a maintainer may already have reviewed; push a rework with housebroken push"
     why_id=gate-push-force-or-delete
@@ -321,7 +322,7 @@ is_own() {
 
 while IFS= read -r c; do
   # Most commands in a long script name neither tool, and are not read further.
-  case "$c" in *[Gg][Hh]*|*[Gg][Ii][Tt]*) ;; *) continue ;; esac
+  case "$c" in *gh*|*git*) ;; *) continue ;; esac
   judge "$c"
   [ -n "$why" ] || continue
   if [ -z "$push" ] && is_own "$c"; then continue; fi
