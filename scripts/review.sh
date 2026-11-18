@@ -231,6 +231,15 @@ EOF
 9. Where the information is lost: trace every value the change uses back to the last place its type, comparer or source was known. A change that recomputes what a caller already had (a second lookup, a second enumeration, reflection to recover a type the generic code knew, a default comparer standing in for the caller's) fixes the symptom where it surfaced, not where it began. That is SHOULD FIX, with the version that carries the caller's result forward.
 10. Inputs the project already tests: list the input shapes the test files beside the changed code use, such as custom comparers, culture, single-use or lazy sequences, null, empty, very large, concurrent callers. Every shape the changed code can receive that the new tests leave out is a finding; run the change on it.
 11. What the project promises to run on: read the manifests and CI matrix for AOT, trimming, no_std, wasm, minimum language or runtime versions, and every platform leg. Run the changed path in each mode the project promises, not only the default build; a clean build is not a run. A suppression the change adds has to be shown covering a warning that fires.
+12. Every other site with the same code: a fix belongs wherever the fault is, not only where it was reported. Below are the other lines of the base that hold an expression this branch replaces or make a call it replaces, as same-code.sh found them; code on more than ten other lines is named once and its lines are not listed. For each listed line, either the branch fixes it too or your report says why it must stay as it is. The listing matches text and nothing more, so grep the base yourself for the method or operator the fix replaces when another site could spell it differently; a site it missed is a finding. If what follows is an error and not a listing, nothing was searched: grep the base yourself and say so.
+EOF
+    if [ -n "$mb" ]; then
+      bash "$here/same-code.sh" "$clone" --base "$mb" 2>&1 | sed 's/^/     /'
+    else
+      printf '     No base was found, so no site was searched for: say so.\n'
+    fi
+    cat <<'EOF'
+13. State the change carries between calls: when it adds a field, buffer, cache, decoder or flag that outlives one call, list every path that can run between two uses of it (each arm of the conditional it sits in, every other method that reads or resets it, the end of the stream or the object) and run the change down each one. A path the new tests never take is a finding. So is a flush or a reset that no test would miss: delete it and run the suite.
 EOF
   fi
   printf '\nReport\n'

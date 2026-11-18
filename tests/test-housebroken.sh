@@ -36,6 +36,9 @@ bash "$hb" nosuch >/dev/null 2>&1
 # arguments reach the script
 out=$(bash "$hb" prior-art --help) || fail "prior-art --help exited non-zero"
 printf '%s\n' "$out" | grep -q "usage: prior-art.sh" || fail "prior-art usage not returned"
+printf '%s\n' "$help" | grep -qE '^ *4 +sites ' || fail "sites is not step 4"
+out=$(bash "$hb" sites --help) || fail "sites --help exited non-zero"
+printf '%s\n' "$out" | grep -q "same-code.sh" || fail "same-code usage not returned"
 out=$(bash "$hb" sweep --help) || fail "sweep --help exited non-zero"
 printf '%s\n' "$out" | grep -q "pr-sweep.sh" || fail "pr-sweep usage not returned"
 out=$(bash "$hb" review --help) || fail "review --help exited non-zero"

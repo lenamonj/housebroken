@@ -134,7 +134,15 @@ report it in one line and do not proceed to the next step.
    reconciles two coupled setters keeps a value that already satisfies the
    invariant instead of resetting it, and its grid has a row for every
    order the two are called in, the same value twice and null included. A
-   reviewer lists the empty cells otherwise.
+   reviewer lists the empty cells otherwise. A fix that adds state carried
+   between calls (a buffer, a decoder, a cache, a flag) has a row for every
+   path that can run between two uses of that state, the other arm of its
+   conditional and the end of the stream included.
+   A fix goes to every site with the same code, not only the one that was
+   reported: `housebroken sites <clone> --base <ref>` lists every other
+   line of the base that holds an expression the branch replaces or makes a
+   call it replaces. Fix each one or know why it stays; it matches text, so
+   grep for the method yourself when another site could spell it differently.
    Then run it through the gate: `housebroken proof <clone> --test '<the
    command that runs the new test>'` runs the test on the head and again with
    every changed file that is not a test swapped back to the base, restores

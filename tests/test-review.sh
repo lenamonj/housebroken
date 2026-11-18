@@ -193,6 +193,22 @@ out=$(bash "$script" brief --author opus --repo octo/cat --clone "$clone" 2>/dev
 printf '%s\n' "$out" | grep -q "dev.txt" && fail "the brief showed a diff against main for a branch stamped against dev: $out"
 printf '%s\n' "$out" | grep -q "fix.txt" || fail "the brief did not show the branch's own diff: $out"
 
+# the brief lists every other site of the code the branch replaces, beside the two items that attack them
+for want in "12. Every other site with the same code" "0 other sites hold code this branch replaces" "nothing was searched: grep the base yourself" "13. State the change carries between calls"; do
+  printf '%s\n' "$out" | grep -qF "$want" || fail "the brief of a branch that replaces nothing is missing: $want"
+done
+(cd "$clone" && $G checkout -q dev && printf 'x = reader.decodeChunk(buf, enc)\n' > one.py && printf 'y = reader.decodeChunk(other, enc2)\n' > two.py &&
+  $G add -A && $G commit -q -m "two sites" && git update-ref refs/remotes/origin/dev HEAD &&
+  $G checkout -q -b one-site && printf 'x = decoder.write(buf)\n' > one.py && $G add -A && $G commit -q -m "fix one") || fail "sites fixture failed"
+sitehead=$(git -C "$clone" rev-parse HEAD)
+printf 'head: %s\nbase-ref: origin/dev\nfile: one.py\n' "$sitehead" > "$HOUSEBROKEN_HOME/branch-checks/$sitehead"
+out=$(bash "$script" brief --author opus --repo octo/cat --clone "$clone" 2>/dev/null)
+for want in "one.py:1 replaces a call to reader.decodeChunk(, also made at:" "two.py:1  y = reader.decodeChunk(other, enc2)" "1 other site holds code this branch replaces"; do
+  printf '%s\n' "$out" | grep -qF "$want" || fail "the brief is missing the other site: $want"
+done
+bash "$script" brief --author fable --repo octo/cat --text "$reply" 2>/dev/null | grep -qE "Every other site|State the change carries" &&
+  fail "a brief with no clone asked about sites and state"
+
 # no report at all
 rm -f "$report"
 bash "$script" check "$report" --clone "$clone" >/dev/null 2>&1
