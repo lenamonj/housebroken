@@ -417,7 +417,12 @@ grep -q ' \[gate-pr-write\]$' "$tmp/err" || fail "the hook alone did not name it
 [ "$(count)" = "$((n + 1))" ] || fail "the hook alone did not write its line"
 # without jq the refusal is named too, when the tools the line needs are there
 mkdir "$tmp/tools" || fail "fixture failed"
-for t in date mkdir; do ln -s "$(command -v "$t")" "$tmp/tools/$t" || fail "fixture failed"; done
+# a wrapper, not a link: Git for Windows copies on ln -s, and a copied date.exe cannot load its library
+for t in date mkdir; do
+  # shellcheck disable=SC2016  # the wrapper's own $@, written literally
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v "$t")" > "$tmp/tools/$t" || fail "fixture failed"
+  chmod +x "$tmp/tools/$t" || fail "fixture failed"
+done
 printf '{"tool_input": {"command": "gh pr create"}}' | PATH="$tmp/tools" "$BASH" "$script" 2>"$tmp/err"
 [ "$?" = 2 ] || fail "a write with jq missing was not refused"
 grep -q '^housebroken: refused: jq is not on PATH.* \[gate-jq-missing\]$' "$tmp/err" || fail "the missing jq is not named: $(cat "$tmp/err")"

@@ -323,7 +323,7 @@ IFS=: read -r -a dirs <<< "$PATH"
 for d in "${dirs[@]}"; do
   for x in "$d"/*; do
     n=${x##*/}
-    [ "$n" = jq ] || [ -e "$nojq/$n" ] || [ ! -x "$x" ] || ln -s "$x" "$nojq/$n"
+    [ "${n%.exe}" = jq ] || [ -e "$nojq/$n" ] || [ ! -x "$x" ] || ln -s "$x" "$nojq/$n"
   done
 done
 out=$(PATH="$nojq" STUB_LIST='["2026-01-01T00:00:00Z","2026-01-01T00:00:00Z","2026-01-01T00:00:00Z"]' bash "$script" octocat/Hello-World --title t --body-file "$clean" 2>&1); rc=$?
