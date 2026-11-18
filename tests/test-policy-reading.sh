@@ -298,7 +298,9 @@ grep -q '^DISCLOSURE: \|^READING: ' "$HOUSEBROKEN_HOME/policy/policy-o-r.md" && 
 # a carriage return in a file's path does not reach the printout
 printf 'docs/a\rb/CONTRIBUTING.md\n' > "$root/tree.txt"
 out=$(STUB_CONTENTS_FAIL=1 bash "$script" --out o/r)
-printf '%s' "$out" | grep -q "UNREAD: docs/a b/CONTRIBUTING.md" || fail "an unread path was not printed: $out"
+# Git for Windows' grep deletes the byte before the script can turn it into a space
+printf '%s' "$out" | grep -Eq "UNREAD: docs/a ?b/CONTRIBUTING.md" || fail "an unread path was not printed: $out"
+[ "$(printf '%s' "$out" | LC_ALL=C tr -cd '\r' | wc -c | tr -d ' ')" = 0 ] || fail "a carriage return in a path reached the printout"
 grep -q "$(printf '\r')" "$HOUSEBROKEN_HOME/policy/policy-o-r.md" && fail "a carriage return from a path is in the printout"
 printf 'CONTRIBUTING.md\n' > "$root/tree.txt"
 

@@ -107,7 +107,7 @@ IFS=: read -r -a dirs <<< "$PATH"
 for d in "${dirs[@]}"; do
   for x in "$d"/*; do
     n=${x##*/}
-    [ "$n" = jq ] || [ -e "$nojq/$n" ] || [ ! -x "$x" ] || ln -s "$x" "$nojq/$n"
+    [ "${n%.exe}" = jq ] || [ -e "$nojq/$n" ] || [ ! -x "$x" ] || ln -s "$x" "$nojq/$n"
   done
 done
 rm -f "$HOUSEBROKEN_HOME/policy/policy-o-r.md"

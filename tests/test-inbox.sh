@@ -156,7 +156,7 @@ IFS=: read -r -a dirs <<< "$tmp/bin:$PATH"
 for d in "${dirs[@]}"; do
   for x in "$d"/*; do
     n=${x##*/}
-    [ "$n" = jq ] || [ -e "$nojq/$n" ] || [ ! -x "$x" ] || ln -s "$x" "$nojq/$n"
+    [ "${n%.exe}" = jq ] || [ -e "$nojq/$n" ] || [ ! -x "$x" ] || ln -s "$x" "$nojq/$n"
   done
 done
 out=$(PATH="$nojq" HOUSEBROKEN_USER=me HOUSEBROKEN_HOME="$tmp/home" bash "$script" --since 2026-11-01T09:00:00Z --no-ci 2>&1); rc=$?
