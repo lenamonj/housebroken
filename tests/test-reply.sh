@@ -24,9 +24,10 @@ case "$*" in
     jq -c --arg k "$(cat "$THREAD_DIR/kind")" '. + (if $k == "" then {} else {pull_request: {url: $k}} end)' "$THREAD_DIR/opener.json" |
       if [ "${3:-}" = --jq ]; then jq -r "$4"; else cat; fi ;;
   "api --paginate repos/octocat/Hello-World/issues/1/comments"*) [ -f "$THREAD_DIR/ic.fail" ] && exit 1; cat "$THREAD_DIR/ic.json" ;;
-  "api --paginate repos/octocat/Hello-World/pulls/1/reviews"*) cat "$THREAD_DIR/rv.json" ;;
-  "api --paginate repos/octocat/Hello-World/pulls/1/comments"*) cat "$THREAD_DIR/rc.json" ;;
-  "api repos/octocat/Hello-World/pulls/comments/123456"*) cat "$THREAD_DIR/one.json" ;;
+  "api --paginate repos/octocat/Hello-World/pulls/1/reviews"*) [ -f "$THREAD_DIR/rv.fail" ] && exit 1; cat "$THREAD_DIR/rv.json" ;;
+  "api --paginate repos/octocat/Hello-World/pulls/1/comments"*) [ -f "$THREAD_DIR/rc.fail" ] && exit 1; cat "$THREAD_DIR/rc.json" ;;
+  "api repos/octocat/Hello-World/pulls/comments/123456"*) [ -f "$THREAD_DIR/one.fail" ] && exit 1; cat "$THREAD_DIR/one.json" ;;
+  "api repos/octocat/Hello-World/issues/1/comments -F "*) [ -f "$THREAD_DIR/post.fail" ] && exit 1; exec "$STUBS/gh" "$@" ;;
   *) exec "$STUBS/gh" "$@" ;;
 esac
 STUB
@@ -44,6 +45,24 @@ jq -n '{user: {login: "maint"}, author_association: "MEMBER"}' > "$tmp/thread/on
 fail() { echo "FAIL $name: $1" >&2; exit 1; }
 
 bash "$script" --help | grep -q "Usage:" || fail "--help printed no usage"
+
+# a command that cannot be read is refused under the name of what is wrong with
+# it; the thread behind each of these would let a readable one through
+misuse() { # rule-name why arguments...
+  local id="$1" why="$2"; shift 2
+  bash "$script" "$@" > "$tmp/out" 2>&1; [ "$?" = 2 ] || { cat "$tmp/out" >&2; fail "$why"; }
+  grep -q "^REFUSED: .* \[$id\]$" "$tmp/out" || fail "$why, under another name: $(cat "$tmp/out")"
+}
+printf '%s\n' "The parser checks its read on main." > "$tmp/r.md"
+misuse reply-repo-form "a repository without an owner was taken" octocat 1 --body-file "$tmp/r.md"
+misuse reply-no-number "a number that is not one was taken" octocat/Hello-World one --body-file "$tmp/r.md"
+misuse reply-no-number "a command with no number was taken" octocat/Hello-World
+misuse reply-unknown-argument "an argument nobody knows was taken" octocat/Hello-World 1 --body-file "$tmp/r.md" --bogus
+misuse reply-body-file-missing "a missing reply was taken" octocat/Hello-World 1 --body-file "$tmp/none.md"
+misuse reply-body-file-missing "a command with no reply named was taken" octocat/Hello-World 1
+misuse reply-in-reply-to-form "a comment id that is not a number was taken" octocat/Hello-World 1 --body-file "$tmp/r.md" --in-reply-to abc
+# with no login to leave out, our own comment would pass for the voice being answered
+HOUSEBROKEN_USER='' misuse reply-gh-unauthenticated "a reply with no login was taken" octocat/Hello-World 1 --body-file "$tmp/r.md"
 
 reply() { # expected-exit text [extra args]
   local want="$1" text="$2"; shift 2
@@ -114,6 +133,9 @@ reply 2 "The parser checks its read on main."
 reply 2 "The parser checks its read on main."
 { voice maint MEMBER; voice "codecov[bot]" NONE 2026-11-01T11:00:00Z; } | jq -s . > "$tmp/thread/ic.json"
 reply 0 "The parser checks its read on main."
+# nor does an account GitHub records as a bot, whatever it is called
+{ voice maint MEMBER; voice release-helper NONE 2026-11-01T11:00:00Z | jq '.user.type = "Bot"'; } | jq -s . > "$tmp/thread/ic.json"
+reply 0 "The parser checks its read on main."
 # on a pull request, a review or an inline comment is a voice too
 printf 'https://api.github.com/repos/octocat/Hello-World/pulls/1\n' > "$tmp/thread/kind"
 voice maint MEMBER | jq -s . > "$tmp/thread/ic.json"
@@ -123,6 +145,19 @@ echo '[]' > "$tmp/thread/rv.json"
 voice stranger NONE 2026-11-01T12:00:00Z | jq -s . > "$tmp/thread/rc.json"
 reply 2 "The parser checks its read on main."
 echo '[]' > "$tmp/thread/rc.json"
+reply 0 "The parser checks its read on main."
+# a failed read of the reviews or of the inline comments is not a pull request with none
+for part in rv rc; do
+  touch "$tmp/thread/$part.fail"
+  reply 2 "The parser checks its read on main."
+  grep -q "cannot read who is on octocat/Hello-World#1" "$tmp/out" || fail "a failed read of $part was not named: $(cat "$tmp/out")"
+  rm -f "$tmp/thread/$part.fail"
+done
+# nor is an answer that is not the list GitHub sends
+echo 'Bad gateway' > "$tmp/thread/rv.json"
+reply 2 "The parser checks its read on main."
+grep -q "cannot read who is on octocat/Hello-World#1" "$tmp/out" || fail "reviews that could not be parsed were not named: $(cat "$tmp/out")"
+echo '[]' > "$tmp/thread/rv.json"
 reply 0 "The parser checks its read on main."
 printf '' > "$tmp/thread/kind"
 # an empty thread we opened answers nobody in particular
@@ -155,6 +190,12 @@ reply 2 "The thread is answered in place." --in-reply-to 123456
 reply 0 "The thread is answered in place." --in-reply-to 123456 --outsider
 jq -n '{user: {login: "maint"}, author_association: "COLLABORATOR"}' > "$tmp/thread/one.json"
 reply 0 "The thread is answered in place." --in-reply-to 123456
+# a comment that could not be read answers nobody we know, with the user's word or without it
+touch "$tmp/thread/one.fail"
+reply 2 "The thread is answered in place." --in-reply-to 123456
+grep -q "cannot read comment 123456" "$tmp/out" || fail "a comment that could not be read was not named: $(cat "$tmp/out")"
+reply 2 "The thread is answered in place." --in-reply-to 123456 --outsider
+rm -f "$tmp/thread/one.fail"
 
 # a reply that rides on a review is held to it: a report that does not clear this
 # text stops the reply
@@ -171,6 +212,9 @@ mkdir -p "$HOUSEBROKEN_HOME/replies"
 printf '%s octocat/Hello-World#1\n' "$(date -u +%s)" > "$HOUSEBROKEN_HOME/replies/octocat-Hello-World.log"
 reply 2 "The parser checks its read on main."
 grep -q "ten minutes" "$tmp/out" || fail "the spacing refusal did not say why"
+printf '%s octocat/Hello-World#1\n' "$(( $(date -u +%s) - 300 ))" > "$HOUSEBROKEN_HOME/replies/octocat-Hello-World.log"
+reply 2 "The parser checks its read on main."
+grep -q "ten minutes" "$tmp/out" || fail "a reply five minutes after the last was not refused for the spacing"
 printf '%s octocat/Hello-World#1\n' "$(( $(date -u +%s) - 700 ))" > "$HOUSEBROKEN_HOME/replies/octocat-Hello-World.log"
 reply 0 "The parser checks its read on main."
 
@@ -181,5 +225,11 @@ printf 'The parser checks its read on main.\n' > "$tmp/r.md"
 REPLY_DRY=0 STUB_WRITES="$writes" bash "$script" octocat/Hello-World 1 --body-file "$tmp/r.md" > "$tmp/out" 2>&1 || { cat "$tmp/out" >&2; fail "a real reply failed"; }
 grep -q "^api repos/octocat/Hello-World/issues/1/comments" "$writes" || fail "no post reached gh"
 [ -s "$HOUSEBROKEN_HOME/replies/octocat-Hello-World.log" ] || fail "the reply was not logged for the spacing"
+# a reply that could not be posted says so in its exit and starts no ten minutes
+rm -f "$HOUSEBROKEN_HOME/replies/octocat-Hello-World.log" "$writes"
+touch "$tmp/thread/post.fail"
+REPLY_DRY=0 STUB_WRITES="$writes" bash "$script" octocat/Hello-World 1 --body-file "$tmp/r.md" > "$tmp/out" 2>&1
+[ "$?" = 2 ] || { cat "$tmp/out" >&2; fail "a reply that was not posted did not fail"; }
+[ ! -e "$HOUSEBROKEN_HOME/replies/octocat-Hello-World.log" ] || fail "a reply that was not posted was logged for the spacing"
 
 echo "PASS $name"

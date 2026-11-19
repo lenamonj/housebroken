@@ -67,9 +67,22 @@ note="The same fix landed upstream in #1, so this one is withdrawn."
 bash "$script" --help | grep -q "Usage:" || fail "--help printed no usage"
 fresh
 printf '%s\n' "$note" > "$tmp/n.md"
-bash "$script" octocat 9 --body-file "$tmp/n.md" >/dev/null 2>&1; [ "$?" = 2 ] || fail "a repository without an owner was taken"
-bash "$script" octocat/Hello-World nine --body-file "$tmp/n.md" >/dev/null 2>&1; [ "$?" = 2 ] || fail "a number that is not one was taken"
-bash "$script" octocat/Hello-World 9 --body-file "$tmp/none.md" >/dev/null 2>&1; [ "$?" = 2 ] || fail "a missing note was taken"
+# a command that cannot be read is refused under the name of what is wrong with
+# it, before anything is read from GitHub or written
+misuse() { # rule-name why arguments...
+  local id="$1" why="$2"; shift 2
+  bash "$script" "$@" > "$tmp/out" 2>&1; [ "$?" = 2 ] || { cat "$tmp/out" >&2; fail "$why"; }
+  grep -q "^REFUSED: .* \[$id\]$" "$tmp/out" || fail "$why, under another name: $(cat "$tmp/out")"
+  nothing_written "$why"
+}
+misuse close-repo-form "a repository without an owner was taken" octocat 9 --body-file "$tmp/n.md"
+misuse close-no-number "a number that is not one was taken" octocat/Hello-World nine --body-file "$tmp/n.md"
+misuse close-no-number "a command with no number was taken" octocat/Hello-World
+misuse close-unknown-argument "an argument nobody knows was taken" octocat/Hello-World 9 --body-file "$tmp/n.md" --bogus
+misuse close-body-file-missing "a missing note was taken" octocat/Hello-World 9 --body-file "$tmp/none.md"
+misuse close-body-file-missing "a close with no note named was taken" octocat/Hello-World 9
+# with no login to compare, whose pull request it is cannot be known
+HOUSEBROKEN_USER='' misuse close-gh-unauthenticated "a close with no login was taken" octocat/Hello-World 9 --body-file "$tmp/n.md"
 
 # a dry run checks everything and writes nothing
 fresh
@@ -118,8 +131,11 @@ for bare in "." "---" "* *"; do
   grep -q "carries no note of its own" "$tmp/out" || fail "a note with no words was taken: $bare"
 done
 grep -q "carries no note of its own" "$tmp/out" || fail "an empty note was taken"
-# a quoted line is the maintainer's words, not ours
+# a quoted line is the maintainer's words, not ours: it is not read for tone,
+# and a note that is only a quote carries no note of its own
 CLOSE_DRY=1 closepr 0 9 $'> thanks!\n\nThe fix landed upstream in #1.'
+CLOSE_DRY=1 closepr 2 9 $'> The fix landed upstream in #1.'
+grep -q "carries no note of its own" "$tmp/out" || fail "a note that is only a quote was taken: $(cat "$tmp/out")"
 
 # ten minutes after our last comment on the repository, a reply or a close
 mkdir -p "$HOUSEBROKEN_HOME/replies"
