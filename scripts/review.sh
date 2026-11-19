@@ -17,7 +17,10 @@
 # The report is bound to what it read. Its header records the head it attacked
 # and the sha256 of every text, and check refuses when the branch or the text
 # has moved since, or when the verdict is anything but POST AS IS: a fix the
-# reviewer asked for is a new head, and a new head is reviewed again.
+# reviewer asked for is a new head, and a new head is reviewed again. The
+# header also records the brief it answers, by the number of the brief's last
+# item, and `housebroken sweep` names every open pull request whose head was
+# never read under the current one.
 #
 # Usage:
 #   bash review.sh reviewer MODEL
@@ -50,6 +53,8 @@ bad_usage() { echo "review.sh: $1" >&2; exit 2; }
 
 home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
 here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
 
 # A name that mentions two families, such as "claude-haiku-4-5 (sonnet
 # floor)", belongs to neither, so it cannot pass as the one named second.
@@ -250,6 +255,8 @@ EOF
     printf 'text: sha256:%s %s\n' "$(sha256 "$t")" "$(basename "$t")"
   done
   printf 'author-model: %s\nreviewer-model: %s\n' "$author" "$reviewer"
+  # which brief this report answers, so the sweep can name a head read under an earlier one
+  printf 'brief: %s\n' "$review_brief_items"
   [ -n "$head" ] && printf 'blind-fix: %s\n' "$blind"
   printf 'skipped: none | <the item numbers you did not attack, each with why>\n'
   printf 'verdict: POST AS IS | POST WITH CHANGES | DO NOT POST\n\n'

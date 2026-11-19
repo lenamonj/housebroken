@@ -43,6 +43,13 @@ done
 report="$HOUSEBROKEN_HOME/reviews/review-octo-cat-${head:0:12}.md"
 grep -qF "$report" "$tmp/err" || fail "brief did not name the report path $report"
 [ -d "$HOUSEBROKEN_HOME/reviews" ] || fail "brief did not create the reviews directory"
+# the report records which brief it answers, by the number of the brief's last
+# item, so a report written before an item existed can be told from a later one
+last=$(printf '%s\n' "$brief" | sed -n 's/^\([0-9][0-9]*\)\. .*/\1/p' | sort -n | tail -n 1)
+[ "${last:-0}" -ge 13 ] || fail "the brief's items could not be counted: ${last:-none}"
+printf '%s\n' "$brief" | grep -qx "brief: $last" || fail "the report header does not carry the brief's last item, $last: $(printf '%s\n' "$brief" | grep '^brief:')"
+[ "$(bash -c '. "$1" && printf "%s" "$review_brief_items"' _ "$here/../scripts/common.sh")" = "$last" ] || fail "the number the sweep compares with is not the brief's last item, $last"
+bash "$script" brief --author fable --repo octo/cat --text "$reply" 2>/dev/null | grep -qx "brief: $last" || fail "a brief with no clone records another number than $last"
 
 # a reply with no clone is keyed by its own hash
 bash "$script" brief --author fable --repo octo/cat --text "$reply" 2>"$tmp/err" >/dev/null || fail "text-only brief exited non-zero"

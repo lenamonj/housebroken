@@ -18,7 +18,7 @@ grep -qi 'lenamonj' "$script" && fail "literal username still present"
 tmp=$(mktemp -d) || fail "mktemp failed"
 trap 'rm -rf "$tmp"' EXIT
 state="$tmp/sweep-state.json"
-export STUB_DIR="$tmp"
+export STUB_DIR="$tmp" HOUSEBROKEN_HOME="$tmp/home"
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/bin/bash
@@ -34,6 +34,7 @@ case "$*" in
     [ -f "$STUB_DIR/total.fail" ] && exit 1
     printf '{"total_count":%s}\n' "$(cat "$STUB_DIR/total" 2>/dev/null || grep -c . "$STUB_DIR/open")" | jq -r "$expr" ;;
   "pr view 1 --repo o/r"*) [ -f "$STUB_DIR/view1.fail" ] && exit 1; cat "$STUB_DIR/pr.json" ;;
+  "pr view 1 --repo me/r"*) cat "$STUB_DIR/pr.json" ;;
   "pr view 2 --repo o/r"*)
     [ -f "$STUB_DIR/view2.fail" ] && exit 1
     echo "{\"state\":\"$(cat "$STUB_DIR/state2")\",\"url\":\"$(cat "$STUB_DIR/url2" 2>/dev/null || echo https://github.com/o/r/pull/2)\",\"mergedAt\":\"2026-10-30T10:00:00Z\",\"mergedBy\":{\"login\":\"maint\"},\"headRefName\":\"fix-2\",\"headRefOid\":\"abc222\",\"headRepository\":{\"name\":\"r\"},\"headRepositoryOwner\":{\"login\":\"me\"}}" ;;
@@ -268,6 +269,68 @@ echo "$out" | grep -q 'before any bump' && fail "the pre-bump line printed under
 # both marks stand side by side
 runs "" 5; ball "^ACT .*\[no-ci-on-head stale:closes-$(day 7)\]" '[]' "[$warn]"
 runs "" 0 0
+
+# a gate reads a pull request when it is pushed, so one filed before a review
+# item existed is never read under it: every open pull request whose head this
+# machine holds no review of under the current brief is named, on every run
+now=$(bash -c '. "$1" && printf "%s" "$review_brief_items"' _ "$(dirname "$script")/common.sh")
+case "$now" in ''|*[!0-9]*) fail "common.sh names no brief number: $now" ;; esac
+pr "$green"
+report="$HOUSEBROKEN_HOME/reviews/review-o-r-abc123.md"
+mkdir -p "$HOUSEBROKEN_HOME/reviews"
+reviewed() { # header lines of the report for the open head, or nothing for no report
+  rm -f "$HOUSEBROKEN_HOME"/reviews/*
+  [ "$#" -eq 0 ] || printf '%s\n' "$@" > "$report"
+}
+named() { # mark [sweep arguments]: the one READ line carries it, and it is not an ACT
+  local mark="$1"; shift
+  out=$(sweep "$@") || fail "a sweep that names an unread head exited non-zero: $out"
+  [ "$(printf '%s\n' "$out" | grep -c '^READ ')" = 1 ] || fail "expected one READ line for $mark: $out"
+  printf '%s\n' "$out" | grep -qE "^READ o/r +#1 +Open one  \[$mark\] https://github.com/o/r/pull/1\$" || fail "expected $mark: $out"
+  printf '%s\n' "$out" | grep -qx -- "--- no review of the head under the current brief ($now items) on this machine" || fail "the READ lines have no heading: $out"
+  printf '%s\n' "$out" | grep -qx "not read under the current review brief: 1 (housebroken review brief)" || fail "the READ lines are not counted: $out"
+  printf '%s\n' "$out" | grep -q '^open PRs: 1; needing action: 0' || fail "a READ line was counted as an action: $out"
+}
+unnamed() { # why
+  out=$(sweep --all) || fail "a sweep exited non-zero: $out"
+  printf '%s\n' "$out" | grep -qE '^READ |no review of the head|not read under' && fail "$1: $out"
+  return 0
+}
+reviewed
+named 'no-review-of-head abc123'
+named 'no-review-of-head abc123' --all
+reviewed "review-of: o/r" "head: abc123" "brief: $now" "verdict: POST AS IS" "" "1. NIT: fine."
+unnamed "a head reviewed under the current brief was named"
+reviewed "review-of: o/r" "brief: $((now + 1))" "verdict: DO NOT POST"
+unnamed "a head reviewed under a later brief was named"
+printf 'review-of: o/r\r\nbrief: %s\r\nverdict: POST AS IS\r\n\r\nbody\r\n' "$now" > "$report"
+unnamed "a report with Windows line ends was not read"
+reviewed "review-of: o/r" "brief: $((now - 1))" "verdict: POST AS IS"
+named "reviewed-under-brief-$((now - 1))-of-$now abc123"
+# a report from before reports carried the number, or one whose number is in its body, not its header
+reviewed "review-of: o/r" "verdict: POST AS IS"
+named 'reviewed-under-an-unnumbered-brief abc123'
+reviewed "review-of: o/r" "verdict: POST AS IS" "" "brief: $now"
+named 'reviewed-under-an-unnumbered-brief abc123'
+reviewed "review-of: o/r" "brief: ${now}th" "verdict: POST AS IS"
+named 'reviewed-under-an-unnumbered-brief abc123'
+# a review of another head, or of another repository's, is not a review of this one
+reviewed; printf 'brief: %s\n' "$now" > "$HOUSEBROKEN_HOME/reviews/review-o-r-def456.md"
+named 'no-review-of-head abc123'
+reviewed; printf 'brief: %s\n' "$now" > "$HOUSEBROKEN_HOME/reviews/review-o-other-abc123.md"
+named 'no-review-of-head abc123'
+# a head that could not be read is said, not passed over
+reviewed "brief: $now"
+jq 'del(.headRefOid)' "$tmp/pr.json" > "$tmp/pr.new" && mv "$tmp/pr.new" "$tmp/pr.json"
+named 'head-unread'
+pr "$green"
+# a pull request in a repository of our own never went through the door
+reviewed
+printf 'me/r\t1\t2026-11-01T10:00:00Z\tOpen one\n' > "$tmp/open"
+unnamed "a pull request in our own repository was named"
+printf 'o/r\t1\t2026-11-01T10:00:00Z\tOpen one\n' > "$tmp/open"
+sweep >/dev/null
+reviewed "brief: $now"
 
 # a pull request that cannot be read is not a clean one
 touch "$tmp/view1.fail"

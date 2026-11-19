@@ -22,6 +22,15 @@
 # keeps it, so the sweep prints one KEPT line and stops asking. The obligation
 # is in the output, not in anyone's memory.
 #
+# A gate reads a pull request when it is pushed, so one filed before a review
+# item existed is never read under it, however long it stays open. Every run
+# prints a READ line for each open pull request, outside your own repositories,
+# whose head this machine holds no review report for, or holds one written
+# under an earlier brief; the line stays until that head has a report under
+# the current brief. A READ line is not counted as an action and changes no
+# exit status: the reports are local, so a head reviewed on another machine
+# reads the same as one never reviewed.
+#
 # Usage:
 #   bash pr-sweep.sh                  # only PRs where the ball is in our court
 #   bash pr-sweep.sh --all            # every open PR with its state
@@ -205,7 +214,8 @@ if ! jq -n --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   exit 1
 fi
 
-n=0; act=0
+home="${HOUSEBROKEN_HOME:-$HOME/.housebroken}"
+n=0; act=0; nread=0; reads=""
 while IFS=$'\t' read -r repo num updated title; do
   [ -n "$repo" ] || continue
   n=$((n + 1))
@@ -221,10 +231,32 @@ while IFS=$'\t' read -r repo num updated title; do
     | sort_by(.t) | last | "\(.a // "-") \(.t // "-") \(.r // "-")"')"
   read -r la_user la_time la_role <<<"$last_actor"
   ci="$(printf '%s' "$j" | jq -r "$ci_jq"'[.statusCheckRollup[]?] | if length == 0 then "none" elif any(.[]; ci == "red" and check_state != "ACTION_REQUIRED") then "FAILING" elif any(.[]; check_state == "ACTION_REQUIRED") then "needs-approval" elif any(.[]; ci == "running") then "pending" else "green" end')"
+  head_oid="$(printf '%s' "$j" | jq -r '.headRefOid // ""' | tr -d '\r')"
   # An empty check list is a quiet repository or a head GitHub made no run for.
   if [ "$ci" = "none" ]; then
-    ci="$(empty_rollup_reading "$repo" "$(printf '%s' "$j" | jq -r '.headRefOid // ""' | tr -d '\r')")"
+    ci="$(empty_rollup_reading "$repo" "$head_oid")"
     [ "$ci" = "needs-run-approval" ] && ci="needs-approval"
+  fi
+  # A gate reads a pull request when it is pushed, so one filed before a review
+  # item existed is never read under it. The reports are this machine's, and a
+  # pull request in a repository of our own never went through the door.
+  if [ "${repo%%/*}" != "$ME" ]; then
+    mark=""
+    if [ -z "$head_oid" ]; then
+      mark="head-unread"
+    else
+      under="$(reviewed_under "$repo" "$head_oid" "$home")"
+      if [ -z "$under" ]; then mark="no-review-of-head"
+      elif [ "$under" -eq 0 ]; then mark="reviewed-under-an-unnumbered-brief"
+      elif [ "$under" -lt "$review_brief_items" ]; then mark="reviewed-under-brief-$under-of-$review_brief_items"
+      fi
+      [ -z "$mark" ] || mark="$mark ${head_oid:0:12}"
+    fi
+    if [ -n "$mark" ]; then
+      nread=$((nread + 1))
+      reads="$reads$(printf 'READ %-38s #%-5s %s  [%s] %s' "$repo" "$num" "${title:0:60}" "$mark" "https://github.com/$repo/pull/$num")
+"
+    fi
   fi
   mergeable="$(printf '%s' "$j" | jq -r '.mergeable // "-"')"
   decision="$(printf '%s' "$j" | jq -r '.reviewDecision // "-"')"
@@ -256,7 +288,12 @@ while IFS=$'\t' read -r repo num updated title; do
     printf 'ok   %-38s #%-5s %s  ci=%s mergeable=%s updated=%s\n' "$repo" "$num" "${title:0:60}" "$ci" "$mergeable" "${updated:0:10}"
   fi
 done <<< "$list"
+if [ "$nread" -gt 0 ]; then
+  echo "--- no review of the head under the current brief ($review_brief_items items) on this machine"
+  printf '%s' "$reads"
+fi
 echo "open PRs: $n; needing action: $act"
+[ "$nread" -gt 0 ] && echo "not read under the current review brief: $nread (housebroken review brief)"
 [ "$ntidy" -gt 0 ] && echo "fork branches to tidy: $ntidy (housebroken hygiene)"
 if [ "$unreadable" -gt 0 ]; then
   echo "SWEEP UNREADABLE: $unreadable pull request(s) could not be read, so their state is unknown, not clean" >&2
