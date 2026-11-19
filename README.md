@@ -121,7 +121,7 @@ An upgrade moves the package and not those two copies, so after one run `housebr
 | `scripts/file-pr.sh` | the only way a pull request gets filed: every gate above in front of `gh pr create` |
 | `scripts/file-issue.sh` | the only way an issue gets filed: the same printouts and prose, and a fix offered is a fix linked |
 | `scripts/verify-filed-pr.sh` | the filed pull request is what was meant, and CI is green: one line when it is, the report when it is not |
-| `scripts/pr-sweep.sh` | every open pull request where the ball is in your court, a head CI never started on and a standing stale notice among them, and every merged or closed one whose fork branch is still there, repeated each run until it is gone (one used again for other work is named once and left alone); and a `READ` line for every open one whose head this machine holds no review of under the current brief |
+| `scripts/pr-sweep.sh` | every open pull request where the ball is in your court, a head CI never started on and a standing stale notice among them, and every merged or closed one whose fork branch is still there, repeated each run until it is gone (one used again for other work is named once and left alone); and a count of the open ones whose head this machine holds no review of under the current brief, each named on a `READ` line by `--all` |
 | `scripts/inbox.sh` | what GitHub has to tell you since you last looked, bodies included, with a census of every open pull request |
 | `scripts/notes.sh` | what this repository's maintainers have asked for before |
 | `scripts/reply.sh` | the only way an answer on a thread gets posted, and only to a voice with a role in the repository unless the user says otherwise |

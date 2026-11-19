@@ -24,12 +24,12 @@
 #
 # A gate reads a pull request when it is pushed, so one filed before a review
 # item existed is never read under it, however long it stays open. Every run
-# prints a READ line for each open pull request, outside your own repositories,
-# whose head this machine holds no review report for, or holds one written
-# under an earlier brief; the line stays until that head has a report under
-# the current brief. A READ line is not counted as an action and changes no
-# exit status: the reports are local, so a head reviewed on another machine
-# reads the same as one never reviewed.
+# counts the open pull requests, outside your own repositories, whose head this
+# machine holds no review report for, or holds one written under an earlier
+# brief, and --all prints a READ line for each; a pull request leaves the
+# count once its head has a report under the current brief. It is not counted
+# as an action and changes no exit status: the reports are local, so a head
+# reviewed on another machine reads the same as one never reviewed.
 #
 # Usage:
 #   bash pr-sweep.sh                  # only PRs where the ball is in our court
@@ -288,12 +288,12 @@ while IFS=$'\t' read -r repo num updated title; do
     printf 'ok   %-38s #%-5s %s  ci=%s mergeable=%s updated=%s\n' "$repo" "$num" "${title:0:60}" "$ci" "$mergeable" "${updated:0:10}"
   fi
 done <<< "$list"
-if [ "$nread" -gt 0 ]; then
+if [ "$nread" -gt 0 ] && [ "$ALL" = 1 ]; then
   echo "--- no review of the head under the current brief ($review_brief_items items) on this machine"
   printf '%s' "$reads"
 fi
 echo "open PRs: $n; needing action: $act"
-[ "$nread" -gt 0 ] && echo "not read under the current review brief: $nread (housebroken review brief)"
+[ "$nread" -gt 0 ] && echo "not read under the current review brief: $nread of $n (housebroken sweep --all names them)"
 [ "$ntidy" -gt 0 ] && echo "fork branches to tidy: $ntidy (housebroken hygiene)"
 if [ "$unreadable" -gt 0 ]; then
   echo "SWEEP UNREADABLE: $unreadable pull request(s) could not be read, so their state is unknown, not clean" >&2

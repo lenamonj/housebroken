@@ -272,7 +272,8 @@ runs "" 0 0
 
 # a gate reads a pull request when it is pushed, so one filed before a review
 # item existed is never read under it: every open pull request whose head this
-# machine holds no review of under the current brief is named, on every run
+# machine holds no review of under the current brief is counted on every run
+# and named by --all
 now=$(bash -c '. "$1" && printf "%s" "$review_brief_items"' _ "$(dirname "$script")/common.sh")
 case "$now" in ''|*[!0-9]*) fail "common.sh names no brief number: $now" ;; esac
 pr "$green"
@@ -282,13 +283,15 @@ reviewed() { # header lines of the report for the open head, or nothing for no r
   rm -f "$HOUSEBROKEN_HOME"/reviews/*
   [ "$#" -eq 0 ] || printf '%s\n' "$@" > "$report"
 }
-named() { # mark [sweep arguments]: the one READ line carries it, and it is not an ACT
-  local mark="$1"; shift
-  out=$(sweep "$@") || fail "a sweep that names an unread head exited non-zero: $out"
-  [ "$(printf '%s\n' "$out" | grep -c '^READ ')" = 1 ] || fail "expected one READ line for $mark: $out"
-  printf '%s\n' "$out" | grep -qE "^READ o/r +#1 +Open one  \[$mark\] https://github.com/o/r/pull/1\$" || fail "expected $mark: $out"
+named() { # mark: every run counts it, --all names it on one READ line, and it is not an ACT
+  out=$(sweep) || fail "a sweep that counts an unread head exited non-zero: $out"
+  printf '%s\n' "$out" | grep -qE '^READ |no review of the head' && fail "a run without --all listed the unread heads: $out"
+  printf '%s\n' "$out" | grep -qx "not read under the current review brief: 1 of 1 (housebroken sweep --all names them)" || fail "the unread head is not counted for $1: $out"
+  out=$(sweep --all) || fail "a sweep that names an unread head exited non-zero: $out"
+  [ "$(printf '%s\n' "$out" | grep -c '^READ ')" = 1 ] || fail "expected one READ line for $1: $out"
+  printf '%s\n' "$out" | grep -qE "^READ o/r +#1 +Open one  \[$1\] https://github.com/o/r/pull/1\$" || fail "expected $1: $out"
   printf '%s\n' "$out" | grep -qx -- "--- no review of the head under the current brief ($now items) on this machine" || fail "the READ lines have no heading: $out"
-  printf '%s\n' "$out" | grep -qx "not read under the current review brief: 1 (housebroken review brief)" || fail "the READ lines are not counted: $out"
+  printf '%s\n' "$out" | grep -qx "not read under the current review brief: 1 of 1 (housebroken sweep --all names them)" || fail "the READ lines are not counted: $out"
   printf '%s\n' "$out" | grep -q '^open PRs: 1; needing action: 0' || fail "a READ line was counted as an action: $out"
 }
 unnamed() { # why
@@ -298,7 +301,6 @@ unnamed() { # why
 }
 reviewed
 named 'no-review-of-head abc123'
-named 'no-review-of-head abc123' --all
 reviewed "review-of: o/r" "head: abc123" "brief: $now" "verdict: POST AS IS" "" "1. NIT: fine."
 unnamed "a head reviewed under the current brief was named"
 reviewed "review-of: o/r" "brief: $((now + 1))" "verdict: DO NOT POST"
@@ -328,6 +330,9 @@ pr "$green"
 reviewed
 printf 'me/r\t1\t2026-11-01T10:00:00Z\tOpen one\n' > "$tmp/open"
 unnamed "a pull request in our own repository was named"
+printf 'me/r\t1\t2026-11-01T10:00:00Z\tOpen one\no/r\t1\t2026-11-01T10:00:00Z\tOpen one\n' > "$tmp/open"
+out=$(sweep) || fail "a sweep of two open pull requests exited non-zero: $out"
+printf '%s\n' "$out" | grep -qx "not read under the current review brief: 1 of 2 (housebroken sweep --all names them)" || fail "the count is not of every open pull request: $out"
 printf 'o/r\t1\t2026-11-01T10:00:00Z\tOpen one\n' > "$tmp/open"
 sweep >/dev/null
 reviewed "brief: $now"

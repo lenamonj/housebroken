@@ -333,12 +333,12 @@ report it in one line and do not proceed to the next step.
     its pull request held is other work, which hygiene keeps, so `sweep`
     prints one `KEPT` line for it and stops asking. A gate reads a pull
     request when it is pushed, so one filed before a review item existed was
-    never read under it: `sweep` prints a `READ` line for every open pull
-    request whose head this machine holds no review report for under the
-    current brief, on every run until `housebroken review` has been run on
-    that head and its report written. A `READ` line is a prompt to re-read
-    old work, not a maintainer waiting; which ones to re-read first is the
-    user's call. Both `sweep` and the inbox census
+    never read under it: `sweep` counts the open pull requests whose head
+    this machine holds no review report for under the current brief, on
+    every run, and `sweep --all` names each on a `READ` line, until
+    `housebroken review` has been run on that head and its report written.
+    The count is a prompt to re-read old work, not a maintainer waiting;
+    which ones to re-read first is the user's call. Both `sweep` and the inbox census
     name two states that look quiet. A head no CI job ever started on reads
     `no-ci-on-head` when GitHub made no run for it and `ci-never-started`
     when the run it made finished without one. A new push or a close and
