@@ -18,9 +18,9 @@
 # and the sha256 of every text, and check refuses when the branch or the text
 # has moved since, or when the verdict is anything but POST AS IS: a fix the
 # reviewer asked for is a new head, and a new head is reviewed again. The
-# header also records the brief it answers, by the number of the brief's last
-# item, and `housebroken sweep` names every open pull request whose head was
-# never read under the current one.
+# header also records the brief it answers, by the number of the last item in
+# a code review's brief, and `housebroken sweep` counts every open pull request
+# whose head was never read under the current one; `sweep --all` names them.
 #
 # Usage:
 #   bash review.sh reviewer MODEL

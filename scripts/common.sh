@@ -419,21 +419,23 @@ is_bot() { case "$1" in *"[bot]"|Copilot|codecov-commenter|coveralls|CLAassistan
 # can type into the thread: read, never answered without the user's word.
 has_role() { case "$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')" in OWNER|MEMBER|COLLABORATOR) return 0 ;; *) return 1 ;; esac; }
 
-# The review brief's number: that of its last item. review.sh has the reviewer
-# write it into the report, and the sweep compares it with this one, so a head
-# reviewed before an item existed is told from one reviewed after. Raise it
-# with every item the brief gains.
+# The review brief's number: that of the last item in a code review's brief
+# (a brief with no clone stops earlier and carries the same number). review.sh
+# has the reviewer write it into the report, and the sweep compares it with
+# this one, so a head reviewed before an item existed is told from one
+# reviewed after. Raise it with every item the brief gains.
 # shellcheck disable=SC2034  # read by the scripts that source this file
 review_brief_items=13
 
 # The brief a head was reviewed under, read from the header of the report
-# review.sh names for that head: its number, 0 when the header carries none,
-# and nothing when this machine holds no report for the head.
+# review.sh names for that head: its number, 0 when the header carries none or
+# one no brief will reach, "unreadable" when the report cannot be read, and
+# nothing when this machine holds no report for the head.
 reviewed_under() { # repo head home
   local report="$3/reviews/review-${1%%/*}-${1##*/}-${2:0:12}.md" n
   [ -f "$report" ] || return 0
-  n=$(awk '{sub(/\r$/, "")} NF == 0 {exit} $1 == "brief:" {print $2; exit}' "$report")
-  case "$n" in ''|*[!0-9]*) echo 0 ;; *) echo "$n" ;; esac
+  n=$(awk '{sub(/\r$/, "")} NF == 0 {exit} $1 == "brief:" {print $2; exit}' "$report" 2>/dev/null) || { echo unreadable; return 0; }
+  case "$n" in ''|*[!0-9]*|???????*) echo 0 ;; *) echo "$n" ;; esac
 }
 
 # Prints stdin as someone else's words: fenced and marked, each line prefixed so

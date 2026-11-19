@@ -23,13 +23,14 @@
 # is in the output, not in anyone's memory.
 #
 # A gate reads a pull request when it is pushed, so one filed before a review
-# item existed is never read under it, however long it stays open. Every run
-# counts the open pull requests, outside your own repositories, whose head this
-# machine holds no review report for, or holds one written under an earlier
-# brief, and --all prints a READ line for each; a pull request leaves the
-# count once its head has a report under the current brief. It is not counted
-# as an action and changes no exit status: the reports are local, so a head
-# reviewed on another machine reads the same as one never reviewed.
+# item existed is never read under it, however long it stays open. A run
+# counts the open pull requests, outside repositories under your own login,
+# whose head this machine holds no review report for, holds one written under
+# an earlier brief, or holds one it cannot read; it prints the count when
+# there is any, and --all prints a READ line for each. A pull request leaves
+# the count once its head has a report under the current brief. It is not
+# counted as an action and changes no exit status: the reports are local, so a
+# head reviewed on another machine reads the same as one never reviewed.
 #
 # Usage:
 #   bash pr-sweep.sh                  # only PRs where the ball is in our court
@@ -247,6 +248,7 @@ while IFS=$'\t' read -r repo num updated title; do
     else
       under="$(reviewed_under "$repo" "$head_oid" "$home")"
       if [ -z "$under" ]; then mark="no-review-of-head"
+      elif [ "$under" = unreadable ]; then mark="review-report-unreadable"
       elif [ "$under" -eq 0 ]; then mark="reviewed-under-an-unnumbered-brief"
       elif [ "$under" -lt "$review_brief_items" ]; then mark="reviewed-under-brief-$under-of-$review_brief_items"
       fi

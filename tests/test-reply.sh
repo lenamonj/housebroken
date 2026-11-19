@@ -204,6 +204,16 @@ cp "$tmp/thread/one.json" "$tmp/thread/one.keep"
 echo 'Bad gateway' > "$tmp/thread/one.json"
 reply 2 "The thread is answered in place." --in-reply-to 123456
 grep -q "cannot read comment 123456" "$tmp/out" || fail "a comment that could not be parsed was not named: $(cat "$tmp/out")"
+# nor does an answer that parses but is not a comment, with the user's word or without it
+for not_comment in '{}' 'null' '{"message":"Server Error"}'; do
+  printf '%s\n' "$not_comment" > "$tmp/thread/one.json"
+  reply 2 "The thread is answered in place." --in-reply-to 123456 --outsider
+  grep -q "cannot read comment 123456" "$tmp/out" || fail "a read that is not a comment, $not_comment, was not named: $(cat "$tmp/out")"
+done
+# a comment whose author GitHub gives no role for is not a maintainer's
+jq -n '{user: {login: "maint"}}' > "$tmp/thread/one.json"
+reply 2 "The thread is answered in place." --in-reply-to 123456
+grep -q "has no role" "$tmp/out" || fail "a comment with no role recorded was answered: $(cat "$tmp/out")"
 mv "$tmp/thread/one.keep" "$tmp/thread/one.json"
 reply 0 "The thread is answered in place." --in-reply-to 123456
 

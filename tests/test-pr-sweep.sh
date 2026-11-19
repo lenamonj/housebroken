@@ -316,11 +316,33 @@ reviewed "review-of: o/r" "verdict: POST AS IS" "" "brief: $now"
 named 'reviewed-under-an-unnumbered-brief abc123'
 reviewed "review-of: o/r" "brief: ${now}th" "verdict: POST AS IS"
 named 'reviewed-under-an-unnumbered-brief abc123'
+# the header's first brief line is the one read, as review.sh check reads its fields
+reviewed "review-of: o/r" "brief: $((now - 1))" "brief: $now" "verdict: POST AS IS"
+named "reviewed-under-brief-$((now - 1))-of-$now abc123"
 # a review of another head, or of another repository's, is not a review of this one
 reviewed; printf 'brief: %s\n' "$now" > "$HOUSEBROKEN_HOME/reviews/review-o-r-def456.md"
 named 'no-review-of-head abc123'
 reviewed; printf 'brief: %s\n' "$now" > "$HOUSEBROKEN_HOME/reviews/review-o-other-abc123.md"
 named 'no-review-of-head abc123'
+# a real head has forty characters and its report is named by the first twelve
+long=0123456789abcdef0123456789abcdef01234567
+jq --arg h "$long" '.headRefOid = $h' "$tmp/pr.json" > "$tmp/pr.new" && mv "$tmp/pr.new" "$tmp/pr.json"
+reviewed; printf 'brief: %s\n' "$now" > "$HOUSEBROKEN_HOME/reviews/review-o-r-${long:0:12}.md"
+unnamed "a forty-character head reviewed under the current brief was named"
+reviewed
+named "no-review-of-head ${long:0:12}"
+# a number past any brief is not a review under this one
+reviewed; printf 'brief: 99999999999999999999\n' > "$HOUSEBROKEN_HOME/reviews/review-o-r-${long:0:12}.md"
+named 'reviewed-under-an-unnumbered-brief 0123456789ab'
+# a report that cannot be read is said, not taken for one with no number
+reviewed; printf 'brief: %s\n' "$now" > "$HOUSEBROKEN_HOME/reviews/review-o-r-0123456789ab.md"
+chmod 000 "$HOUSEBROKEN_HOME/reviews/review-o-r-0123456789ab.md"
+# root reads it anyway, so the case runs only where the mode holds
+if [ ! -r "$HOUSEBROKEN_HOME/reviews/review-o-r-0123456789ab.md" ]; then
+  named 'review-report-unreadable 0123456789ab'
+fi
+chmod 644 "$HOUSEBROKEN_HOME/reviews/review-o-r-0123456789ab.md" 2>/dev/null
+pr "$green"
 # a head that could not be read is said, not passed over
 reviewed "brief: $now"
 jq 'del(.headRefOid)' "$tmp/pr.json" > "$tmp/pr.new" && mv "$tmp/pr.new" "$tmp/pr.json"

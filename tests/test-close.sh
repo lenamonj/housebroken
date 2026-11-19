@@ -15,7 +15,7 @@ mkdir -p "$tmp/stub" "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/bin/bash
 pr() { # author state
-  printf '{"author":{"login":"%s"},"state":"%s","headRefName":"fix-it","headRefOid":"abc123","headRepository":{"name":"Hello-World"},"headRepositoryOwner":{"login":"%s"}}\n' "$1" "$2" "$(cat "$STUB_DIR/owner" 2>/dev/null || echo me)"
+  printf '{"author":{"login":"%s"},"state":"%s","headRefName":"%s","headRefOid":"abc123","headRepository":{"name":"Hello-World"},"headRepositoryOwner":{"login":"%s"}}\n' "$1" "$2" "$(cat "$STUB_DIR/branch" 2>/dev/null || echo fix-it)" "$(cat "$STUB_DIR/owner" 2>/dev/null || echo me)"
 }
 case "$*" in
   "pr view 9 --repo octocat/Hello-World --json author,state,headRefName,headRepository,headRepositoryOwner,headRefOid"*) pr me OPEN ;;
@@ -47,7 +47,7 @@ export PATH="$tmp/bin:$STUBS:$PATH"
 
 fail() { echo "FAIL $name: $1" >&2; exit 1; }
 fresh() { # a clean home, no writes, a fork branch nobody else uses
-  rm -rf "${tmp:?}/home" "$STUB_WRITES" "$STUB_DIR/graphql.fail" "$STUB_DIR/owner"
+  rm -rf "${tmp:?}/home" "$STUB_WRITES" "$STUB_DIR/graphql.fail" "$STUB_DIR/owner" "$STUB_DIR/branch"
   export HOUSEBROKEN_HOME="$tmp/home"
   printf 'true\tyes\tabc123\t\n' > "$STUB_DIR/ref"
 }
@@ -136,6 +136,12 @@ grep -q "carries no note of its own" "$tmp/out" || fail "an empty note was taken
 CLOSE_DRY=1 closepr 0 9 $'> thanks!\n\nThe fix landed upstream in #1.'
 CLOSE_DRY=1 closepr 2 9 $'> The fix landed upstream in #1.'
 grep -q "carries no note of its own" "$tmp/out" || fail "a note that is only a quote was taken: $(cat "$tmp/out")"
+# nor is a code span, or a quote indented under a list
+# shellcheck disable=SC2016  # the backticks are markdown
+CLOSE_DRY=1 closepr 2 9 '`fix-it`'
+grep -q "carries no note of its own" "$tmp/out" || fail "a note that is only a code span was taken: $(cat "$tmp/out")"
+CLOSE_DRY=1 closepr 2 9 '  > The fix landed upstream in #1.'
+grep -q "carries no note of its own" "$tmp/out" || fail "a note that is only an indented quote was taken: $(cat "$tmp/out")"
 
 # ten minutes after our last comment on the repository, a reply or a close
 mkdir -p "$HOUSEBROKEN_HOME/replies"
@@ -163,6 +169,11 @@ fresh
 echo maint > "$STUB_DIR/owner"
 closepr 0 9 "$note"
 grep -q "DELETE" "$STUB_WRITES" && fail "a branch on someone else's repository was deleted"
+# a pull request that names no head branch leaves nothing to delete
+fresh
+: > "$STUB_DIR/branch"
+closepr 0 9 "$note"
+grep -q "DELETE" "$STUB_WRITES" && fail "a pull request with no head branch had a branch deleted: $(cat "$STUB_WRITES")"
 
 # a branch that could not be read: the close stands and the exit says the rest did not
 fresh

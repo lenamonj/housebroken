@@ -113,7 +113,7 @@ voice=""
 if [ -n "$thread" ]; then
   # An answer that is not the comment leaves no voice, and no voice is not nobody to answer.
   one=$(gh api "repos/$repo/pulls/comments/$thread" 2>/dev/null) &&
-    voice=$(printf '%s' "$one" | jq -r '"\(.user.login // "?") \(.author_association // "?")"' 2>/dev/null | tr -d '\r')
+    voice=$(printf '%s' "$one" | jq -r 'select(type == "object" and (.user.login | type) == "string") | "\(.user.login) \(.author_association // "?")"' 2>/dev/null | tr -d '\r')
   [ -n "$voice" ] || refuse reply-comment-unreadable "cannot read comment $thread, so who it answers is unknown"
 else
   ok=1
