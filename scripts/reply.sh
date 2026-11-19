@@ -58,13 +58,13 @@ repo="${1:-}"; num="${2:-}"
 case "$repo" in */*) ;; *) refused reply-repo-form "name the repository as owner/repo" >&2; exit 2 ;; esac
 case "$num" in ''|*[!0-9]*) refused reply-no-number "name the pull request or issue number" >&2; exit 2 ;; esac
 shift 2
-body=""; report=""; long=0; clone=""; thread=""; outsider=0
+body=""; report=""; long=0; clone=""; thread=""; inline=0; outsider=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --body-file) body="${2:-}"; shift ;;
     --review) report="${2:-}"; shift ;;
     --clone) clone="${2:-}"; shift ;;
-    --in-reply-to) thread="${2:-}"; shift ;;
+    --in-reply-to) thread="${2:-}"; inline=1; shift ;;
     --long) long=1 ;;
     --outsider) outsider=1 ;;
     *) refused reply-unknown-argument "unknown argument $1" >&2; exit 2 ;;
@@ -72,7 +72,10 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 [ -f "$body" ] || { refused reply-body-file-missing "--body-file names no file" >&2; exit 2; }
-case "$thread" in ''|[0-9]*) ;; *) refused reply-in-reply-to-form "--in-reply-to needs the comment id" >&2; exit 2 ;; esac
+# The id is digits and nothing else, and the flag with no id is not a reply to the conversation.
+if [ "$inline" -eq 1 ]; then
+  case "$thread" in ''|*[!0-9]*) refused reply-in-reply-to-form "--in-reply-to needs the comment id" >&2; exit 2 ;; esac
+fi
 here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=scripts/common.sh
 . "$here/common.sh"
@@ -108,11 +111,10 @@ read_all() { # endpoint file
 }
 voice=""
 if [ -n "$thread" ]; then
-  if one=$(gh api "repos/$repo/pulls/comments/$thread" 2>/dev/null); then
-    voice=$(printf '%s' "$one" | jq -r '"\(.user.login // "?") \(.author_association // "?")"' | tr -d '\r')
-  else
-    refuse reply-comment-unreadable "cannot read comment $thread, so who it answers is unknown"
-  fi
+  # An answer that is not the comment leaves no voice, and no voice is not nobody to answer.
+  one=$(gh api "repos/$repo/pulls/comments/$thread" 2>/dev/null) &&
+    voice=$(printf '%s' "$one" | jq -r '"\(.user.login // "?") \(.author_association // "?")"' 2>/dev/null | tr -d '\r')
+  [ -n "$voice" ] || refuse reply-comment-unreadable "cannot read comment $thread, so who it answers is unknown"
 else
   ok=1
   # The opening post says whether this is a pull request, and its author is a

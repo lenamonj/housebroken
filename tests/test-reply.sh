@@ -61,6 +61,9 @@ misuse reply-unknown-argument "an argument nobody knows was taken" octocat/Hello
 misuse reply-body-file-missing "a missing reply was taken" octocat/Hello-World 1 --body-file "$tmp/none.md"
 misuse reply-body-file-missing "a command with no reply named was taken" octocat/Hello-World 1
 misuse reply-in-reply-to-form "a comment id that is not a number was taken" octocat/Hello-World 1 --body-file "$tmp/r.md" --in-reply-to abc
+misuse reply-in-reply-to-form "a comment id that only begins with a number was taken" octocat/Hello-World 1 --body-file "$tmp/r.md" --in-reply-to 12abc
+# an inline answer with no id named would go to the conversation
+misuse reply-in-reply-to-form "--in-reply-to with no id was taken" octocat/Hello-World 1 --body-file "$tmp/r.md" --in-reply-to
 # with no login to leave out, our own comment would pass for the voice being answered
 HOUSEBROKEN_USER='' misuse reply-gh-unauthenticated "a reply with no login was taken" octocat/Hello-World 1 --body-file "$tmp/r.md"
 
@@ -196,6 +199,13 @@ reply 2 "The thread is answered in place." --in-reply-to 123456
 grep -q "cannot read comment 123456" "$tmp/out" || fail "a comment that could not be read was not named: $(cat "$tmp/out")"
 reply 2 "The thread is answered in place." --in-reply-to 123456 --outsider
 rm -f "$tmp/thread/one.fail"
+# nor does an answer that is not the comment GitHub sends
+cp "$tmp/thread/one.json" "$tmp/thread/one.keep"
+echo 'Bad gateway' > "$tmp/thread/one.json"
+reply 2 "The thread is answered in place." --in-reply-to 123456
+grep -q "cannot read comment 123456" "$tmp/out" || fail "a comment that could not be parsed was not named: $(cat "$tmp/out")"
+mv "$tmp/thread/one.keep" "$tmp/thread/one.json"
+reply 0 "The thread is answered in place." --in-reply-to 123456
 
 # a reply that rides on a review is held to it: a report that does not clear this
 # text stops the reply
